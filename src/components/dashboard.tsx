@@ -1,0 +1,18 @@
+"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowUpRight, BriefcaseBusiness, CircleDollarSign, Clock3, FileSearch, HardHat, ListTodo, Users } from "lucide-react";
+import { money } from "@/lib/format";
+
+type Data = { cards: Record<string, number>; works: Array<{ _id: string; name: string; progress: number; budgetCents: number; status: string }> };
+export function Dashboard() {
+  const [data, setData] = useState<Data | null>(null); const [error, setError] = useState("");
+  useEffect(() => { fetch("/api/dashboard").then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(setData).catch(() => setError("No se pudo cargar el tablero")); }, []);
+  const cards = data ? [
+    ["Obras activas", data.cards.activeWorks, "Proyectos en ejecución", HardHat, "green"],
+    ["Por cobrar", money(data.cards.receivableCents), "Saldo total pendiente", CircleDollarSign, "gold"],
+    ["Por pagar", money(data.cards.payableCents), "Compromisos pendientes", Clock3, "rust"],
+    ["Cotizaciones", data.cards.openQuotes, "En seguimiento", FileSearch, "blue"],
+  ] as const : [];
+  return <><div className="page-heading"><div><p className="eyebrow">PANEL GENERAL</p><h1>Resumen de gestión</h1><p>Una vista clara de lo que está pasando en la empresa.</p></div><span className="date-chip">Actualizado ahora</span></div>{error && <div className="notice error">{error}</div>}<section className="metric-grid">{data ? cards.map(([label,value,help,Icon,color]) => <article className="metric-card" key={label}><div className={`metric-icon ${color}`}><Icon size={21}/></div><div><span>{label}</span><strong>{value}</strong><small>{help}</small></div></article>) : [1,2,3,4].map(i => <div className="metric-card skeleton" key={i}/>)}</section><div className="dashboard-grid"><section className="panel works-panel"><div className="panel-head"><div><h2>Obras recientes</h2><p>Avance operativo</p></div><Link href="/app/works">Ver todas <ArrowUpRight size={16}/></Link></div><div className="work-list">{data?.works.length ? data.works.map(work => <Link href={`/app/works?edit=${work._id}`} className="work-row" key={work._id}><div className="work-title"><span className="work-avatar"><BriefcaseBusiness size={18}/></span><div><b>{work.name}</b><small>{work.status.replaceAll("_", " ")}</small></div></div><div className="progress-wrap"><span>{work.progress}%</span><div className="progress"><i style={{ width: `${work.progress}%` }}/></div></div><strong>{money(work.budgetCents)}</strong></Link>) : <div className="empty-state"><HardHat/><p>Todavía no hay obras cargadas.</p><Link href="/app/works">Crear primera obra</Link></div>}</div></section><aside className="panel summary-panel"><div className="panel-head"><div><h2>Atención</h2><p>Pendientes del equipo</p></div></div>{data && <div className="attention-list"><Link href="/app/tasks"><span className="attention-icon"><ListTodo/></span><div><b>{data.cards.pendingTasks} tareas pendientes</b><small>Revisar asignaciones</small></div><ArrowUpRight/></Link><Link href="/app/checks"><span className="attention-icon warning"><Clock3/></span><div><b>{data.cards.checksDue} cheques próximos</b><small>Vencen dentro de 7 días</small></div><ArrowUpRight/></Link><Link href="/app/clients"><span className="attention-icon neutral"><Users/></span><div><b>{data.cards.clients} clientes activos</b><small>Consultar historial comercial</small></div><ArrowUpRight/></Link></div>}<div className="cash-summary"><p>Flujo del mes</p><div><span>Ingresos <b className="positive">{money(data?.cards.monthIncomeCents || 0)}</b></span><span>Egresos <b>{money(data?.cards.monthExpenseCents || 0)}</b></span></div></div></aside></div></>;
+}
