@@ -13,7 +13,7 @@ export type Session = { userId: string; name: string; email: string; role: Role 
 export async function createSession(session: Session) {
   const token = await new SignJWT(session).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("8h").sign(secret);
   const jar = await cookies();
-  jar.set(COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 60 * 60 * 8 });
+  jar.set(COOKIE, token, { httpOnly: true, secure: process.env.APP_URL?.startsWith("https://") === true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 8 });
 }
 
 export async function destroySession() {
