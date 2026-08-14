@@ -14,7 +14,7 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
   try {
     const session = await requireSession();
     const { entity } = await context.params;
-    if (!validEntity(entity) || !canRead(session.role, entity)) throw new Error("FORBIDDEN");
+    if (!validEntity(entity) || !canRead(session, entity)) throw new Error("FORBIDDEN");
     await connectDB();
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
@@ -34,7 +34,7 @@ export async function POST(request: Request, context: RouteContext<"/api/records
   try {
     const session = await requireSession();
     const { entity } = await context.params;
-    if (!validEntity(entity) || !canWrite(session.role, entity)) throw new Error("FORBIDDEN");
+    if (!validEntity(entity) || !canWrite(session, entity)) throw new Error("FORBIDDEN");
     const parsed = schemas[entity].safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
     await connectDB();

@@ -16,6 +16,15 @@ export function date(value?: string | Date) {
   return new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date(value));
 }
 
+export function dateTime(value?: string | Date) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("es-AR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Argentina/Buenos_Aires",
+  }).format(new Date(value));
+}
+
 export function titleCase(value?: string) {
   return value ? value.replaceAll("_", " ").replace(/^./, character => character.toUpperCase()) : "—";
 }

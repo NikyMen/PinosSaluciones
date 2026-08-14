@@ -2,10 +2,11 @@ import { requireSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { CashMovement, Collection, Payment, Invoice, Expense, Work } from "@/lib/models";
 import { apiError } from "@/lib/api";
+import { canViewSection } from "@/lib/permissions";
 
 export async function GET(request: Request) {
   try {
-    await requireSession(); await connectDB();
+    const session = await requireSession(); if (!canViewSection(session, "reports")) throw new Error("FORBIDDEN"); await connectDB();
     const url = new URL(request.url);
     const from = url.searchParams.get("from") ? new Date(url.searchParams.get("from")!) : new Date(new Date().getFullYear(), 0, 1);
     const to = url.searchParams.get("to") ? new Date(url.searchParams.get("to")! + "T23:59:59") : new Date();

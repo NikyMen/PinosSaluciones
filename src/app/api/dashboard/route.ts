@@ -2,7 +2,8 @@ import { requireSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { Client, Quote, Work, Invoice, Collection, Expense, Payment, Check, Task } from "@/lib/models";
 import { apiError } from "@/lib/api";
-import { comparisonPercent, marginPercent, monthKeys, parseDashboardRange, rangeMonths } from "@/lib/dashboard";
+import { comparisonPercent, marginPercent, monthKeys, monthsBetween, parseDashboardDate, parseDashboardRange, rangeMonths, type DashboardPeriod } from "@/lib/dashboard";
+import { canViewSection } from "@/lib/permissions";
 
 type TotalRow = { total?: number };
 type MonthlyRow = { _id: string; value: number };
@@ -17,16 +18,42 @@ function monthlyMap(rows: MonthlyRow[]) {
 
 export async function GET(request: Request) {
   try {
-    await requireSession();
+    const session = await requireSession();
+    if (!canViewSection(session, "dashboard")) throw new Error("FORBIDDEN");
     await connectDB();
 
-    const range = parseDashboardRange(new URL(request.url).searchParams.get("range"));
-    if (!range) return Response.json({ error: "Período inválido" }, { status: 400 });
-
-    const months = rangeMonths(range);
     const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
-    const previousFrom = new Date(from.getFullYear(), from.getMonth() - months, 1);
+    const searchParams = new URL(request.url).searchParams;
+    const fromParam = searchParams.get("from");
+    const toParam = searchParams.get("to");
+    const hasCustomDates = fromParam !== null || toParam !== null;
+    let range: DashboardPeriod;
+    let months: number;
+    let from: Date;
+    let to: Date;
+
+    if (hasCustomDates) {
+      const customFrom = parseDashboardDate(fromParam);
+      const customTo = parseDashboardDate(toParam, true);
+      if (!customFrom || !customTo || customFrom > customTo) {
+        return Response.json({ error: "Rango de fechas inválido" }, { status: 400 });
+      }
+      range = "custom";
+      from = customFrom;
+      to = customTo;
+      months = monthsBetween(from, to);
+    } else {
+      const selectedRange = parseDashboardRange(searchParams.get("range"));
+      if (!selectedRange) return Response.json({ error: "Período inválido" }, { status: 400 });
+      range = selectedRange;
+      months = rangeMonths(selectedRange);
+      from = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
+      to = now;
+    }
+
+    const previousFrom = range === "custom"
+      ? new Date(from.getTime() - (to.getTime() - from.getTime() + 1))
+      : new Date(from.getFullYear(), from.getMonth() - months, 1);
     const previousTo = new Date(from.getTime() - 1);
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const dueSoonLimit = new Date(today.getTime() + 30 * 86400000);
@@ -47,7 +74,7 @@ export async function GET(request: Request) {
         { $group: { _id: "$workId", total: { $sum: "$amountCents" } } },
       ]),
       Quote.aggregate([
-        { $match: { status: "aprobada", updatedAt: { $gte: from, $lte: now } } },
+        { $match: { status: "aprobada", updatedAt: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Quote.aggregate([
@@ -55,7 +82,7 @@ export async function GET(request: Request) {
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Invoice.aggregate([
-        { $match: { status: { $ne: "anulada" }, issueDate: { $gte: from, $lte: now } } },
+        { $match: { status: { $ne: "anulada" }, issueDate: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Invoice.aggregate([
@@ -63,7 +90,7 @@ export async function GET(request: Request) {
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Expense.aggregate([
-        { $match: { status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: now } } },
+        { $match: { status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Expense.aggregate([
@@ -71,11 +98,11 @@ export async function GET(request: Request) {
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Collection.aggregate([
-        { $match: { date: { $gte: from, $lte: now } } },
+        { $match: { date: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Payment.aggregate([
-        { $match: { date: { $gte: from, $lte: now } } },
+        { $match: { date: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Invoice.aggregate([
@@ -93,19 +120,19 @@ export async function GET(request: Request) {
       Check.countDocuments({ dueDate: { $gte: today, $lte: new Date(today.getTime() + 7 * 86400000) }, status: { $in: ["cartera", "emitido"] } }),
       Task.countDocuments({ status: { $ne: "completada" } }),
       Quote.aggregate([
-        { $match: { status: "aprobada", updatedAt: { $gte: from, $lte: now } } },
+        { $match: { status: "aprobada", updatedAt: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$updatedAt", timezone } }, value: { $sum: "$amountCents" } } },
       ]),
       Invoice.aggregate([
-        { $match: { status: { $ne: "anulada" }, issueDate: { $gte: from, $lte: now } } },
+        { $match: { status: { $ne: "anulada" }, issueDate: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate", timezone } }, value: { $sum: "$amountCents" } } },
       ]),
       Collection.aggregate([
-        { $match: { date: { $gte: from, $lte: now } } },
+        { $match: { date: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date", timezone } }, value: { $sum: "$amountCents" } } },
       ]),
       Expense.aggregate([
-        { $match: { status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: now } } },
+        { $match: { status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate", timezone } }, value: { $sum: "$amountCents" } } },
       ]),
     ]);
@@ -134,7 +161,7 @@ export async function GET(request: Request) {
     }));
 
     return Response.json({
-      period: { range, months, from, to: now, generatedAt: now },
+      period: { range, months, from, to, generatedAt: now },
       kpis: {
         activeWorks: activeWorks.length,
         averageProgress: activeWorks.length ? Math.round(progressTotal / activeWorks.length) : 0,

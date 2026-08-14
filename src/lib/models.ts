@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { ROLES } from "./constants";
+import { entities, ROLES, viewSections } from "./constants";
 
 const options = { timestamps: true, strict: true } as const;
 const money = { type: Number, min: 0, default: 0 };
@@ -10,6 +10,13 @@ const UserSchema = new Schema({
   passwordHash: { type: String, required: true, select: false },
   role: { type: String, enum: ROLES, required: true },
   active: { type: Boolean, default: true },
+  permissions: {
+    type: new Schema({
+      view: [{ type: String, enum: viewSections }],
+      edit: [{ type: String, enum: entities }],
+    }, { _id: false }),
+    default: undefined,
+  },
 }, options);
 
 const ClientSchema = new Schema({
@@ -30,6 +37,19 @@ const QuoteSchema = new Schema({
   history: [{ action: String, note: String, at: { type: Date, default: Date.now }, userId: Schema.Types.ObjectId }],
 }, options);
 
+const ChecklistItemSchema = new Schema({
+  title: { type: String, required: true, trim: true },
+  done: { type: Boolean, default: false },
+  completedAt: Date,
+}, { timestamps: true });
+
+const WorkActivitySchema = new Schema({
+  detail: { type: String, required: true, trim: true },
+  photos: [{ type: String }],
+  userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+  authorName: { type: String, required: true },
+}, { timestamps: { createdAt: true, updatedAt: false } });
+
 const WorkSchema = new Schema({
   code: { type: String, required: true, unique: true },
   name: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
@@ -37,7 +57,8 @@ const WorkSchema = new Schema({
   status: { type: String, enum: ["planificada", "en_curso", "pausada", "terminada", "cancelada"], default: "planificada" },
   startDate: Date, endDate: Date, budgetCents: money, progress: { type: Number, min: 0, max: 100, default: 0 },
   costCenter: String,
-  checklist: [{ title: String, done: { type: Boolean, default: false }, completedAt: Date }],
+  checklist: [ChecklistItemSchema],
+  activity: [WorkActivitySchema],
   advances: [{ percentage: Number, note: String, date: Date, userId: Schema.Types.ObjectId, photos: [String] }],
   certificates: [{ number: String, period: String, percentage: Number, amountCents: Number, approved: Boolean, invoiced: Boolean, file: String }],
   labor: [{ person: String, date: Date, hours: Number, costCents: Number }],

@@ -38,6 +38,8 @@ cd /opt/pinos
 pnpm install --frozen-lockfile
 pnpm db:check
 pnpm seed
+# Opcional: solo para una instalacion de demostracion
+pnpm seed:demo
 pnpm build
 cp -r public .next/standalone/
 mkdir -p .next/standalone/.next

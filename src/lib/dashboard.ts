@@ -1,12 +1,24 @@
-export type DashboardRange = "6m" | "12m";
+export type DashboardRange = "1m" | "3m" | "6m";
+export type DashboardPeriod = DashboardRange | "custom";
 
 export function parseDashboardRange(value: string | null): DashboardRange | null {
-  if (value === null || value === "") return "6m";
-  return value === "6m" || value === "12m" ? value : null;
+  if (value === null || value === "") return "3m";
+  return value === "1m" || value === "3m" || value === "6m" ? value : null;
 }
 
 export function rangeMonths(range: DashboardRange) {
-  return range === "12m" ? 12 : 6;
+  return range === "1m" ? 1 : range === "3m" ? 3 : 6;
+}
+
+export function parseDashboardDate(value: string | null, endOfDay = false): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
+  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day ? parsed : null;
+}
+
+export function monthsBetween(from: Date, to: Date) {
+  return (to.getFullYear() - from.getFullYear()) * 12 + to.getMonth() - from.getMonth() + 1;
 }
 
 export function comparisonPercent(current: number, previous: number): number | null {

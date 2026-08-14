@@ -4,11 +4,13 @@ import { SignJWT, jwtVerify } from "jose";
 import { connectDB } from "./db";
 import { User } from "./models";
 import type { Role } from "./constants";
+import { normalizePermissions, type UserPermissions } from "./permissions";
 
 const COOKIE = "pinos_session";
 const secret = new TextEncoder().encode(process.env.SESSION_SECRET || "dev-secret-change-this-immediately");
 
 export type Session = { userId: string; name: string; email: string; role: Role };
+export type AuthorizedSession = Session & { permissions: UserPermissions };
 
 export async function createSession(session: Session) {
   const token = await new SignJWT(session).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("8h").sign(secret);
@@ -29,11 +31,12 @@ export async function getSession(): Promise<Session | null> {
   } catch { return null; }
 }
 
-export async function requireSession() {
+export async function requireSession(): Promise<AuthorizedSession> {
   const session = await getSession();
   if (!session) throw new Error("UNAUTHORIZED");
   await connectDB();
-  const active = await User.exists({ _id: session.userId, active: true });
+  const active = await User.findOne({ _id: session.userId, active: true }).select("name email role permissions").lean();
   if (!active) throw new Error("UNAUTHORIZED");
-  return session;
+  const user = active as unknown as { name: string; email: string; role: Role; permissions?: UserPermissions };
+  return { userId: session.userId, name: user.name, email: user.email, role: user.role, permissions: normalizePermissions(user.role, user.permissions) };
 }

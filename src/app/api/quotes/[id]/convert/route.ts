@@ -10,7 +10,7 @@ import { apiError } from "@/lib/api";
 const schema = z.object({ code: z.string().trim().min(1), name: z.string().trim().min(1), startDate: z.coerce.date().optional() });
 export async function POST(request: Request, context: RouteContext<"/api/quotes/[id]/convert">) {
   try {
-    const session = await requireSession(); if (!canWrite(session.role, "quotes")) throw new Error("FORBIDDEN");
+    const session = await requireSession(); if (!canWrite(session, "quotes")) throw new Error("FORBIDDEN");
     const { id } = await context.params; if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     const parsed = schema.safeParse(await request.json()); if (!parsed.success) return Response.json({ error: "Datos inválidos" }, { status: 400 });
     await connectDB(); const quote = await Quote.findById(id); if (!quote) return Response.json({ error: "Cotización no encontrada" }, { status: 404 });

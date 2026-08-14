@@ -37,6 +37,10 @@ export const entities = [
 
 export type Entity = (typeof entities)[number];
 
+export const viewSections = ["dashboard", ...entities, "reports"] as const;
+
+export type ViewSection = (typeof viewSections)[number];
+
 export const entityLabels: Record<Entity, string> = {
   clients: "Clientes",
   quotes: "Cotizaciones",
@@ -50,4 +54,10 @@ export const entityLabels: Record<Entity, string> = {
   checks: "Cheques",
   cash: "Caja y bancos",
   tasks: "Tareas",
+};
+
+export const viewSectionLabels: Record<ViewSection, string> = {
+  dashboard: "Tablero gerencial",
+  ...entityLabels,
+  reports: "iA y Reportes",
 };

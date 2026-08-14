@@ -13,7 +13,7 @@ function parseCsv(text:string){const result:string[][]=[];let row:string[]=[];le
 export async function POST(request:Request,context:RouteContext<"/api/import/[entity]">){
   try{
     const session=await requireSession();const{entity}=await context.params;
-    if(!entities.includes(entity as Entity)||!canWrite(session.role,entity as Entity))throw new Error("FORBIDDEN");
+    if(!entities.includes(entity as Entity)||!canWrite(session,entity as Entity))throw new Error("FORBIDDEN");
     const form=await request.formData();const file=form.get("file");
     if(!(file instanceof File)||file.size>5*1024*1024)return Response.json({error:"Archivo inválido o mayor a 5 MB"},{status:400});
     const extension=file.name.toLowerCase().split(".").pop();let matrix:unknown[][]=[];

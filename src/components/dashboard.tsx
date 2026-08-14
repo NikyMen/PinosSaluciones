@@ -1,19 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
   ArrowRight, ArrowUpRight, BarChart3, BriefcaseBusiness, CalendarDays, CheckCircle2,
   CircleDollarSign, Clock3, FileSearch, HandCoins, HardHat, ListTodo, ReceiptText,
   RefreshCw, TrendingDown, TrendingUp, Users, WalletCards,
 } from "lucide-react";
 import { compactMoney, date, money, titleCase } from "@/lib/format";
-import type { DashboardRange } from "@/lib/dashboard";
+import type { DashboardPeriod, DashboardRange } from "@/lib/dashboard";
 
 type MonthlyPoint = { period: string; salesCents: number; invoicedCents: number; collectedCents: number; expenseCents: number };
 type ActiveWork = { _id: string; name: string; code: string; progress: number; budgetCents: number; costCents: number; status: string; endDate?: string };
 type DashboardData = {
-  period: { range: DashboardRange; months: number; from: string; to: string; generatedAt: string };
+  period: { range: DashboardPeriod; months: number; from: string; to: string; generatedAt: string };
   kpis: { activeWorks: number; averageProgress: number; salesCents: number; invoicedCents: number; receivableCents: number; netMarginCents: number; netMarginPercent: number | null };
   comparison: { salesPercent: number | null; invoicedPercent: number | null; netMarginPercent: number | null };
   monthlySeries: MonthlyPoint[];
@@ -23,10 +23,20 @@ type DashboardData = {
   alerts: { pendingTasks: number; checksDue: number; activeClients: number; openQuotes: number };
 };
 
-const ranges: Array<{ value: DashboardRange; label: string }> = [{ value: "6m", label: "6 meses" }, { value: "12m", label: "12 meses" }];
+const ranges: Array<{ value: DashboardRange; label: string }> = [
+  { value: "1m", label: "Último mes" },
+  { value: "3m", label: "Últimos 3 meses" },
+  { value: "6m", label: "Últimos 6 meses" },
+];
+
+type DashboardFilter =
+  | { kind: "preset"; range: DashboardRange }
+  | { kind: "custom"; from: string; to: string };
 
 export function Dashboard() {
-  const [range, setRange] = useState<DashboardRange>("6m");
+  const [filter, setFilter] = useState<DashboardFilter>({ kind: "preset", range: "3m" });
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -34,7 +44,10 @@ export function Dashboard() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetch(`/api/dashboard?range=${range}`, { signal: controller.signal })
+    const params = new URLSearchParams(filter.kind === "custom"
+      ? { from: filter.from, to: filter.to }
+      : { range: filter.range });
+    void fetch(`/api/dashboard?${params.toString()}`, { signal: controller.signal })
       .then(async response => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "No se pudo cargar el tablero");
@@ -47,13 +60,28 @@ export function Dashboard() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [range, reloadKey]);
+  }, [filter, reloadKey]);
 
   function changeRange(value: DashboardRange) {
-    if (value === range) return;
+    if (filter.kind === "preset" && value === filter.range) return;
     setLoading(true);
     setError("");
-    setRange(value);
+    setFilter({ kind: "preset", range: value });
+  }
+
+  function applyCustomFilter(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!customFrom || !customTo) {
+      setError("Seleccioná las fechas desde y hasta.");
+      return;
+    }
+    if (customFrom > customTo) {
+      setError("La fecha desde no puede ser posterior a la fecha hasta.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setFilter({ kind: "custom", from: customFrom, to: customTo });
   }
 
   function retry() {
@@ -64,29 +92,28 @@ export function Dashboard() {
 
   return (
     <div className="dashboard-page">
-      <header className="dashboard-hero">
-        <div>
-          <p className="eyebrow">TABLERO GERENCIAL</p>
-          <h1>El pulso de la empresa, en tiempo real.</h1>
-          <p>Ventas, obras y finanzas consolidadas para decidir con claridad.</p>
+      <section className="dashboard-filter-bar" aria-label="Filtros de período">
+        <div className="range-control" role="group" aria-label="Período del tablero">
+          {ranges.map(item => <button key={item.value} type="button" className={filter.kind === "preset" && filter.range === item.value ? "active" : ""} aria-pressed={filter.kind === "preset" && filter.range === item.value} onClick={() => changeRange(item.value)}>{item.label}</button>)}
         </div>
-        <div className="dashboard-controls">
-          <div className="range-control" aria-label="Período del tablero">
-            {ranges.map(item => <button key={item.value} className={range === item.value ? "active" : ""} onClick={() => changeRange(item.value)}>{item.label}</button>)}
-          </div>
-          <span className="updated-chip"><RefreshCw className={loading ? "spinning" : ""} size={14} /> {loading ? "Actualizando" : "Actualizado ahora"}</span>
-        </div>
-      </header>
+        <form className={`date-filter${filter.kind === "custom" ? " active" : ""}`} onSubmit={applyCustomFilter}>
+          <label>Desde<input type="date" value={customFrom} onChange={event => setCustomFrom(event.target.value)} /></label>
+          <span aria-hidden="true">a</span>
+          <label>Hasta<input type="date" value={customTo} onChange={event => setCustomTo(event.target.value)} /></label>
+          <button className="primary-btn" type="submit" disabled={!customFrom || !customTo}>Aplicar</button>
+        </form>
+        <span className="updated-chip"><RefreshCw className={loading ? "spinning" : ""} size={14} /> {loading ? "Actualizando" : "Actualizado ahora"}</span>
+      </section>
 
       {error && <div className="notice error dashboard-error"><span>{error}</span><button onClick={retry}>Reintentar</button></div>}
 
       <section className="executive-kpi-grid" aria-label="Indicadores principales">
         {data ? <>
-          <KpiCard label="Ventas cerradas" value={data.kpis.salesCents} format={compactMoney} help="Cotizaciones aprobadas" comparison={data.comparison.salesPercent} icon={HandCoins} tone="navy" />
-          <KpiCard label="Facturación" value={data.kpis.invoicedCents} format={compactMoney} help={`Últimos ${data.period.months} meses`} comparison={data.comparison.invoicedPercent} icon={ReceiptText} tone="red" />
-          <KpiCard label="Cuentas por cobrar" value={data.kpis.receivableCents} format={compactMoney} help={`${percentage(data.receivables.overdueCents, data.receivables.totalCents)}% vencido`} icon={CircleDollarSign} tone="blue" />
-          <KpiCard label="Margen neto" value={data.kpis.netMarginCents} format={compactMoney} help={data.kpis.netMarginPercent === null ? "Sin facturación" : `${data.kpis.netMarginPercent}% sobre facturación`} comparison={data.comparison.netMarginPercent} icon={TrendingUp} tone="green" />
-          <KpiCard label="Obras en ejecución" value={data.kpis.activeWorks} format={value => String(Math.round(value))} help={`${data.kpis.averageProgress}% de avance promedio`} icon={HardHat} tone="slate" />
+          <KpiCard href="/app/quotes" label="Ventas cerradas" value={data.kpis.salesCents} format={compactMoney} detail={money(data.kpis.salesCents)} help="Cotizaciones aprobadas · Ver detalle" comparison={data.comparison.salesPercent} icon={HandCoins} tone="navy" />
+          <KpiCard href="/app/invoices" label="Facturación" value={data.kpis.invoicedCents} format={compactMoney} detail={money(data.kpis.invoicedCents)} help={`${periodLabel(data.period)} · Ver detalle`} comparison={data.comparison.invoicedPercent} icon={ReceiptText} tone="red" />
+          <KpiCard href="/app/collections" label="Cuentas por cobrar" value={data.kpis.receivableCents} format={compactMoney} detail={money(data.kpis.receivableCents)} help={`${percentage(data.receivables.overdueCents, data.receivables.totalCents)}% vencido · Gestionar`} icon={CircleDollarSign} tone="blue" />
+          <KpiCard href="/app/reports" label="Margen neto" value={data.kpis.netMarginCents} format={compactMoney} detail={money(data.kpis.netMarginCents)} help={data.kpis.netMarginPercent === null ? "Sin facturación · Ver reportes" : `${data.kpis.netMarginPercent}% sobre facturación · Ver reportes`} comparison={data.comparison.netMarginPercent} icon={TrendingUp} tone="green" />
+          <KpiCard href="/app/works" label="Obras en ejecución" value={data.kpis.activeWorks} format={value => String(Math.round(value))} help={`${data.kpis.averageProgress}% de avance promedio · Ver obras`} icon={HardHat} tone="slate" />
         </> : Array.from({ length: 5 }, (_, index) => <div className="kpi-card skeleton" key={index} />)}
       </section>
 
@@ -145,15 +172,16 @@ export function Dashboard() {
   );
 }
 
-function KpiCard({ label, value, format, help, comparison, icon: Icon, tone }: {
-  label: string; value: number; format: (value: number) => string; help: string; comparison?: number | null; icon: typeof HardHat; tone: string;
+function KpiCard({ href, label, value, format, detail, help, comparison, icon: Icon, tone }: {
+  href: string; label: string; value: number; format: (value: number) => string; detail?: string; help: string; comparison?: number | null; icon: typeof HardHat; tone: string;
 }) {
-  return <article className={`kpi-card ${tone}`}>
+  return <Link href={href} className={`kpi-card ${tone}`} title={detail ? `${label}: ${detail}` : `Ver ${label.toLowerCase()}`}>
     <div className="kpi-card-top"><span className="kpi-icon"><Icon size={20} /></span>{comparison !== undefined && <TrendBadge value={comparison} />}</div>
     <span className="kpi-label">{label}</span>
     <strong><AnimatedNumber value={value} format={format} /></strong>
+    {detail && <span className="kpi-exact">Exacto: {detail}</span>}
     <small>{help}</small>
-  </article>;
+  </Link>;
 }
 
 function TrendBadge({ value }: { value: number | null }) {
@@ -283,6 +311,11 @@ function QuickLink({ href, icon: Icon, label }: { href: string; icon: typeof Use
 
 function percentage(part: number, total: number) {
   return total ? Math.round(part / total * 100) : 0;
+}
+
+function periodLabel(period: DashboardData["period"]) {
+  if (period.range === "custom") return `${date(period.from)} al ${date(period.to)}`;
+  return period.range === "1m" ? "Último mes" : `Últimos ${period.months} meses`;
 }
 
 function monthLabel(period: string) {

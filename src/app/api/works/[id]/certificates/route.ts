@@ -11,7 +11,7 @@ const schema = z.object({ number: z.string().trim().min(1), period: z.string().t
 
 export async function POST(request: Request, context: RouteContext<"/api/works/[id]/certificates">) {
   try {
-    const session = await requireSession(); if (!canWrite(session.role, "works")) throw new Error("FORBIDDEN");
+    const session = await requireSession(); if (!canWrite(session, "works")) throw new Error("FORBIDDEN");
     const { id } = await context.params; if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     const parsed = schema.safeParse(await request.json()); if (!parsed.success) return Response.json({ error: "Datos inválidos" }, { status: 400 });
     await connectDB(); const before = await Work.findById(id).lean(); if (!before) return Response.json({ error: "Obra no encontrada" }, { status: 404 });

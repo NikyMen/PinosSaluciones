@@ -10,37 +10,38 @@ import {
   Landmark, LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart,
   Truck, Users, WalletCards, X,
 } from "lucide-react";
-import { roleLabels, type Role } from "@/lib/constants";
+import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
+import { canViewSection, type UserPermissions } from "@/lib/permissions";
 
-type NavItem = { href: string; label: string; icon: LucideIcon; managerOnly?: boolean };
+type NavItem = { href: string; label: string; icon: LucideIcon; permission?: ViewSection; managerOnly?: boolean };
 type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] };
 
-const dashboardItem: NavItem = { href: "/app", label: "Tablero gerencial", icon: LayoutDashboard };
+const dashboardItem: NavItem = { href: "/app", label: "Tablero gerencial", icon: LayoutDashboard, permission: "dashboard" };
 const groups: NavGroup[] = [
   { id: "commercial", label: "Comercial", icon: CircleDollarSign, items: [
-    { href: "/app/clients", label: "Clientes", icon: Users },
-    { href: "/app/quotes", label: "Ventas y cotizaciones", icon: FileText },
+    { href: "/app/clients", label: "Clientes", icon: Users, permission: "clients" },
+    { href: "/app/quotes", label: "Ventas y cotizaciones", icon: FileText, permission: "quotes" },
   ] },
   { id: "works", label: "Obras", icon: HardHat, items: [
-    { href: "/app/works", label: "Obras", icon: HardHat },
-    { href: "/app/tasks", label: "Tareas", icon: ListTodo },
+    { href: "/app/works", label: "Obras", icon: HardHat, permission: "works" },
+    { href: "/app/tasks", label: "Tareas", icon: ListTodo, permission: "tasks" },
   ] },
   { id: "purchases", label: "Compras", icon: ShoppingCart, items: [
-    { href: "/app/suppliers", label: "Proveedores", icon: Truck },
-    { href: "/app/purchases", label: "Órdenes de compra", icon: ShoppingCart },
-    { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText },
+    { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
+    { href: "/app/purchases", label: "Órdenes de compra", icon: ShoppingCart, permission: "purchases" },
+    { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText, permission: "expenses" },
   ] },
   { id: "finance", label: "Finanzas", icon: WalletCards, items: [
-    { href: "/app/invoices", label: "Facturación", icon: FileText },
-    { href: "/app/collections", label: "Cobranzas", icon: HandCoins },
-    { href: "/app/payments", label: "Pagos", icon: CreditCard },
-    { href: "/app/checks", label: "Cheques", icon: Landmark },
-    { href: "/app/cash", label: "Caja y bancos", icon: WalletCards },
+    { href: "/app/invoices", label: "Facturación", icon: FileText, permission: "invoices" },
+    { href: "/app/collections", label: "Cobranzas", icon: HandCoins, permission: "collections" },
+    { href: "/app/payments", label: "Pagos", icon: CreditCard, permission: "payments" },
+    { href: "/app/checks", label: "Cheques", icon: Landmark, permission: "checks" },
+    { href: "/app/cash", label: "Caja y bancos", icon: WalletCards, permission: "cash" },
   ] },
 ];
 
 const directItems: NavItem[] = [
-  { href: "/app/reports", label: "Reportes", icon: BarChart3 },
+  { href: "/app/reports", label: "iA y Reportes", icon: BarChart3, permission: "reports" },
   { href: "/app/settings", label: "Usuarios", icon: Settings, managerOnly: true },
 ];
 
@@ -54,12 +55,15 @@ function groupForPath(pathname: string) {
   return groups.find(group => group.items.some(item => isActive(pathname, item.href)))?.id ?? null;
 }
 
-export function AppShell({ session, children }: { session: { name: string; email: string; role: Role }; children: React.ReactNode }) {
+export function AppShell({ session, children }: { session: { name: string; email: string; role: Role; permissions: UserPermissions }; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(() => groupForPath(pathname));
+  const visibleGroups = groups.map(group => ({ ...group, items: group.items.filter(item => !item.permission || canViewSection(session, item.permission)) })).filter(group => group.items.length);
+  const visibleDirectItems = directItems.filter(item => (!item.managerOnly || session.role === "gerencia") && (!item.permission || canViewSection(session, item.permission)));
+  const homeHref = canViewSection(session, "dashboard") ? "/app" : visibleGroups[0]?.items[0]?.href ?? visibleDirectItems[0]?.href ?? "/app";
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -74,7 +78,7 @@ export function AppShell({ session, children }: { session: { name: string; email
     <div className="app-shell">
       <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
         <div className="sidebar-head">
-          <Link href="/app" className="brand" aria-label="Ir al tablero">
+          <Link href={homeHref} className="brand" aria-label="Ir al inicio">
             <Image className="brand-logo" src="/brand/pino-logo.png" width={46} height={46} alt="" priority />
             <span><b>Pino</b><small>Soluciones Técnicas</small></span>
           </Link>
@@ -83,11 +87,11 @@ export function AppShell({ session, children }: { session: { name: string; email
 
         <nav aria-label="Navegación principal">
           <p className="nav-caption">GESTIÓN</p>
-          <Link href={dashboardItem.href} className={pathname === "/app" ? "nav-link active" : "nav-link"} onClick={() => setMobileOpen(false)}>
+          {canViewSection(session, "dashboard") && <Link href={dashboardItem.href} className={pathname === "/app" ? "nav-link active" : "nav-link"} onClick={() => setMobileOpen(false)}>
             <dashboardItem.icon size={19} /><span>{dashboardItem.label}</span>
-          </Link>
+          </Link>}
 
-          {groups.map(group => {
+          {visibleGroups.map(group => {
             const groupActive = group.items.some(item => isActive(pathname, item.href));
             const open = expanded === group.id;
             const GroupIcon = group.icon;
@@ -107,7 +111,7 @@ export function AppShell({ session, children }: { session: { name: string; email
           })}
 
           <p className="nav-caption nav-caption-secondary">ANÁLISIS</p>
-          {directItems.filter(item => !item.managerOnly || session.role === "gerencia").map(item => {
+          {visibleDirectItems.map(item => {
             const Icon = item.icon;
             return <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? "nav-link active" : "nav-link"} onClick={() => setMobileOpen(false)}><Icon size={19} /><span>{item.label}</span></Link>;
           })}

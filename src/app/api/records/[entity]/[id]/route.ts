@@ -14,7 +14,7 @@ function validEntity(value: string): value is Entity { return entities.includes(
 export async function GET(_request: Request, context: RouteContext<"/api/records/[entity]/[id]">) {
   try {
     const session = await requireSession(); const { entity, id } = await context.params;
-    if (!validEntity(entity) || !canRead(session.role, entity)) throw new Error("FORBIDDEN");
+    if (!validEntity(entity) || !canRead(session, entity)) throw new Error("FORBIDDEN");
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB(); const item = await modelByEntity[entity].findById(id).lean();
     return item ? Response.json(item) : Response.json({ error: "No encontrado" }, { status: 404 });
@@ -24,7 +24,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/records
 export async function PATCH(request: Request, context: RouteContext<"/api/records/[entity]/[id]">) {
   try {
     const session = await requireSession(); const { entity, id } = await context.params;
-    if (!validEntity(entity) || !canWrite(session.role, entity)) throw new Error("FORBIDDEN");
+    if (!validEntity(entity) || !canWrite(session, entity)) throw new Error("FORBIDDEN");
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     const parsed = schemas[entity].partial().safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
@@ -43,7 +43,10 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       await applyExpensePayment((before as Record<string, unknown>).expenseId, -Number((before as Record<string, unknown>).amountCents || 0));
       await applyExpensePayment((item as Record<string, unknown>).expenseId, Number((item as Record<string, unknown>).amountCents || 0));
     }
-    await audit(session, "update", entity, id, before, item, request.headers.get("x-forwarded-for") || undefined);
+    const action = entity === "tasks" && (before as Record<string, unknown>).status !== (item as Record<string, unknown> | null)?.status
+      ? "status_change"
+      : "update";
+    await audit(session, action, entity, id, before, item, request.headers.get("x-forwarded-for") || undefined);
     return Response.json(item);
   } catch (error) { return apiError(error); }
 }
@@ -51,7 +54,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
 export async function DELETE(request: Request, context: RouteContext<"/api/records/[entity]/[id]">) {
   try {
     const session = await requireSession(); const { entity, id } = await context.params;
-    if (!validEntity(entity) || !canDelete(session.role)) throw new Error("FORBIDDEN");
+    if (!validEntity(entity) || !canDelete(session) || !canWrite(session, entity)) throw new Error("FORBIDDEN");
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
