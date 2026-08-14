@@ -9,23 +9,34 @@ Requisitos: Node.js 22 LTS o superior, pnpm 10 y MongoDB 7/8.
 ```bash
 cp .env.example .env
 pnpm install
+pnpm db:check
 pnpm seed
 pnpm dev
 ```
 
-Abrir `http://localhost:3000` e ingresar con `ADMIN_EMAIL` / `ADMIN_PASSWORD` definidos en `.env`.
+`MONGODB_URI` es la unica variable que cambia entre entornos: en local puede ser `mongodb://127.0.0.1:27017/pinos_erp`; en el VPS debe ser la URI de la base existente (por ejemplo, con usuario, clave y `authSource=admin`). No hardcodees la URI en el codigo.
+En el VPS se puede usar `/opt/pinos/.env`; también funcionan variables de entorno exportadas por el proceso.
+
+Para cargar datos ficticios de Corrientes sin borrar ni sobrescribir registros existentes:
+
+```bash
+pnpm seed:demo
+```
+
+Abrir `http://localhost:3000` (o el puerto que informe Next, por ejemplo `3001`) e ingresar con `ADMIN_EMAIL` / `ADMIN_PASSWORD` definidos en `.env`.
 
 ## Despliegue en VPS
 
 1. Instalar Node LTS, pnpm, MongoDB Database Tools, Nginx y PM2 (`pnpm add -g pm2`).
 2. Crear un usuario Linux exclusivo y clonar el repositorio en `/opt/pinos`.
-3. Crear `/opt/pinos/.env` desde `.env.example`. MongoDB debe escuchar solo en localhost o una red privada autenticada.
+3. Crear `/opt/pinos/.env` desde `.env.example` y reemplazar `MONGODB_URI` por la URI de la base que ya existe en el VPS. Usar una `SESSION_SECRET` aleatoria y `APP_URL=https://tu-dominio`. MongoDB debe escuchar solo en localhost o una red privada autenticada.
 4. Crear el directorio persistente: `sudo install -d -o pinos -g pinos /var/lib/pinos/uploads /var/log/pinos /var/backups/pinos`.
 5. Ejecutar:
 
 ```bash
 cd /opt/pinos
 pnpm install --frozen-lockfile
+pnpm db:check
 pnpm seed
 pnpm build
 cp -r public .next/standalone/
@@ -38,6 +49,8 @@ pm2 startup
 
 6. Adaptar `deploy/nginx.conf.example`, habilitar el sitio y emitir HTTPS con Certbot.
 7. Verificar `https://dominio/api/health` y `pm2 status`.
+
+El proceso web escucha en `3515` por defecto en PM2; `deploy/nginx.conf.example` ya apunta a ese puerto. Si se cambia, actualizar ambos valores.
 
 ## Backups
 
