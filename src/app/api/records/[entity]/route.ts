@@ -1,6 +1,6 @@
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
-import { modelByEntity } from "@/lib/models";
+import { modelByEntity, nextQuoteNumber } from "@/lib/models";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
@@ -39,7 +39,9 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     if (!parsed.success) return Response.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
     await connectDB();
     const model = modelByEntity[entity];
-    const item = await model.create(parsed.data as never);
+    const data = parsed.data as Record<string, unknown>;
+    if (entity === "quotes" && !data.number) data.number = await nextQuoteNumber();
+    const item = await model.create(data as never);
 
     if (entity === "collections") await applyInvoiceCollection(item.invoiceId, item.amountCents);
     if (entity === "payments") await applyExpensePayment(item.expenseId, item.amountCents);

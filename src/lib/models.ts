@@ -31,11 +31,14 @@ const QuoteSchema = new Schema({
   title: { type: String, required: true }, description: String,
   version: { type: Number, default: 1, min: 1 }, amountCents: money,
   estimatedCostCents: money,
-  status: { type: String, enum: ["borrador", "enviada", "seguimiento", "aprobada", "rechazada", "vencida"], default: "borrador" },
+  status: { type: String, enum: ["borrador", "enviada", "seguimiento", "aprobada", "rechazada", "vencida", "convertida"], default: "borrador" },
   ownerId: { type: Schema.Types.ObjectId, ref: "User" }, validUntil: Date,
+  workId: { type: Schema.Types.ObjectId, ref: "Work" },
   attachment: String,
-  history: [{ action: String, note: String, at: { type: Date, default: Date.now }, userId: Schema.Types.ObjectId }],
+  history: [{ action: String, note: String, at: { type: Date, default: Date.now }, userId: Schema.Types.ObjectId, userName: String }],
 }, options);
+
+const CounterSchema = new Schema({ _id: String, seq: { type: Number, default: 0 } });
 
 const ChecklistItemSchema = new Schema({
   title: { type: String, required: true, trim: true },
@@ -150,5 +153,21 @@ export const Check = mongoose.models.Check || mongoose.model("Check", CheckSchem
 export const CashMovement = mongoose.models.CashMovement || mongoose.model("CashMovement", CashSchema);
 export const Task = mongoose.models.Task || mongoose.model("Task", TaskSchema);
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditSchema);
+export const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
 
-export const modelByEntity = { clients: Client, quotes: Quote, works: Work, suppliers: Supplier, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task } as const;
+// COT-1: numeración correlativa. La primera vez arranca desde el número más alto ya cargado
+// para no pisar los que vienen del sistema anterior (llegan hasta COT-747).
+export async function nextQuoteNumber() {
+  if (!await Counter.exists({ _id: "quotes" })) {
+    const [highest] = await Quote.aggregate([
+      { $match: { number: /^COT-\d+$/ } },
+      { $project: { seq: { $toInt: { $substr: ["$number", 4, -1] } } } },
+      { $sort: { seq: -1 } }, { $limit: 1 },
+    ]);
+    await Counter.updateOne({ _id: "quotes" }, { $setOnInsert: { seq: highest?.seq || 0 } }, { upsert: true });
+  }
+  const counter = await Counter.findByIdAndUpdate("quotes", { $inc: { seq: 1 } }, { new: true });
+  return `COT-${counter.seq}`;
+}
+
+export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, suppliers: Supplier, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task } as const;

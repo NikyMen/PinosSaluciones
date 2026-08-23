@@ -93,6 +93,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
   }
 
   async function convertQuote(item: Item) {
+    if (!confirm(`Estás por convertir la cotización ${String(item.number || "")} en una obra.\n\nLa cotización va a salir del listado activo y no se va a poder volver a convertir. Queda registrado que la convertiste vos.\n\n¿Estás de acuerdo?`)) return;
     const code = prompt("Código para la nueva obra:", `OB-${String(item.number || "")}`); if (!code) return;
     const name = prompt("Nombre de la obra:", String(item.title || "")); if (!name) return;
     const response = await fetch(`/api/quotes/${item._id}/convert`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, name }) });
