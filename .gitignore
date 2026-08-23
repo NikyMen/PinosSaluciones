@@ -35,6 +35,13 @@ yarn-error.log*
 !.env.example
 .uploads/
 
+# material crudo con datos reales de clientes (ver docs/README.md)
+docs/_inbox/*
+!docs/_inbox/LEEME.md
+
+# base de datos local de desarrollo (scripts/dev.mjs)
+.mongo-data/
+
 # vercel
 .vercel
 
