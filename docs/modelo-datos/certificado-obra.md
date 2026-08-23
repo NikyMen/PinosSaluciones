@@ -1,6 +1,6 @@
 # Certificado de avance de obra
 
-**Fuente:** `_inbox/(certificadoDeObra)747 - RS - BELGRANO 450 - Certificado 20.pdf`
+**Fuente:** el certificado de obra en PDF que está en `_inbox/` (certificado nº 20 de la cotización 747).
 
 > ⚠️ **Este es el hallazgo más importante del material.** En la reunión el certificado se describió como *"un botón que genera el certificado por el 50 % de la obra"*. El modelo real es bastante más que eso.
 
@@ -8,8 +8,8 @@
 
 | Campo | Valor del modelo |
 |---|---|
-| CLIENTE | `RS ARGENTINA S.A.` |
-| OBRA | `PROVISION DE MATERIALES, EQUIPOS Y MANO DE OBRA - REVOQUE Y PINTURA INTERIOR Y EXTERIOR - BELGRANO 450 - CORRIENTES` |
+| CLIENTE | razón social del comitente |
+| OBRA | `PROVISION DE MATERIALES, EQUIPOS Y MANO DE OBRA - REVOQUE Y PINTURA INTERIOR Y EXTERIOR` + domicilio |
 | FECHA COT | `15/08/2025` |
 | Nº cotización | `COT-747` |
 | Monto de contrato | `$ 370.000.078,82` |

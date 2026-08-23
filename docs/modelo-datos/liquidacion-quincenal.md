@@ -39,7 +39,7 @@ Una fila **por persona, por día, por obra**:
 | **Día** | `2026-08-03` |
 | **T. Trabajo** | `Medio oficial` — determina la tarifa |
 | **Horas** | `7` |
-| **Obra** | `V1367 MONTECARLO` |
+| **Obra** | `V1367` + nombre de la obra |
 | Total 15na | horas × tarifa |
 
 > **Ojo:** `Categoría` (del legajo) y `T. Trabajo` (del día) son campos distintos. Una persona categoría `SILLETERO` puede trabajar un día como `Limpieza`. La tarifa sale del **tipo de trabajo del día**, no de la categoría.
@@ -89,6 +89,6 @@ Conviven en la misma liquidación:
 
 ## Códigos de obra
 
-Formato `<letra><número> <NOMBRE>`: `V1367 MONTECARLO`, `C1477 CYEX SONIA`, `V747 RS BELGRANO`.
+Formato `<letra><número> <NOMBRE DE OBRA>`, por ejemplo `V1367` o `C1477`.
 
 **`V` = Trabajos Verticales · `C` = Constructora.** El prefijo de la empresa emisora ya está en uso hoy. Coincide con el certificado modelo (`COT-747` → obra `V747`).
