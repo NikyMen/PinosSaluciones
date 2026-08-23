@@ -42,6 +42,11 @@ docs/_inbox/*
 # base de datos local de desarrollo (scripts/dev.mjs)
 .mongo-data/
 
+# Obsidian: se comparte la config de la vault, no el estado local de cada uno
+docs/.obsidian/workspace*
+docs/.obsidian/cache
+docs/.obsidian/graph.json
+
 # vercel
 .vercel
 

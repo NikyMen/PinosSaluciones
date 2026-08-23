@@ -18,15 +18,40 @@ De ahí sale información destilada y anonimizada hacia el resto. Nada de `_inbo
 
 ## Obsidian
 
-No hace falta una vault aparte. Abrí **esta carpeta** (`docs/`) como vault en Obsidian:
+Esta carpeta **es** la vault. No crees una aparte: se desincronizaría en una semana.
 
 > Obsidian → *Open folder as vault* → `D:\dev\PinosSoluciones\docs`
 
-Con eso tenés el grafo, los backlinks y el modo lectura, pero los archivos siguen
-versionados en git y siguen siendo legibles por Claude Code en cada sesión.
-Una vault separada duplicaría el trabajo y se desincronizaría en una semana.
+Así tenés grafo, backlinks y búsqueda, pero los archivos siguen versionados en git
+y siguen siendo legibles por Claude Code en cada sesión.
 
-Convención de enlaces: `[[nombre-del-archivo]]` (sin extensión), igual que en Obsidian.
+### Configuración recomendada
+
+Los enlaces ya funcionan con la configuración por defecto: no hay dos archivos con
+el mismo nombre, así que *"ruta más corta cuando sea posible"* los resuelve todos.
+
+Lo único que conviene tocar, en *Configuración → Complementos principales*: activá
+*Vista de grafo*, *Vínculos de retroceso*, *Vínculos salientes* y *Esquema*.
+Con eso alcanza.
+
+Empezá por [[00-inicio]], que es el índice de todo.
+
+### Qué va acá y qué no
+
+| Va a la vault | No va |
+|---|---|
+| Requerimientos, decisiones, actas | El código |
+| Modelos de negocio y reglas de cálculo | El esquema de la base escrito a mano |
+| Glosario del rubro | Datos reales de clientes o personal |
+
+El esquema de la base **se genera desde el código**, no se escribe:
+
+```bash
+pnpm docs:schema
+```
+
+Eso reescribe [[modelo-datos/esquema-actual]] leyendo los modelos reales de
+`src/lib/models.ts`. Documentarlo a mano garantiza que en dos semanas mienta.
 
 ## Estado del proyecto
 
