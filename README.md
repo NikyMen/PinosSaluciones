@@ -2,19 +2,36 @@
 
 Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. No emite comprobantes fiscales ni se conecta con ARCA.
 
+## Documentación
+
+Los requerimientos, las decisiones y los modelos de negocio viven en [`docs/`](docs/README.md),
+que está pensada para abrirse como vault de Obsidian. Empezar por [`docs/00-inicio.md`](docs/00-inicio.md).
+
+Si no conocés el rubro de la construcción, leé primero [`docs/glosario.md`](docs/glosario.md).
+
 ## Desarrollo local
 
-Requisitos: Node.js 22 LTS o superior, pnpm 10 y MongoDB 7/8.
+Requisitos: Node.js 22 LTS o superior y pnpm 10. **No hace falta instalar MongoDB.**
 
 ```bash
 cp .env.example .env
 pnpm install
-pnpm db:check
-pnpm seed
 pnpm dev
 ```
 
-`MONGODB_URI` es la unica variable que cambia entre entornos: en local puede ser `mongodb://127.0.0.1:27017/pinos_erp`; en el VPS debe ser la URI de la base existente (por ejemplo, con usuario, clave y `authSource=admin`). No hardcodees la URI en el codigo.
+`pnpm dev` levanta todo: una MongoDB local que corre desde `node_modules`, el usuario
+administrador si todavía no existe, el worker y el servidor web. Se cierra todo junto con Ctrl+C.
+Los datos quedan en `.mongo-data/` y sobreviven entre reinicios.
+
+Para levantar solo el web, contra una base que ya esté corriendo en otro lado:
+
+```bash
+pnpm dev:web
+```
+
+`MONGODB_URI` es la unica variable que cambia entre entornos: en local la define `pnpm dev`;
+en el VPS debe ser la URI de la base existente (por ejemplo, con usuario, clave y `authSource=admin`).
+No hardcodees la URI en el codigo.
 En el VPS se puede usar `/opt/pinos/.env`; también funcionan variables de entorno exportadas por el proceso.
 
 Para cargar datos ficticios de Corrientes sin borrar ni sobrescribir registros existentes:

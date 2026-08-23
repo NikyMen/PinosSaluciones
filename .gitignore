@@ -47,6 +47,9 @@ docs/.obsidian/workspace*
 docs/.obsidian/cache
 docs/.obsidian/graph.json
 
+# acceso directo con ruta absoluta, propio de cada máquina
+*.url
+
 # vercel
 .vercel
 
