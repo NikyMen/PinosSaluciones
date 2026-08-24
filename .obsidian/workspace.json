@@ -1,0 +1,201 @@
+{
+  "main": {
+    "id": "891ce811f65dd843",
+    "type": "split",
+    "children": [
+      {
+        "id": "985a682fc814b008",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "858f3b57100887a0",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Vista gráfica"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "13142e879b226048",
+    "type": "split",
+    "children": [
+      {
+        "id": "9b8afef24eec189f",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "2d4ac0c5b86a0750",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de archivos"
+            }
+          },
+          {
+            "id": "f045046f5ed53de0",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Buscar"
+            }
+          },
+          {
+            "id": "2e804ff5114dd71e",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "82df7e5a6e8a1123",
+    "type": "split",
+    "children": [
+      {
+        "id": "eea713b1e3bc830a",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d6a0899f310bdd5f",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Enlaces entrantes"
+            }
+          },
+          {
+            "id": "ea8e7f7facc6be36",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Enlaces salientes"
+            }
+          },
+          {
+            "id": "0657089db670bf38",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "02313c595cf7f2e2",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas las propiedades"
+            }
+          },
+          {
+            "id": "c9600d4afba78c7f",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Esquema"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir selector rápido": false,
+      "graph:Abrir vista gráfica": false,
+      "canvas:Crear nuevo lienzo": false,
+      "daily-notes:Abrir la nota de hoy": false,
+      "templates:Insertar plantilla": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Crear nueva base": false
+    }
+  },
+  "active": "858f3b57100887a0",
+  "lastOpenFiles": [
+    "docs/UNIDAD POLIUREA CALIENTE.pdf",
+    "docs/REVOQUE EXTERIOR MAT Y MO ok.xlsx",
+    "docs/POLIURETANO ok.xlsx",
+    "docs/POLIUREA 9 de julio 1699 resis.xlsx",
+    "docs/PINTURA INTERIOR ok.xlsx",
+    "docs/PINTURA EN ALTURA ok.xlsx",
+    "README.md",
+    "AGENTS.md",
+    "docs/modelo-datos/cotizacion-pdf.md",
+    "docs/_inbox/LEEME.md",
+    "docs/glosario.md",
+    "docs/modelo-datos/liquidacion-quincenal.md",
+    "docs/modelo-datos/esquema-actual.md",
+    "docs/requerimientos/obras.md"
+  ]
+}
