@@ -15,7 +15,9 @@
     "docs:schema": "tsx scripts/docs-schema.ts",
     "worker": "node --env-file-if-exists=.env scripts/worker.mjs",
     "pm2:start": "pm2 start ecosystem.config.cjs",
-    "pm2:reload": "pm2 reload ecosystem.config.cjs"
+    "pm2:reload": "pm2 reload ecosystem.config.cjs",
+    "user:password": "tsx --env-file-if-exists=.env scripts/reset-password.ts",
+    "admin:sync": "node --env-file-if-exists=.env scripts/sync-admin.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
