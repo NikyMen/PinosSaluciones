@@ -1,0 +1,30 @@
+# Ruta de Traefik para Pinos Soluciones (ERP/CRM).
+# Va copiado a /docker/n8n/dynamic/pinosoluciones.yml en el VPS.
+#
+# En este VPS el puerto 443 NO lo tiene Nginx: lo tiene Traefik (container
+# n8n-traefik-1), que termina TLS para todos los sitios de la maquina. Nginx
+# solo escucha en :80 y redirige a HTTPS (ver deploy/nginx.conf.example).
+# Por eso aca no se usa Certbot: el certificado lo emite el resolver
+# `mytlschallenge` (TLS-ALPN-01) la primera vez que entra un request por
+# HTTPS, para lo cual el dominio ya tiene que resolver a la IP del VPS.
+#
+# Traefik corre con --providers.file.watch=true: toma este archivo solo, sin
+# reiniciar el container (que es el mismo que sirve n8n: NO se reinicia).
+http:
+  routers:
+    pinosoluciones:
+      rule: "Host(`pinosoluciones.consultoriadigital.io`)"
+      entryPoints:
+        - websecure
+      service: pinosoluciones
+      tls:
+        certResolver: mytlschallenge
+
+  services:
+    pinosoluciones:
+      loadBalancer:
+        # passHostHeader para que Next vea el dominio real y no 172.18.0.1:
+        # de ahi salen los redirects del login y la cookie de sesion.
+        passHostHeader: true
+        servers:
+          - url: "http://172.18.0.1:3515"

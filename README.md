@@ -66,10 +66,12 @@ pm2 save
 pm2 startup
 ```
 
-6. Adaptar `deploy/nginx.conf.example`, habilitar el sitio y emitir HTTPS con Certbot.
+6. Publicar el dominio. En el VPS actual el puerto 443 lo termina Traefik (container `n8n-traefik-1`), no Nginx: copiar `deploy/traefik-pinosoluciones.yml` a `/docker/n8n/dynamic/` (Traefik lo toma solo, sin reiniciar nada) y dejar en Nginx solo el `:80` que redirige, como en `deploy/nginx.conf.example`. El certificado lo emite Traefik por TLS-ALPN-01 en el primer request HTTPS, asi que el dominio ya tiene que resolver a la IP del VPS. **No usar Certbot aca**: emitiria un certificado que nadie sirve, porque Nginx no puede escuchar en el 443.
 7. Verificar `https://dominio/api/health` y `pm2 status`.
 
-El proceso web escucha en `3515` por defecto en PM2; `deploy/nginx.conf.example` ya apunta a ese puerto. Si se cambia, actualizar ambos valores.
+El proceso web escucha en `3515` por defecto en PM2; `deploy/traefik-pinosoluciones.yml` ya apunta a ese puerto. Si se cambia, actualizar ambos valores.
+
+`output: "standalone"` no copia `public/` ni `.next/static` dentro de `.next/standalone`: los tres `cp` del paso 5 hay que repetirlos **despues de cada `pnpm build`**. Si se saltean, el sitio responde 200 pero sirve el HTML sin CSS ni imagenes.
 
 ## Backups
 
@@ -91,5 +93,5 @@ Cada módulo acepta `.xlsx` o `.csv` de hasta 2.000 filas y 5 MB. La primera fil
 - Permisos por rol validados tanto en interfaz como en API.
 - Auditoría de altas, cambios, bajas e importaciones.
 - El worker genera tareas por facturas y cheques próximos a vencer.
-- Para actualizar: `pnpm install --frozen-lockfile && pnpm build && pnpm pm2:reload`.
+- Para actualizar: `pnpm install --frozen-lockfile && pnpm build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && pnpm pm2:reload`.
 - Comandos de calidad: `pnpm lint`, `pnpm test`, `pnpm build`.
