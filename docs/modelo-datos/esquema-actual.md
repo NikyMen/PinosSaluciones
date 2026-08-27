@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-08-23 · 15 colecciones.
+Generado el 2026-08-27 · 17 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -26,10 +26,10 @@ Colección `clients` · entidad `clients`
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
 | `name` | texto | sí | — |
+| `cuit` | texto | — | — |
 | `contactName` | texto | — | — |
 | `email` | texto | — | — |
-| `phone` | texto | — | — |
-| `whatsapp` | texto | — | — |
+| `phones` | lista | — | por defecto `[]` |
 | `address` | texto | — | — |
 | `notes` | texto | — | — |
 | `active` | sí/no | — | por defecto `true` |
@@ -106,11 +106,53 @@ Colección `works` · entidad `works`
 | `certificates.approved` | sí/no | — | — |
 | `certificates.invoiced` | sí/no | — | — |
 | `certificates.file` | texto | — | — |
+| `assignedWorkers` | lista de objetos | — | — |
+| `assignedWorkers.workerId` | referencia | — | apunta a **Worker** |
+| `assignedWorkers.name` | texto | — | — |
+| `assignedWorkers.dni` | texto | — | — |
+| `assignedWorkers.phone` | texto | — | — |
+| `assignedWorkers.category` | texto | — | — |
+| `assignedWorkers.rateMode` | texto | — | valores: `jornada` · `hora` · por defecto `"jornada"` |
+| `assignedWorkers.dailyRateCents` | número | — | — |
+| `assignedWorkers.hoursPerDay` | número | — | — |
+| `assignedWorkers.hourlyRateCents` | número | — | — |
+| `assignedWorkers.assignedAt` | fecha | — | — |
+| `assignedWorkers.assignedByName` | texto | — | — |
 | `labor` | lista de objetos | — | — |
+| `labor.workerId` | referencia | — | apunta a **Worker** |
 | `labor.person` | texto | — | — |
 | `labor.date` | fecha | — | — |
+| `labor.mode` | texto | — | valores: `jornada` · `hora` · por defecto `"hora"` |
 | `labor.hours` | número | — | — |
+| `labor.days` | número | — | — |
+| `labor.dailyRateCents` | número | — | — |
+| `labor.hourlyRateCents` | número | — | — |
 | `labor.costCents` | número | — | — |
+| `labor.manualCost` | sí/no | — | por defecto `false` |
+| `labor.note` | texto | — | — |
+| `labor.loadedByName` | texto | — | — |
+| `labor.createdAt` | fecha | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### Trabajadores
+
+Colección `workers` · entidad `workers`
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `name` | texto | — | — |
+| `firstName` | texto | sí | — |
+| `lastName` | texto | sí | — |
+| `dni` | texto | sí | — |
+| `phone` | texto | — | — |
+| `category` | texto | — | valores: `capataz` · `oficial` · `medio_oficial` · `ayudante` · `especialista` · por defecto `"oficial"` |
+| `rateMode` | texto | — | valores: `jornada` · `hora` · por defecto `"jornada"` |
+| `dailyRateCents` | número | — | mínimo 0 · por defecto `0` |
+| `hoursPerDay` | número | — | mínimo 1 · máximo 24 · por defecto `8` |
+| `hourlyRateCents` | número | — | mínimo 0 · por defecto `0` |
+| `active` | sí/no | — | por defecto `true` |
+| `notes` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -127,6 +169,42 @@ Colección `suppliers` · entidad `suppliers`
 | `address` | texto | — | — |
 | `notes` | texto | — | — |
 | `active` | sí/no | — | por defecto `true` |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### Stock
+
+Colección `stockitems` · entidad `stock`
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `name` | texto | sí | — |
+| `sku` | texto | — | — |
+| `category` | texto | — | valores: `materiales` · `herramientas` · `seguridad` · `consumibles` · `otros` · por defecto `"materiales"` |
+| `unit` | texto | — | valores: `unidad` · `kg` · `litro` · `metro` · `m2` · `m3` · `bolsa` · `balde` · `rollo` · por defecto `"unidad"` |
+| `quantity` | número | — | por defecto `0` |
+| `minQuantity` | número | — | mínimo 0 · por defecto `0` |
+| `avgCostCents` | número | — | mínimo 0 · por defecto `0` |
+| `valueCents` | número | — | mínimo 0 · por defecto `0` |
+| `supplierId` | referencia | — | apunta a **Supplier** |
+| `location` | texto | — | — |
+| `notes` | texto | — | — |
+| `active` | sí/no | — | por defecto `true` |
+| `movements` | lista de objetos | — | — |
+| `movements.kind` | texto | sí | valores: `ingreso` · `egreso` · `ajuste` |
+| `movements.quantity` | número | sí | — |
+| `movements.unitCostCents` | número | — | mínimo 0 · por defecto `0` |
+| `movements.totalCents` | número | — | mínimo 0 · por defecto `0` |
+| `movements.supplierId` | referencia | — | apunta a **Supplier** |
+| `movements.workId` | referencia | — | apunta a **Work** |
+| `movements.reference` | texto | — | — |
+| `movements.note` | texto | — | — |
+| `movements.date` | fecha | — | — |
+| `movements.userId` | referencia | — | apunta a **User** |
+| `movements.userName` | texto | — | — |
+| `movements.purchaseId` | referencia | — | apunta a **Purchase** |
+| `movements.expenseId` | referencia | — | apunta a **Expense** |
+| `movements.createdAt` | fecha | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -259,7 +337,7 @@ Colección `cashmovements` · entidad `cash`
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
-### Tareas
+### Tareas y pendientes
 
 Colección `tasks` · entidad `tasks`
 
@@ -271,6 +349,8 @@ Colección `tasks` · entidad `tasks`
 | `status` | texto | — | valores: `pendiente` · `en_curso` · `completada` · por defecto `"pendiente"` |
 | `dueDate` | fecha | — | — |
 | `assigneeRole` | texto | — | valores: `gerencia` · `arquitecto` · `auxiliar` · `administracion` · `compras` · `ventas` · `contador` |
+| `assigneeId` | referencia | — | apunta a **User** |
+| `assigneeName` | texto | — | — |
 | `relatedType` | texto | — | — |
 | `relatedId` | referencia | — | — |
 | `createdAt` | fecha | — | — |
@@ -305,6 +385,7 @@ Registro de auditoría: quién cambió qué y cuándo. Colección `auditlogs`.
 |---|---|:--:|---|
 | `userId` | referencia | — | apunta a **User** |
 | `userName` | texto | — | — |
+| `userEmail` | texto | — | — |
 | `action` | texto | sí | — |
 | `entity` | texto | sí | — |
 | `entityId` | referencia | — | — |

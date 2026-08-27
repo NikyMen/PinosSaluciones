@@ -9,5 +9,7 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
   const entity = module as Entity;
   const session = await requireSession();
   if (!canRead(session, entity)) notFound();
-  return <EntityManager entity={entity} canEdit={canWrite(session, entity)} canDeleteRecords={canDelete(session) && canWrite(session, entity)}/>;
+  // Tareas filtra por area y por persona: el componente necesita saber quien mira.
+  return <EntityManager entity={entity} canEdit={canWrite(session, entity)} canDeleteRecords={canDelete(session) && canWrite(session, entity)}
+    viewer={{ userId: session.userId, role: session.role }}/>;
 }

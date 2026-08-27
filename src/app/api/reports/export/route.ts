@@ -5,6 +5,7 @@ import { modelByEntity } from "@/lib/models";
 import { entityConfig } from "@/lib/entity-config";
 import { apiError } from "@/lib/api";
 import { canRead } from "@/lib/permissions";
+import { taskScope } from "@/lib/tasks";
 import { date, titleCase, todayIso } from "@/lib/format";
 
 /**
@@ -35,7 +36,10 @@ export async function GET(request: Request) {
     const config = entityConfig[entity];
     // Se exportan los campos del formulario: los internos de Mongo no le sirven a nadie.
     const fields = config.fields.filter(field => field.type !== "file");
-    const rows = await modelByEntity[entity].find().sort({ createdAt: -1 }).limit(10000).lean();
+    // La exportación respeta el mismo recorte que el listado: nadie se lleva en
+    // un Excel las tareas de otra área.
+    const scope = entity === "tasks" ? taskScope(session, new URL(request.url).searchParams) : {};
+    const rows = await modelByEntity[entity].find(scope).sort({ createdAt: -1 }).limit(10000).lean();
 
     // Las relaciones salen con el nombre del cliente/proveedor/obra, no con su ObjectId.
     const relationNames = new Map<string, Map<string, string>>();

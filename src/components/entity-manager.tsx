@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, BriefcaseBusiness, CalendarDays, CheckCircle2, Download, Edit3, Eye, HardHat, History, ListTodo, Plus, Search, TriangleAlert, Trash2, Upload, UserRound, X } from "lucide-react";
+import { ArrowDownToLine, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, Download, Edit3, Eye, FileCheck2, HardHat, History, ListTodo, Plus, Search, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
-import type { Entity } from "@/lib/constants";
+import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
 import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
 import { date, money, titleCase } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput, PhoneList, SearchSelect, type Option } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
 import { StockMovementModal, type StockItem } from "@/components/stock-movement";
+import { InvoiceWorkModal, type InvoiceableWork } from "@/components/work-invoice";
 
 type Item = Record<string, unknown> & { _id: string };
 
@@ -23,8 +24,14 @@ function itemLabel(item: Item) {
   return String(item.name || item.title || item.number || item.code || item.description || "Registro");
 }
 
-export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: Entity; canEdit: boolean; canDeleteRecords: boolean }) {
+export type Viewer = { userId: string; role: Role };
+
+/** Quién de la empresa puede aparecer como responsable de una tarea. */
+type Person = { _id: string; name: string; role: Role };
+
+export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { entity: Entity; canEdit: boolean; canDeleteRecords: boolean; viewer: Viewer }) {
   const config = entityConfig[entity];
+  const isAdmin = viewer.role === "gerencia";
   const fileRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [relations, setRelations] = useState<Record<string, Item[]>>({});
@@ -41,15 +48,34 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
   const [historyFor, setHistoryFor] = useState<{ _id: string; label: string } | null>(null);
   const [movementFor, setMovementFor] = useState<{ item: StockItem; kind: "ingreso" | "egreso" } | null>(null);
   const [convertFor, setConvertFor] = useState<Item | null>(null);
+  const [invoiceFor, setInvoiceFor] = useState<Item | null>(null);
+  // Estado elegido en una fila que todavía espera el visto bueno.
+  const [pendingStatus, setPendingStatus] = useState<{ id: string; status: string } | null>(null);
+  // Filtros de Tareas: el atajo elegido y, para gerencia, área y persona.
+  const [taskScope, setTaskScope] = useState<"" | "mine" | "area">("");
+  const [taskRole, setTaskRole] = useState("");
+  const [taskPerson, setTaskPerson] = useState("");
+  const [people, setPeople] = useState<Person[]>([]);
+
+  const taskQuery = useMemo(() => {
+    if (entity !== "tasks") return "";
+    const params = new URLSearchParams();
+    if (taskScope) params.set("scope", taskScope);
+    if (isAdmin && taskRole) params.set("assigneeRole", taskRole);
+    if (isAdmin && taskPerson) params.set("assigneeId", taskPerson);
+    return params.toString();
+  }, [entity, taskScope, taskRole, taskPerson, isAdmin]);
 
   const load = useCallback(async () => {
+    // Al recargar, un cambio de estado a medio confirmar no queda colgado.
+    setPendingStatus(null);
     setLoading(true);
-    const response = await fetch(`/api/records/${entity}?limit=100&search=${encodeURIComponent(search)}`);
+    const response = await fetch(`/api/records/${entity}?limit=100&search=${encodeURIComponent(search)}${taskQuery ? `&${taskQuery}` : ""}`);
     const result = await response.json();
     if (response.ok) { setItems(result.items); setError(""); }
     else setError(result.error || "No se pudieron cargar los registros");
     setLoading(false);
-  }, [entity, search]);
+  }, [entity, search, taskQuery]);
 
   useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer); }, [load]);
   const relationEntities = useMemo(() => [...new Set(config.fields.filter(field => field.relation).map(field => field.relation!))], [config.fields]);
@@ -61,6 +87,14 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
       return [relation, response.ok ? result.items || [] : []] as const;
     })).then(values => setRelations(Object.fromEntries(values)));
   }, [relationEntities]);
+
+  useEffect(() => {
+    if (entity !== "tasks") return;
+    void fetch("/api/users/directory")
+      .then(response => response.ok ? response.json() as Promise<{ items?: Person[] }> : { items: [] })
+      .then(result => setPeople(result.items || []))
+      .catch(() => setPeople([]));
+  }, [entity]);
 
   useEffect(() => {
     if (!modal) return;
@@ -91,7 +125,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
   function open(item?: Item) {
     if (!canEdit) return;
     setEditing(item || null);
-    setRelationValues(Object.fromEntries(config.fields.filter(field => field.relation).map(field => [field.key, String(item?.[field.key] ?? "")])));
+    setRelationValues(Object.fromEntries(config.fields.filter(field => field.relation || field.type === "user").map(field => [field.key, String(item?.[field.key] ?? "")])));
     setModal(true);
     setError("");
   }
@@ -102,7 +136,19 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
     if (response.ok) void load(); else setError((await response.json()).error);
   }
 
+  /**
+   * Cambiar un estado desde el listado no se aplica de una: el select deja el
+   * valor nuevo a la vista y al lado aparece el visto para confirmarlo. Un
+   * `confirm()` del navegador se contesta que sí sin leerlo; esto obliga a
+   * mirar a qué estado va antes de que quede guardado.
+   */
+  function askStatus(item: Item, status: string) {
+    if (status === String(item.status || "")) return setPendingStatus(null);
+    setPendingStatus({ id: item._id, status });
+  }
+
   async function updateStatus(item: Item, status: string) {
+    setPendingStatus(null);
     const previous = item.status;
     setStatusBusy(item._id);
     setItems(current => current.map(row => row._id === item._id ? { ...row, status } : row));
@@ -154,19 +200,37 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
     value: editing?.[field.key],
     relationOptions: field.relation ? (relations[field.relation] || []).map(item => ({ value: item._id, label: itemLabel(item), hint: String(item.cuit || item.email || "") || undefined })) : [],
     relationValue: relationValues[field.key] ?? "",
+    personOptions: field.type === "user" ? people.map(person => ({ value: person._id, label: person.name, hint: roleLabels[person.role] })) : [],
     onRelationChange: (value: string) => setRelationValues(current => ({ ...current, [field.key]: value })),
     onCreateRelation: field.relation ? () => setQuickCreate({ fieldKey: field.key, entity: field.relation! }) : undefined,
   });
 
   return <>
     <div className="page-heading"><div><p className="eyebrow">GESTIÓN</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && <button className="primary-btn" onClick={() => open()}><Plus size={18} /> Nuevo {config.singular}</button>}</div>
-    <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}`}><Download size={17} /> Exportar a Excel</a></div>
+    <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
+    {entity === "tasks" && <TaskFilters viewer={viewer} people={people} scope={taskScope} role={taskRole} person={taskPerson}
+      onScope={value => { setTaskScope(value); setTaskRole(""); setTaskPerson(""); }}
+      onRole={value => { setTaskRole(value); setTaskScope(""); }}
+      onPerson={value => { setTaskPerson(value); setTaskScope(""); }} />}
     {error && <div className="notice error">{error}</div>}
     {entity === "stock" && <StockSummary items={items} />}
     <section className="table-panel"><div className="table-scroll"><table><thead><tr>{config.columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
       const rowEditable = inlineEntities.has(entity) && canEdit;
       return <tr key={item._id} className={rowEditable ? "clickable-row" : ""} onClick={rowEditable ? () => open(item) : undefined} onKeyDown={rowEditable ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(item); } } : undefined} tabIndex={rowEditable ? 0 : undefined} title={rowEditable ? (entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar") : undefined}>
-        {config.columns.map(column => <td key={column}>{inlineEntities.has(entity) && column === "status" && canEdit ? <select className={`inline-status ${item.status}`} value={String(item.status || "")} disabled={statusBusy === item._id} onClick={event => event.stopPropagation()} onChange={event => { event.stopPropagation(); void updateStatus(item, event.target.value); }} aria-label={`Estado de ${itemLabel(item)}`}>{statusOptions.map(option => <option key={option} value={option}>{titleCase(option)}</option>)}</select> : display(column, item[column])}</td>)}
+        {config.columns.map(column => <td key={column}>{inlineEntities.has(entity) && column === "status" && canEdit ? (() => {
+          const pending = pendingStatus?.id === item._id ? pendingStatus.status : "";
+          return <div className="status-cell" onClick={event => event.stopPropagation()}>
+            <select className={`inline-status ${pending || item.status}${pending ? " pending" : ""}`} value={pending || String(item.status || "")} disabled={statusBusy === item._id}
+              onChange={event => { event.stopPropagation(); askStatus(item, event.target.value); }} aria-label={`Estado de ${itemLabel(item)}`}>
+              {statusOptions.map(option => <option key={option} value={option}>{titleCase(option)}</option>)}
+            </select>
+            {pending && <span className="status-confirm">
+              <b>Queda guardado como {titleCase(pending)}</b>
+              <button type="button" className="status-confirm-yes" onClick={() => { void updateStatus(item, pending); }} aria-label={`Confirmar el cambio a ${titleCase(pending)}`}><Check size={14} /> Confirmar</button>
+              <button type="button" className="status-confirm-no" onClick={() => setPendingStatus(null)} aria-label="Dejarlo como estaba"><X size={14} /></button>
+            </span>}
+          </div>;
+        })() : display(column, item[column])}</td>)}
         <td className="row-actions" onClick={event => event.stopPropagation()}>
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
@@ -182,7 +246,17 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
 
     {modal && entity === "tasks" && <TaskModal task={editing} config={config} fieldProps={fieldProps} error={error} saving={saving} onClose={() => setModal(false)} onSubmit={submit} />}
     {modal && entity !== "tasks" && <div className="modal-layer"><button className="modal-backdrop" onClick={() => setModal(false)} aria-label="Cerrar" /><section className={`modal entity-modal ${entity === "works" ? "work-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="entity-modal-title">
-      <header><div className="modal-title-wrap"><span className="modal-heading-icon">{entity === "works" ? <HardHat /> : <Edit3 />}</span><div><p className="eyebrow">{editing ? "EDITAR REGISTRO" : "NUEVO REGISTRO"}</p><h2 id="entity-modal-title">{editing ? `Editar ${config.singular}` : `Nuevo ${config.singular}`}</h2><small>{entity === "works" ? "Información general, planificación y control de la obra" : `Completá los datos del ${config.singular}`}</small></div></div><button className="icon-btn" onClick={() => setModal(false)} aria-label="Cerrar"><X /></button></header>
+      <header><div className="modal-title-wrap"><span className="modal-heading-icon">{entity === "works" ? <HardHat /> : <Edit3 />}</span><div>
+        {/* En una obra manda el nombre: el título dice de qué obra se trata, no "editar registro". */}
+        <p className="eyebrow">{entity === "works" && editing ? `OBRA ${String(editing.code || "")}` : editing ? "EDITAR REGISTRO" : "NUEVO REGISTRO"}</p>
+        <h2 id="entity-modal-title">{entity === "works" && editing ? String(editing.name || "Obra") : editing ? `Editar ${config.singular}` : `Nuevo ${config.singular}`}</h2>
+        <small>{entity === "works" && editing ? `Avance ${Number(editing.progress || 0)}% · Presupuesto ${money(Number(editing.budgetCents || 0))}` : entity === "works" ? "Información general, planificación y control de la obra" : `Completá los datos del ${config.singular}`}</small>
+      </div></div>
+      {entity === "works" && editing && <div className="modal-head-actions">
+        <Link className="secondary-btn" href={`/app/works/${editing._id}#personal`}><Users size={16} /> Personal asignado</Link>
+        {canEdit && <button type="button" className="primary-btn" onClick={() => setInvoiceFor(editing)}><FileCheck2 size={16} /> Facturar</button>}
+      </div>}
+      <button className="icon-btn" onClick={() => setModal(false)} aria-label="Cerrar"><X /></button></header>
       <form onSubmit={submit}>
         <div className="modal-form-body">{entity === "works"
           ? <WorkFields fields={config.fields} fieldProps={fieldProps} />
@@ -200,6 +274,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
       setQuickCreate(null);
     }} />}
 
+    {invoiceFor && <InvoiceWorkModal work={invoiceFor as unknown as InvoiceableWork}
+      onClose={() => setInvoiceFor(null)}
+      onDone={updated => { setInvoiceFor(null); setModal(false); setItems(current => current.map(row => row._id === (updated as Item)._id ? { ...row, ...updated as Item } : row)); }} />}
+
     {convertFor && <ConvertQuoteModal quote={convertFor} onClose={() => setConvertFor(null)} onDone={() => { setConvertFor(null); void load(); }} />}
 
     {movementFor && <StockMovementModal item={movementFor.item} initialKind={movementFor.kind}
@@ -208,6 +286,41 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
 
     {historyFor && <HistoryModal entity={entity} record={historyFor} onClose={() => setHistoryFor(null)} />}
   </>;
+}
+
+/**
+ * Filtros de Tareas.
+ *
+ * Todo el mundo tiene los dos atajos: lo que lleva su nombre y lo de su área.
+ * Fuera de gerencia esas son además las únicas tareas que existen para esa
+ * persona — el recorte lo hace el servidor, no estos botones. Gerencia ve todo
+ * y encima puede mirar el tablero de otra área o de alguien en particular.
+ */
+function TaskFilters({ viewer, people, scope, role, person, onScope, onRole, onPerson }: {
+  viewer: Viewer; people: Person[]; scope: string; role: string; person: string;
+  onScope: (value: "" | "mine" | "area") => void; onRole: (value: string) => void; onPerson: (value: string) => void;
+}) {
+  const isAdmin = viewer.role === "gerencia";
+  const all = !scope && !role && !person;
+  return <div className="task-filters">
+    <div className="task-filter-chips">
+      <button type="button" className={all ? "active" : ""} onClick={() => onScope("")}>{isAdmin ? "Todas" : "Todo lo mío"}</button>
+      <button type="button" className={scope === "mine" ? "active" : ""} onClick={() => onScope("mine")}><UserRound size={15} /> Asignadas a mí</button>
+      <button type="button" className={scope === "area" ? "active" : ""} onClick={() => onScope("area")}><Users size={15} /> Mi área ({roleLabels[viewer.role]})</button>
+    </div>
+    {isAdmin
+      ? <div className="task-filter-selects">
+          <label><span>Área</span><select value={role} onChange={event => onRole(event.target.value)}>
+            <option value="">Todas las áreas</option>
+            {ROLES.map(option => <option key={option} value={option}>{roleLabels[option]}</option>)}
+          </select></label>
+          <label><span>Persona</span><select value={person} onChange={event => onPerson(event.target.value)}>
+            <option value="">Cualquiera</option>
+            {people.map(option => <option key={option._id} value={option._id}>{option.name}</option>)}
+          </select></label>
+        </div>
+      : <p className="task-filter-note">Ves las tareas de tu área y las que están a tu nombre.</p>}
+  </div>;
 }
 
 /**
@@ -294,6 +407,7 @@ type FieldProps = {
   field: Field;
   value: unknown;
   relationOptions: Option[];
+  personOptions: Option[];
   relationValue: string;
   onRelationChange: (value: string) => void;
   onCreateRelation?: () => void;
@@ -355,7 +469,7 @@ function QuickCreateModal({ entity, onClose, onCreated }: { entity: Entity; onCl
     <section className="modal quick-modal" role="dialog" aria-modal="true" aria-labelledby="quick-modal-title">
       <header><div className="modal-title-wrap"><span className="modal-heading-icon"><Plus /></span><div><p className="eyebrow">ALTA RÁPIDA</p><h2 id="quick-modal-title">Nuevo {config.singular}</h2><small>Se crea acá mismo y queda elegido en el formulario</small></div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
       <form onSubmit={submit}>
-        <div className="modal-form-body"><div className="form-grid">{fields.map((field, index) => <FormField key={field.key} field={field} value={undefined} relationOptions={[]} relationValue="" onRelationChange={() => {}} autoFocus={index === 0} />)}</div></div>
+        <div className="modal-form-body"><div className="form-grid">{fields.map((field, index) => <FormField key={field.key} field={field} value={undefined} relationOptions={[]} personOptions={[]} relationValue="" onRelationChange={() => {}} autoFocus={index === 0} />)}</div></div>
         {error && <p className="form-error modal-error">{error}</p>}
         <footer><span>Después lo podés completar desde su módulo.</span><button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Creando…" : `Crear ${config.singular}`}</button></footer>
       </form>
@@ -363,7 +477,7 @@ function QuickCreateModal({ entity, onClose, onCreated }: { entity: Entity; onCl
   </div>;
 }
 
-function FormField({ field, value, relationOptions, relationValue, onRelationChange, onCreateRelation, autoFocus = false }: FieldProps & { autoFocus?: boolean }) {
+function FormField({ field, value, relationOptions, personOptions, relationValue, onRelationChange, onCreateRelation, autoFocus = false }: FieldProps & { autoFocus?: boolean }) {
   const label = <span>{field.label}{field.required && " *"}{field.hint && <em className="field-hint">{field.hint}</em>}</span>;
   const text = String(value ?? "");
 
@@ -374,6 +488,8 @@ function FormField({ field, value, relationOptions, relationValue, onRelationCha
   if (field.type === "file") return <label className="wide">{label}<FileDrop name={field.key} currentPath={text || undefined} /></label>;
   if (field.type === "textarea") return <label className="wide">{label}<textarea name={field.key} required={field.required} defaultValue={text} autoFocus={autoFocus} placeholder={field.placeholder} /></label>;
   if (field.type === "select") return <label>{label}<SearchSelect name={field.key} defaultValue={text} required={field.required} autoFocus={autoFocus} options={(field.options || []).map(option => ({ value: option, label: titleCase(option) }))} /></label>;
+  if (field.type === "user") return <label>{label}<SearchSelect name={field.key} options={personOptions} value={relationValue} onChange={onRelationChange}
+    placeholder="Sin persona asignada" required={field.required} autoFocus={autoFocus} /></label>;
   if (field.type === "relation") return <label>{label}<SearchSelect name={field.key} options={relationOptions} value={relationValue} onChange={onRelationChange} required={field.required} autoFocus={autoFocus}
     createLabel={`Crear ${entityConfig[field.relation!].singular} nuevo`} onCreate={onCreateRelation} /></label>;
 

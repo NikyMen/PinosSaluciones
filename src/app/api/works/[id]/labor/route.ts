@@ -6,19 +6,27 @@ import { connectDB } from "@/lib/db";
 import { Work } from "@/lib/models";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
+import { computeLabor, dailyRateCents, hourlyRateCents, hoursPerDay, rateMode } from "@/lib/labor";
 
 /**
- * Parte diario: cuántas horas trabajó una persona un día en esta obra.
+ * Parte diario: cuanto trabajo una persona un dia en esta obra, por jornada o
+ * por hora.
  *
- * El importe se calcula y se congela acá, con el valor hora que sale del jornal
- * asignado. Si mañana sube el jornal, las quincenas ya liquidadas no cambian.
+ * El importe se calcula con el valor que tiene asignado en la obra y se congela
+ * acá: si mañana sube el jornal, las quincenas ya liquidadas no cambian. Si
+ * quien carga pisa el total a mano, se guarda ese y queda marcado como manual.
  */
 const schema = z.object({
   workerId: z.string().refine(isValidObjectId, "Elegí un trabajador"),
   date: z.coerce.date(),
-  hours: z.coerce.number().positive("Las horas tienen que ser mayores a cero").max(24, "No puede haber más de 24 horas en un día"),
+  mode: z.enum(["jornada", "hora"]).optional(),
+  quantity: z.coerce.number().positive("La cantidad tiene que ser mayor a cero"),
+  rateCents: z.coerce.number().min(0).optional(),
+  costCents: z.coerce.number().min(0).optional(),
   note: z.string().trim().optional().default(""),
 });
+
+const patchSchema = schema.partial().omit({ workerId: true });
 
 export async function POST(request: Request, context: RouteContext<"/api/works/[id]/labor">) {
   try {
@@ -37,16 +45,69 @@ export async function POST(request: Request, context: RouteContext<"/api/works/[
     const assigned = work.assignedWorkers.find((row: { workerId?: unknown }) => String(row.workerId) === parsed.data.workerId);
     if (!assigned) return Response.json({ error: "Primero asigná el trabajador a la obra" }, { status: 409 });
 
-    const hoursPerDay = Number(assigned.hoursPerDay) || 8;
-    const hourlyRateCents = Math.round(Number(assigned.dailyRateCents || 0) / hoursPerDay);
+    const mode = parsed.data.mode || rateMode(assigned);
+    const perDay = hoursPerDay(assigned);
+    const rate = parsed.data.rateCents ?? (mode === "jornada" ? dailyRateCents(assigned) : hourlyRateCents(assigned));
+    if (!rate && parsed.data.costCents === undefined) {
+      return Response.json({ error: mode === "jornada" ? "Cargale el valor del jornal al trabajador" : "Cargale el valor hora al trabajador" }, { status: 409 });
+    }
+    const computed = computeLabor({ mode, quantity: parsed.data.quantity, rateCents: rate, hoursPerDay: perDay });
+    const manual = parsed.data.costCents !== undefined && Math.round(parsed.data.costCents) !== computed.costCents;
+
     work.labor.push({
-      workerId: assigned.workerId, person: assigned.name, date: parsed.data.date, hours: parsed.data.hours,
-      hourlyRateCents, costCents: Math.round(parsed.data.hours * hourlyRateCents),
+      workerId: assigned.workerId, person: assigned.name, date: parsed.data.date, mode,
+      hours: computed.hours, days: computed.days,
+      dailyRateCents: computed.dailyRateCents, hourlyRateCents: computed.hourlyRateCents,
+      costCents: manual ? Math.round(parsed.data.costCents as number) : computed.costCents, manualCost: manual,
       note: parsed.data.note, loadedByName: session.name,
     });
     await work.save();
     await audit(session, "add_labor", "works", id, before, work.toObject());
     return Response.json(work, { status: 201 });
+  } catch (error) { return apiError(error); }
+}
+
+/** Corrige un parte ya cargado: cambia la cantidad, el valor o el importe final. */
+export async function PATCH(request: Request, context: RouteContext<"/api/works/[id]/labor">) {
+  try {
+    const session = await requireSession();
+    if (!canWrite(session, "works")) throw new Error("FORBIDDEN");
+    const { id } = await context.params;
+    const entryId = new URL(request.url).searchParams.get("entryId") || "";
+    if (!isValidObjectId(id) || !isValidObjectId(entryId)) return Response.json({ error: "ID inválido" }, { status: 400 });
+    const parsed = patchSchema.safeParse(await request.json());
+    if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || "Datos inválidos" }, { status: 400 });
+
+    await connectDB();
+    const work = await Work.findById(id);
+    if (!work) return Response.json({ error: "Obra no encontrada" }, { status: 404 });
+    const before = work.toObject();
+
+    const entry = work.labor.find((row: { _id?: unknown }) => String(row._id) === entryId);
+    if (!entry) return Response.json({ error: "Parte no encontrado" }, { status: 404 });
+
+    const assigned = work.assignedWorkers.find((row: { workerId?: unknown }) => String(row.workerId) === String(entry.workerId));
+    // Si el trabajador ya no esta asignado, las horas del jornal se deducen de
+    // los dos valores congelados en el parte.
+    const perDay = assigned ? hoursPerDay(assigned)
+      : Number(entry.dailyRateCents) && Number(entry.hourlyRateCents) ? hoursPerDay({ hoursPerDay: Math.round(Number(entry.dailyRateCents) / Number(entry.hourlyRateCents)) })
+      : hoursPerDay({});
+    const mode = parsed.data.mode || (entry.mode === "jornada" ? "jornada" : "hora");
+    const quantity = parsed.data.quantity ?? (mode === "jornada" ? Number(entry.days) || Number(entry.hours) / perDay : Number(entry.hours) || 0);
+    const rate = parsed.data.rateCents ?? (mode === "jornada" ? dailyRateCents(entry) : hourlyRateCents(entry));
+    const computed = computeLabor({ mode, quantity, rateCents: rate, hoursPerDay: perDay });
+    const manual = parsed.data.costCents !== undefined && Math.round(parsed.data.costCents) !== computed.costCents;
+
+    entry.set({
+      mode, hours: computed.hours, days: computed.days,
+      dailyRateCents: computed.dailyRateCents, hourlyRateCents: computed.hourlyRateCents,
+      costCents: manual ? Math.round(parsed.data.costCents as number) : computed.costCents, manualCost: manual,
+      ...(parsed.data.date ? { date: parsed.data.date } : {}),
+      ...(parsed.data.note !== undefined ? { note: parsed.data.note } : {}),
+    });
+    await work.save();
+    await audit(session, "edit_labor", "works", id, before, work.toObject());
+    return Response.json(work);
   } catch (error) { return apiError(error); }
 }
 

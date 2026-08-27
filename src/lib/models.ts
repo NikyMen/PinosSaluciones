@@ -72,22 +72,32 @@ const WorkSchema = new Schema({
   assignedWorkers: [{
     workerId: { type: Schema.Types.ObjectId, ref: "Worker" },
     name: String, dni: String, phone: String, category: String,
-    dailyRateCents: Number, hoursPerDay: Number,
+    // Los valores se pueden retocar por obra sin tocar el legajo: la misma
+    // persona puede cobrar distinto segun donde trabaje.
+    rateMode: { type: String, enum: ["jornada", "hora"], default: "jornada" },
+    dailyRateCents: Number, hoursPerDay: Number, hourlyRateCents: Number,
     assignedAt: { type: Date, default: Date.now }, assignedByName: String,
   }],
   // Parte diario: quien, que dia y cuantas horas. El importe se congela con el
   // valor hora vigente al cargarlo, para que un cambio de jornal no reescriba el pasado.
   labor: [{
     workerId: { type: Schema.Types.ObjectId, ref: "Worker" },
-    person: String, date: Date, hours: Number,
-    hourlyRateCents: Number, costCents: Number,
+    person: String, date: Date,
+    // Se carga por jornada o por hora. Se guardan las dos medidas (jornadas y
+    // horas) para que la liquidacion sume igual sin importar como se cargo.
+    mode: { type: String, enum: ["jornada", "hora"], default: "hora" },
+    hours: Number, days: Number,
+    dailyRateCents: Number, hourlyRateCents: Number, costCents: Number,
+    // Si alguien pisa el importe a mano, queda marcado y no se recalcula solo.
+    manualCost: { type: Boolean, default: false },
     note: String, loadedByName: String, createdAt: { type: Date, default: Date.now },
   }],
 }, options);
 
 type WorkerDoc = {
   name?: string; firstName: string; lastName: string; dni: string; phone?: string;
-  category?: string; dailyRateCents?: number; hoursPerDay?: number; active?: boolean; notes?: string;
+  category?: string; rateMode?: "jornada" | "hora"; dailyRateCents?: number; hoursPerDay?: number;
+  hourlyRateCents?: number; active?: boolean; notes?: string;
 };
 
 const WorkerSchema = new Schema<WorkerDoc>({
@@ -99,9 +109,12 @@ const WorkerSchema = new Schema<WorkerDoc>({
   dni: { type: String, required: true, trim: true },
   phone: { type: String, trim: true },
   category: { type: String, enum: ["capataz", "oficial", "medio_oficial", "ayudante", "especialista"], default: "oficial" },
-  // El valor del jornal es el dato que maneja la empresa; el valor hora sale de dividirlo.
+  // El valor del jornal es el dato que maneja la empresa; el valor hora sale de
+  // dividirlo, salvo que se cargue uno propio.
+  rateMode: { type: String, enum: ["jornada", "hora"], default: "jornada" },
   dailyRateCents: { type: Number, min: 0, default: 0 },
   hoursPerDay: { type: Number, min: 1, max: 24, default: 8 },
+  hourlyRateCents: { type: Number, min: 0, default: 0 },
   active: { type: Boolean, default: true },
   notes: String,
 }, options);
@@ -201,7 +214,11 @@ const TaskSchema = new Schema({
   title: { type: String, required: true }, description: String,
   type: { type: String, enum: ["general", "facturar_certificado", "cobranza", "vencimiento"], default: "general" },
   status: { type: String, enum: ["pendiente", "en_curso", "completada"], default: "pendiente" },
-  dueDate: Date, assigneeRole: { type: String, enum: ROLES }, relatedType: String, relatedId: Schema.Types.ObjectId,
+  // Una tarea se asigna a un area (assigneeRole) y, si hace falta, a una persona
+  // concreta. El nombre se copia para poder listarlo sin ir a buscar el usuario.
+  dueDate: Date, assigneeRole: { type: String, enum: ROLES },
+  assigneeId: { type: Schema.Types.ObjectId, ref: "User" }, assigneeName: String,
+  relatedType: String, relatedId: Schema.Types.ObjectId,
 }, options);
 
 const AuditSchema = new Schema({

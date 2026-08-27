@@ -3,17 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ClipboardCheck, FileCheck2, ImagePlus, MessageSquareText, Plus, Send, Timer, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ClipboardCheck, FileCheck2, ImagePlus, MessageSquareText, Plus, Send, Timer, Trash2, Users } from "lucide-react";
 import { date, dateTime, money } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput } from "@/components/fields";
 import { WorkLabor, type AssignedWorker, type LaborEntry } from "@/components/work-labor";
+import { InvoiceWorkModal } from "@/components/work-invoice";
 
 type Checklist = { _id: string; title: string; done: boolean; completedAt?: string; createdAt?: string; updatedAt?: string };
 type Activity = { _id: string; detail: string; photos: string[]; authorName: string; createdAt: string };
 type Advance = { percentage: number; note: string; date: string };
 type Certificate = { number: string; period: string; percentage: number; amountCents: number; approved: boolean; invoiced: boolean };
 
-type Work = { _id: string; name: string; code: string; progress: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; advances: Advance[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
+type Work = { _id: string; name: string; code: string; progress: number; budgetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; advances: Advance[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
 
 export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
@@ -24,6 +25,7 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   // form.reset() no limpia los campos con estado propio (fecha e importe): se remontan con la clave.
   const [formKey, setFormKey] = useState(0);
   const photoInput = useRef<HTMLInputElement>(null);
+  const [invoicing, setInvoicing] = useState(false);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/records/works/${id}`);
@@ -124,7 +126,14 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
 
   return <>
     <Link href="/app/works" className="back-link"><ArrowLeft/> Volver a obras</Link>
-    <div className="page-heading work-heading"><div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>Avance actual: {work.progress}%</p></div><span className="work-progress-big" style={{ background: `conic-gradient(var(--brand-red) 0 ${work.progress}%, var(--brand-navy) ${work.progress}% 100%)` }}>{work.progress}%</span></div>
+    <div className="page-heading work-heading">
+      <div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>Avance actual: {work.progress}% · Presupuesto {money(work.budgetCents || 0)}</p></div>
+      <div className="work-heading-actions">
+        <a className="secondary-btn" href="#personal" onClick={event => { event.preventDefault(); document.getElementById("personal")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Users size={17} /> Personal asignado</a>
+        {canEdit && <button className="primary-btn" onClick={() => setInvoicing(true)}><FileCheck2 size={17} /> Facturar</button>}
+      </div>
+      <span className="work-progress-big" style={{ background: `conic-gradient(var(--brand-red) 0 ${work.progress}%, var(--brand-navy) ${work.progress}% 100%)` }}>{work.progress}%</span>
+    </div>
     {error && <div className="notice error">{error}</div>}
 
     <section className="panel work-timeline-section">
@@ -160,7 +169,10 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
       </WorkSection>
     </div>
 
-    <WorkLabor workId={id} assigned={work.assignedWorkers || []} labor={work.labor || []} canEdit={canEdit}
+    {invoicing && <InvoiceWorkModal work={{ _id: id, code: work.code, name: work.name, budgetCents: work.budgetCents, progress: work.progress, certificates: work.certificates }}
+      onClose={() => setInvoicing(false)} onDone={updated => { setInvoicing(false); setWork(updated as Work); }} />}
+
+    <WorkLabor work={{ _id: id, code: work.code, name: work.name }} assigned={work.assignedWorkers || []} labor={work.labor || []} canEdit={canEdit}
       onChanged={updated => setWork(updated as Work)} />
   </>;
 }

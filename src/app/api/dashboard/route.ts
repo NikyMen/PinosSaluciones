@@ -4,6 +4,7 @@ import { Client, Quote, Work, Invoice, Collection, Expense, Payment, Check, Task
 import { apiError } from "@/lib/api";
 import { comparisonPercent, marginPercent, monthKeys, monthsBetween, parseDashboardDate, parseDashboardRange, rangeMonths, type DashboardPeriod } from "@/lib/dashboard";
 import { canViewSection } from "@/lib/permissions";
+import { taskScope } from "@/lib/tasks";
 
 type TotalRow = { total?: number };
 type MonthlyRow = { _id: string; value: number };
@@ -118,7 +119,8 @@ export async function GET(request: Request) {
         } },
       ]),
       Check.countDocuments({ dueDate: { $gte: today, $lte: new Date(today.getTime() + 7 * 86400000) }, status: { $in: ["cartera", "emitido"] } }),
-      Task.countDocuments({ status: { $ne: "completada" } }),
+      // Las tareas pendientes del tablero son las que esa persona puede ver.
+      Task.countDocuments({ $and: [{ status: { $ne: "completada" } }, taskScope(session, new URLSearchParams())] }),
       Quote.aggregate([
         { $match: { status: "aprobada", updatedAt: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$updatedAt", timezone } }, value: { $sum: "$amountCents" } } },

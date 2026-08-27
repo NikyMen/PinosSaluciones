@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDownToLine, HardHat, PackageSearch, Scale, X } from "lucide-react";
+import { ArrowDownToLine, Check, HardHat, PackageSearch, Scale, X } from "lucide-react";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
 import { date, dateTime, money, titleCase } from "@/lib/format";
 
@@ -55,12 +55,19 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
     }).catch(() => setError("No se pudieron cargar proveedores y obras"));
   }, []);
 
+  // Segundo paso del guardado: el botón pasa de "registrar" a "sí, confirmar".
+  const [confirming, setConfirming] = useState(false);
+
   const amount = Number(quantity || 0);
   const previewCents = kind === "ingreso" ? Math.round(amount * unitCost * 100) : kind === "egreso" ? Math.round(amount * item.avgCostCents) : 0;
   const resulting = kind === "ajuste" ? amount : kind === "ingreso" ? item.quantity + amount : item.quantity - amount;
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Un movimiento de stock corrige cantidades y costos: se confirma dos veces,
+    // con el resultado a la vista, antes de tocar la existencia.
+    if (!confirming) return setConfirming(true);
+    setConfirming(false);
     setSaving(true); setError("");
     const form = new FormData(event.currentTarget);
     const body = {
@@ -132,9 +139,11 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
 
         {error && <p className="form-error modal-error">{error}</p>}
         <footer>
-          <span>El movimiento queda auditado.</span>
-          <button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button>
-          <button className="primary-btn" disabled={saving || amount <= 0}>{saving ? "Registrando…" : current.label}</button>
+          <span>{confirming
+            ? `${current.label}: ${Math.round(amount * 100) / 100} ${item.unit} y queda en ${Math.round(resulting * 100) / 100}. Queda auditado a tu nombre.`
+            : "El movimiento queda auditado."}</span>
+          <button type="button" className="secondary-btn" onClick={() => confirming ? setConfirming(false) : onClose()}>{confirming ? "Volver" : "Cancelar"}</button>
+          <button className={confirming ? "primary-btn confirming" : "primary-btn"} disabled={saving || amount <= 0}>{saving ? "Registrando…" : confirming ? <><Check size={16} /> Sí, confirmar</> : current.label}</button>
         </footer>
       </form>
 

@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth";
 import { canDelete, canRead, canWrite } from "@/lib/permissions";
 import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { canSeeTask, resolveTaskAssignee } from "@/lib/tasks";
 import { applyExpensePayment, applyInvoiceCollection } from "@/lib/balances";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
@@ -17,7 +18,10 @@ export async function GET(_request: Request, context: RouteContext<"/api/records
     if (!validEntity(entity) || !canRead(session, entity)) throw new Error("FORBIDDEN");
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB(); const item = await modelByEntity[entity].findById(id).lean();
-    return item ? Response.json(item) : Response.json({ error: "No encontrado" }, { status: 404 });
+    if (!item) return Response.json({ error: "No encontrado" }, { status: 404 });
+    // Una tarea de otra area no se lee ni sabiendo el id.
+    if (entity === "tasks" && !canSeeTask(session, item as Record<string, unknown>)) return Response.json({ error: "No encontrado" }, { status: 404 });
+    return Response.json(item);
   } catch (error) { return apiError(error); }
 }
 
@@ -31,6 +35,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
     const changes = parsed.data as Record<string, unknown>;
+    if (entity === "tasks") await resolveTaskAssignee(session, changes, false);
     if (entity === "workers" && (changes.firstName || changes.lastName)) {
       changes.name = composeWorkerName({ ...before as Record<string, unknown>, ...changes });
     }
