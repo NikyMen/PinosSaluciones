@@ -20,7 +20,7 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 20)));
     const search = sanitizeSearch(url.searchParams.get("search") || "");
-    const filter = search ? { $or: ["name", "title", "number", "code", "description", "bank"].map(key => ({ [key]: { $regex: search, $options: "i" } })) } : {};
+    const filter = search ? { $or: ["name", "title", "number", "code", "description", "bank", "cuit", "contactName"].map(key => ({ [key]: { $regex: search, $options: "i" } })) } : {};
     const model = modelByEntity[entity];
     const [items, total] = await Promise.all([
       model.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
 import { canViewSection, type UserPermissions } from "@/lib/permissions";
+import { NotificationBell } from "@/components/notification-bell";
 
 type NavItem = { href: string; label: string; icon: LucideIcon; permission?: ViewSection; managerOnly?: boolean };
 type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] };
@@ -125,6 +126,7 @@ export function AppShell({ session, children }: { session: { name: string; email
           <button className="icon-btn mobile" onClick={() => setMobileOpen(true)} aria-label="Abrir menú"><Menu /></button>
           <div className="topbar-context"><span>Pino Gestión</span><b>{current.label}</b></div>
           <div className="top-spacer" />
+          <NotificationBell />
           <div className="profile-wrap">
             <button className="profile" onClick={() => setProfileOpen(value => !value)} aria-expanded={profileOpen}>
               <span className="avatar">{initials}</span>

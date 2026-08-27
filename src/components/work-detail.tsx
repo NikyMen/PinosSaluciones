@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, ClipboardCheck, FileCheck2, ImagePlus, MessageSquareText, Plus, Send, Timer, Trash2, Users } from "lucide-react";
 import { date, dateTime, money } from "@/lib/format";
+import { DateInput, FileDrop, MoneyInput } from "@/components/fields";
 
 type Checklist = { _id: string; title: string; done: boolean; completedAt?: string; createdAt?: string; updatedAt?: string };
 type Activity = { _id: string; detail: string; photos: string[]; authorName: string; createdAt: string };
@@ -19,6 +20,8 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   const [checklistBusy, setChecklistBusy] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
+  // form.reset() no limpia los campos con estado propio (fecha e importe): se remontan con la clave.
+  const [formKey, setFormKey] = useState(0);
   const photoInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -100,7 +103,7 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   async function advance(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!work) return;
     const form = event.currentTarget; const data = new FormData(form); const percentage = Number(data.get("percentage"));
-    if (await patch({ progress: percentage, advances: [...(work.advances || []), { percentage, note: String(data.get("note")), date: String(data.get("date")) }] })) form.reset();
+    if (await patch({ progress: percentage, advances: [...(work.advances || []), { percentage, note: String(data.get("note")), date: String(data.get("date")) }] })) { form.reset(); setFormKey(value => value + 1); }
   }
 
   async function certificate(event: React.FormEvent<HTMLFormElement>) {
@@ -111,13 +114,13 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
       if (!response.ok) return setError(result.error); file = result.path;
     }
     const response = await fetch(`/api/works/${id}/certificates`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ number: data.get("number"), period: data.get("period"), percentage: Number(data.get("percentage")), amountCents: Math.round(Number(data.get("amount")) * 100), approved: true, file }) });
-    if (!response.ok) setError((await response.json()).error); else { form.reset(); load(); }
+    if (!response.ok) setError((await response.json()).error); else { form.reset(); setFormKey(value => value + 1); void load(); }
   }
 
   async function labor(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!work) return;
     const form = event.currentTarget; const data = new FormData(form);
-    if (await patch({ labor: [...(work.labor || []), { person: String(data.get("person")), date: String(data.get("date")), hours: Number(data.get("hours")), costCents: Math.round(Number(data.get("cost")) * 100) }] })) form.reset();
+    if (await patch({ labor: [...(work.labor || []), { person: String(data.get("person")), date: String(data.get("date")), hours: Number(data.get("hours")), costCents: Math.round(Number(data.get("cost")) * 100) }] })) { form.reset(); setFormKey(value => value + 1); }
   }
 
   if (!work) return <div className="loading-state">{error || "Cargando obra…"}</div>;
@@ -153,15 +156,15 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
         </div>)}</div>
       </WorkSection>
       <WorkSection icon={<Timer/>} title="Avances">
-        {canEdit && <form className="mini-form" onSubmit={advance}><input name="date" type="date" required/><input name="percentage" type="number" min="0" max="100" required placeholder="% total"/><input name="note" required placeholder="Detalle del avance"/><button className="primary-btn">Registrar</button></form>}
+        {canEdit && <form className="mini-form" key={`advance-${formKey}`} onSubmit={advance}><DateInput name="date" required/><input name="percentage" type="number" min="0" max="100" required placeholder="% total"/><input name="note" required placeholder="Detalle del avance"/><button className="primary-btn">Registrar</button></form>}
         <div className="detail-list">{work.advances?.slice().reverse().map((item, index) => <div className="detail-row" key={index}><b>{item.percentage}%</b><span>{item.note}</span><small>{date(item.date)}</small></div>)}</div>
       </WorkSection>
       <WorkSection icon={<FileCheck2/>} title="Certificados">
-        {canEdit && <form className="mini-form" onSubmit={certificate}><input name="number" required placeholder="Número"/><input name="period" required placeholder="Período"/><input name="percentage" type="number" min="0" max="100" required placeholder="%"/><input name="amount" type="number" min="0" step=".01" required placeholder="Importe $"/><input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png"/><button className="primary-btn">Aprobar</button></form>}
+        {canEdit && <form className="mini-form" key={`certificate-${formKey}`} onSubmit={certificate}><input name="number" required placeholder="Número"/><input name="period" required placeholder="Período"/><input name="percentage" type="number" min="0" max="100" required placeholder="%"/><MoneyInput name="amount" required placeholder="Importe"/><FileDrop name="file" accept=".pdf,.jpg,.jpeg,.png"/><button className="primary-btn">Aprobar</button></form>}
         <div className="detail-list">{work.certificates?.slice().reverse().map((item, index) => <div className="detail-row" key={index}><b>#{item.number}</b><span>{item.period} · {item.percentage}%</span><strong>{money(item.amountCents)}</strong><small>{item.invoiced ? "Facturado" : "Pendiente de facturar"}</small></div>)}</div>
       </WorkSection>
       <WorkSection icon={<Users/>} title="Personal y jornales">
-        {canEdit && <form className="mini-form" onSubmit={labor}><input name="person" required placeholder="Persona"/><input name="date" type="date" required/><input name="hours" type="number" min="0" step=".5" required placeholder="Horas"/><input name="cost" type="number" min="0" step=".01" required placeholder="Costo $"/><button className="primary-btn">Agregar</button></form>}
+        {canEdit && <form className="mini-form" key={`labor-${formKey}`} onSubmit={labor}><input name="person" required placeholder="Persona"/><DateInput name="date" required/><input name="hours" type="number" min="0" step=".5" required placeholder="Horas"/><MoneyInput name="cost" required placeholder="Costo"/><button className="primary-btn">Agregar</button></form>}
         <div className="detail-list">{work.labor?.slice().reverse().map((item, index) => <div className="detail-row" key={index}><b>{item.person}</b><span>{item.hours} h · {date(item.date)}</span><strong>{money(item.costCents)}</strong></div>)}</div>
       </WorkSection>
     </div>

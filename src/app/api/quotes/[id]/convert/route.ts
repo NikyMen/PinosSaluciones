@@ -6,6 +6,8 @@ import { connectDB } from "@/lib/db";
 import { Quote, Work } from "@/lib/models";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
+import { notify } from "@/lib/notifications";
+import { date } from "@/lib/format";
 
 const schema = z.object({ code: z.string().trim().min(1), name: z.string().trim().min(1), startDate: z.coerce.date().optional() });
 export async function POST(request: Request, context: RouteContext<"/api/quotes/[id]/convert">) {
@@ -23,6 +25,12 @@ export async function POST(request: Request, context: RouteContext<"/api/quotes/
     quote.history.push({ action: "convert_to_work", note: `Convertida en la obra ${work.code}`, userId: session.userId, userName: session.name });
     await quote.save();
     await audit(session, "convert_to_work", "quotes", quote._id, null, work.toObject());
+    // Compras necesita saberlo para preparar materiales segun la fecha de inicio.
+    await notify({
+      title: `Nueva obra ${work.code}: ${work.name}`,
+      body: `${session.name} convirtió la cotización ${quote.number}. Inicio previsto: ${work.startDate ? date(work.startDate) : "sin fecha definida"}.`,
+      kind: "obra", href: `/app/works/${work._id}`, roles: ["compras", "administracion"], dedupeKey: `work-created-${work._id}`,
+    });
     return Response.json(work, { status: 201 });
   } catch (error) { return apiError(error); }
 }

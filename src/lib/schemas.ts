@@ -8,9 +8,17 @@ const optionalText = z.string().trim().optional().default("");
 const cents = z.coerce.number().int().min(0);
 const date = z.coerce.date();
 const optionalDate = z.union([z.coerce.date(), z.literal("")]).optional().transform(v => v || undefined);
+// El CUIT llega tipeado a mano: se acepta con o sin guiones y se guarda normalizado.
+const cuit = z.string().trim().transform(v => v.replace(/\D/g, "")).refine(v => v.length === 11, "El CUIT tiene que tener 11 dígitos").transform(v => `${v.slice(0, 2)}-${v.slice(2, 10)}-${v.slice(10)}`);
+// La lista de teléfonos viaja como JSON desde el formulario.
+const phoneList = z.preprocess(value => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim().startsWith("[")) { try { return JSON.parse(value); } catch { return []; } }
+  return typeof value === "string" && value.trim() ? [value.trim()] : [];
+}, z.array(z.string().trim().min(1)).default([]));
 
 export const schemas: Record<Entity, z.ZodObject<z.ZodRawShape>> = {
-  clients: z.object({ name: text, contactName: optionalText, email: optionalText, phone: optionalText, whatsapp: optionalText, address: optionalText, notes: optionalText, active: z.boolean().optional().default(true) }),
+  clients: z.object({ name: text, cuit: cuit, contactName: optionalText, email: optionalText, phones: phoneList, address: optionalText, notes: optionalText, active: z.boolean().optional().default(true) }),
   quotes: z.object({ number: z.string().trim().optional().transform(v => v || undefined), clientId: id, title: text, description: optionalText, version: z.coerce.number().int().min(1).default(1), amountCents: cents, estimatedCostCents: cents.default(0), status: z.enum(["borrador", "enviada", "seguimiento", "aprobada", "rechazada", "vencida", "convertida"]), ownerId: optionalId, validUntil: optionalDate, workId: optionalId, attachment: optionalText }),
   works: z.object({ code: text, name: text, clientId: id, quoteId: optionalId, managerId: optionalId, status: z.enum(["planificada", "en_curso", "pausada", "terminada", "cancelada"]), startDate: optionalDate, endDate: optionalDate, budgetCents: cents, progress: z.coerce.number().min(0).max(100), costCenter: optionalText, checklist: z.array(z.object({ _id: optionalId, title: text, done: z.boolean().default(false), completedAt: optionalDate, createdAt: optionalDate, updatedAt: optionalDate })).optional(), advances: z.array(z.any()).optional(), certificates: z.array(z.any()).optional(), labor: z.array(z.any()).optional() }),
   suppliers: z.object({ name: text, contactName: optionalText, email: optionalText, phone: optionalText, address: optionalText, notes: optionalText, active: z.boolean().optional().default(true) }),

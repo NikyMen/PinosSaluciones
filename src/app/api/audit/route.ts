@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 
     await connectDB();
     const items = await AuditLog.find({ entity, entityId })
-      .select("userName action before after createdAt")
+      .select("userName userEmail action before after createdAt")
       .sort({ createdAt: -1 })
       .limit(30)
       .lean();

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Download, TrendingDown, TrendingUp } from "lucide-react";
 import { money } from "@/lib/format";
 import { AiChat } from "@/components/ai-chat";
+import { DateInput } from "@/components/fields";
 
 export type Report = {
   cashflow: Array<{ period: string; incomeCents: number; outcomeCents: number }>;
@@ -90,8 +91,8 @@ export function Reports() {
         <button className="primary-btn" onClick={pdf} disabled={!data}><Download size={18} /> Descargar PDF</button>
       </div>
       <div className="report-filters">
-        <label>Desde<input type="date" value={from} onChange={event => { setLoading(true); setFrom(event.target.value); }} /></label>
-        <label>Hasta<input type="date" value={to} onChange={event => { setLoading(true); setTo(event.target.value); }} /></label>
+        <label>Desde<DateInput name="from" defaultValue={from} onValueChange={value => { if (!value) return; setLoading(true); setFrom(value); }} /></label>
+        <label>Hasta<DateInput name="to" defaultValue={to} onValueChange={value => { if (!value) return; setLoading(true); setTo(value); }} /></label>
       </div>
       {loading ? <div className="loading-state">Calculando reportes…</div> : error ? <div className="panel error-panel"><p>{error}</p></div> : <>
         <section className="panel report-panel">

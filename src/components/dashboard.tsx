@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { compactMoney, date, money, titleCase } from "@/lib/format";
 import type { DashboardPeriod, DashboardRange } from "@/lib/dashboard";
+import { DateInput } from "@/components/fields";
 
 type MonthlyPoint = { period: string; salesCents: number; invoicedCents: number; collectedCents: number; expenseCents: number };
 type ActiveWork = { _id: string; name: string; code: string; progress: number; budgetCents: number; costCents: number; status: string; endDate?: string };
@@ -97,9 +98,9 @@ export function Dashboard() {
           {ranges.map(item => <button key={item.value} type="button" className={filter.kind === "preset" && filter.range === item.value ? "active" : ""} aria-pressed={filter.kind === "preset" && filter.range === item.value} onClick={() => changeRange(item.value)}>{item.label}</button>)}
         </div>
         <form className={`date-filter${filter.kind === "custom" ? " active" : ""}`} onSubmit={applyCustomFilter}>
-          <label>Desde<input type="date" value={customFrom} onChange={event => setCustomFrom(event.target.value)} /></label>
+          <label>Desde<DateInput name="from" defaultValue={customFrom} onValueChange={setCustomFrom} /></label>
           <span aria-hidden="true">a</span>
-          <label>Hasta<input type="date" value={customTo} onChange={event => setCustomTo(event.target.value)} /></label>
+          <label>Hasta<DateInput name="to" defaultValue={customTo} onValueChange={setCustomTo} /></label>
           <button className="primary-btn" type="submit" disabled={!customFrom || !customTo}>Aplicar</button>
         </form>
         <span className="updated-chip"><RefreshCw className={loading ? "spinning" : ""} size={14} /> {loading ? "Actualizando" : "Actualizado ahora"}</span>

@@ -47,17 +47,17 @@ async function main() {
   const cashMovements = db.collection("cashmovements");
 
   const clientDefinitions = [
-    { key: "taragui", name: "Desarrollos Taragüí SRL (Demo)", contactName: "Contacto Comercial", email: "taragui.demo@pino.local", phone: "+54 379 400-0101", address: "Av. Costanera, Corrientes Capital" },
-    { key: "costanera", name: "Consorcio Costanera Norte (Demo)", contactName: "Administración Demo", email: "costanera.demo@pino.local", phone: "+54 379 400-0102", address: "Barrio Cambá Cuá, Corrientes Capital" },
-    { key: "parana", name: "Logística Paraná SRL (Demo)", contactName: "Operaciones Demo", email: "parana.demo@pino.local", phone: "+54 379 400-0103", address: "Santa Catalina, Corrientes Capital" },
-    { key: "laguna", name: "Inversiones Laguna Brava (Demo)", contactName: "Dirección Demo", email: "laguna.demo@pino.local", phone: "+54 379 400-0104", address: "Ruta Provincial 5, Corrientes" },
-    { key: "guarani", name: "Centro Guaraní (Demo)", contactName: "Coordinación Demo", email: "guarani.demo@pino.local", phone: "+54 379 400-0105", address: "Av. 3 de Abril, Corrientes Capital" },
-    { key: "riachuelo", name: "Estudio Riachuelo (Demo)", contactName: "Proyectos Demo", email: "riachuelo.demo@pino.local", phone: "+54 379 400-0106", address: "Riachuelo, Corrientes" },
+    { key: "taragui", cuit: "30-71045512-4", name: "Desarrollos Taragüí SRL (Demo)", contactName: "Contacto Comercial", email: "taragui.demo@pino.local", phone: "+54 379 400-0101", address: "Av. Costanera, Corrientes Capital" },
+    { key: "costanera", cuit: "30-71128834-9", name: "Consorcio Costanera Norte (Demo)", contactName: "Administración Demo", email: "costanera.demo@pino.local", phone: "+54 379 400-0102", address: "Barrio Cambá Cuá, Corrientes Capital" },
+    { key: "parana", cuit: "30-70998211-7", name: "Logística Paraná SRL (Demo)", contactName: "Operaciones Demo", email: "parana.demo@pino.local", phone: "+54 379 400-0103", address: "Santa Catalina, Corrientes Capital" },
+    { key: "laguna", cuit: "30-71233907-2", name: "Inversiones Laguna Brava (Demo)", contactName: "Dirección Demo", email: "laguna.demo@pino.local", phone: "+54 379 400-0104", address: "Ruta Provincial 5, Corrientes" },
+    { key: "guarani", cuit: "30-70884456-1", name: "Centro Guaraní (Demo)", contactName: "Coordinación Demo", email: "guarani.demo@pino.local", phone: "+54 379 400-0105", address: "Av. 3 de Abril, Corrientes Capital" },
+    { key: "riachuelo", cuit: "30-71455320-8", name: "Estudio Riachuelo (Demo)", contactName: "Proyectos Demo", email: "riachuelo.demo@pino.local", phone: "+54 379 400-0106", address: "Riachuelo, Corrientes" },
   ];
   const clientIds = new Map<string, mongoose.mongo.BSON.ObjectId>();
   for (const definition of clientDefinitions) {
-    const { key, ...data } = definition;
-    const id = await ensure(clients, { name: data.name }, { ...data, whatsapp: data.phone, notes: "Dato ficticio para demostración", active: true, createdAt: monthDate(11), updatedAt: now });
+    const { key, phone, ...data } = definition;
+    const id = await ensure(clients, { name: data.name }, { ...data, phones: [phone], notes: "Dato ficticio para demostración", active: true, createdAt: monthDate(11), updatedAt: now });
     clientIds.set(key, id);
   }
 

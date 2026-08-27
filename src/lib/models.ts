@@ -21,7 +21,10 @@ const UserSchema = new Schema({
 
 const ClientSchema = new Schema({
   name: { type: String, required: true, trim: true },
-  contactName: String, email: String, phone: String, whatsapp: String,
+  cuit: { type: String, trim: true },
+  contactName: String, email: String,
+  // Un cliente puede tener varios telefonos (obra, administracion, celular del contacto).
+  phones: { type: [String], default: [] },
   address: String, notes: String, active: { type: Boolean, default: true },
 }, options);
 
@@ -134,10 +137,23 @@ const TaskSchema = new Schema({
 }, options);
 
 const AuditSchema = new Schema({
-  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String, userEmail: String,
   action: { type: String, required: true }, entity: { type: String, required: true }, entityId: Schema.Types.ObjectId,
   before: Schema.Types.Mixed, after: Schema.Types.Mixed, ip: String,
 }, { timestamps: { createdAt: true, updatedAt: false } });
+
+const NotificationSchema = new Schema({
+  title: { type: String, required: true, trim: true },
+  body: { type: String, default: "" },
+  kind: { type: String, enum: ["obra", "certificado", "cotizacion", "cobranza", "vencimiento", "stock", "general"], default: "general" },
+  href: String,
+  roles: [{ type: String, enum: ROLES }],
+  // "hecha" la saca de la campanita para siempre; "pospuesta" la esconde hasta remindAt.
+  status: { type: String, enum: ["pendiente", "pospuesta", "hecha"], default: "pendiente" },
+  remindAt: Date,
+  doneAt: Date, doneByName: String,
+  dedupeKey: { type: String, index: true },
+}, options);
 
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
 export const Client = mongoose.models.Client || mongoose.model("Client", ClientSchema);
@@ -153,6 +169,7 @@ export const Check = mongoose.models.Check || mongoose.model("Check", CheckSchem
 export const CashMovement = mongoose.models.CashMovement || mongoose.model("CashMovement", CashSchema);
 export const Task = mongoose.models.Task || mongoose.model("Task", TaskSchema);
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditSchema);
+export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);
 export const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
 
 // COT-1: numeración correlativa. La primera vez arranca desde el número más alto ya cargado
