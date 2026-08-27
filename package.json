@@ -18,7 +18,8 @@
     "pm2:reload": "pm2 reload ecosystem.config.cjs",
     "user:password": "tsx --env-file-if-exists=.env scripts/reset-password.ts",
     "admin:sync": "node --env-file-if-exists=.env scripts/sync-admin.mjs",
-    "postbuild": "node scripts/postbuild-standalone.mjs"
+    "postbuild": "node scripts/postbuild-standalone.mjs",
+    "migrate:clients": "node --env-file-if-exists=.env scripts/migrate-client-phones.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
