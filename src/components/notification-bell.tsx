@@ -29,7 +29,9 @@ export function NotificationBell() {
       if (!result) return;
       setItems(result.items || []);
       if (withHistory) setHistory(result.history || []);
-    }), []);
+    })
+    // Un corte de red no tiene que romper la campanita: se reintenta al minuto.
+    .catch(() => {}), []);
 
   // Refresca sola cada minuto: así aparece el aviso sin recargar la página.
   useEffect(() => {

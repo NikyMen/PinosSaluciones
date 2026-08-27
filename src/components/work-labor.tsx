@@ -35,7 +35,7 @@ export function WorkLabor({ workId, assigned, labor, canEdit, onChanged }: {
       .then((result: { items?: Array<Record<string, unknown>> }) => setCatalog((result.items || []).map(row => ({
         value: String(row._id), label: String(row.name || `${row.lastName}, ${row.firstName}`),
         hint: `DNI ${row.dni} · ${titleCase(String(row.category || ""))}`,
-      }))));
+      })))).catch(() => setError("No se pudo cargar el legajo de trabajadores"));
   }, []);
 
   const assignedIds = new Set(assigned.map(worker => String(worker.workerId)));

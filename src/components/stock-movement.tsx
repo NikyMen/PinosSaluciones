@@ -52,7 +52,7 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
     ]).then(([supplierRows, workRows]) => {
       setSuppliers(toOptions(supplierRows.items || []));
       setWorks(toOptions((workRows.items || []).filter((row: Record<string, unknown>) => row.status !== "terminada" && row.status !== "cancelada")));
-    });
+    }).catch(() => setError("No se pudieron cargar proveedores y obras"));
   }, []);
 
   const amount = Number(quantity || 0);

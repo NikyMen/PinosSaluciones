@@ -18,7 +18,9 @@ export function TasksButton() {
         .then(result => {
           if (!result) return;
           setPending((result.items || []).filter(task => task.status !== "completada").length);
-        });
+        })
+        // Si el servidor no responde, el contador se queda como estaba.
+        .catch(() => {});
     };
     const timer = window.setInterval(read, 60000);
     read();
