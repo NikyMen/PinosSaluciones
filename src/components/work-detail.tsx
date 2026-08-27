@@ -3,16 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ClipboardCheck, FileCheck2, ImagePlus, MessageSquareText, Plus, Send, Timer, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Check, ClipboardCheck, FileCheck2, ImagePlus, MessageSquareText, Plus, Send, Timer, Trash2 } from "lucide-react";
 import { date, dateTime, money } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput } from "@/components/fields";
+import { WorkLabor, type AssignedWorker, type LaborEntry } from "@/components/work-labor";
 
 type Checklist = { _id: string; title: string; done: boolean; completedAt?: string; createdAt?: string; updatedAt?: string };
 type Activity = { _id: string; detail: string; photos: string[]; authorName: string; createdAt: string };
 type Advance = { percentage: number; note: string; date: string };
 type Certificate = { number: string; period: string; percentage: number; amountCents: number; approved: boolean; invoiced: boolean };
-type Labor = { person: string; date: string; hours: number; costCents: number };
-type Work = { _id: string; name: string; code: string; progress: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; advances: Advance[]; certificates: Certificate[]; labor: Labor[] };
+
+type Work = { _id: string; name: string; code: string; progress: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; advances: Advance[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
 
 export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
@@ -117,12 +118,6 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
     if (!response.ok) setError((await response.json()).error); else { form.reset(); setFormKey(value => value + 1); void load(); }
   }
 
-  async function labor(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!work) return;
-    const form = event.currentTarget; const data = new FormData(form);
-    if (await patch({ labor: [...(work.labor || []), { person: String(data.get("person")), date: String(data.get("date")), hours: Number(data.get("hours")), costCents: Math.round(Number(data.get("cost")) * 100) }] })) { form.reset(); setFormKey(value => value + 1); }
-  }
-
   if (!work) return <div className="loading-state">{error || "Cargando obra…"}</div>;
   const fallbackCreatedAt = work.createdAt;
   const fallbackUpdatedAt = work.updatedAt || work.createdAt;
@@ -163,11 +158,10 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
         {canEdit && <form className="mini-form" key={`certificate-${formKey}`} onSubmit={certificate}><input name="number" required placeholder="Número"/><input name="period" required placeholder="Período"/><input name="percentage" type="number" min="0" max="100" required placeholder="%"/><MoneyInput name="amount" required placeholder="Importe"/><FileDrop name="file" accept=".pdf,.jpg,.jpeg,.png"/><button className="primary-btn">Aprobar</button></form>}
         <div className="detail-list">{work.certificates?.slice().reverse().map((item, index) => <div className="detail-row" key={index}><b>#{item.number}</b><span>{item.period} · {item.percentage}%</span><strong>{money(item.amountCents)}</strong><small>{item.invoiced ? "Facturado" : "Pendiente de facturar"}</small></div>)}</div>
       </WorkSection>
-      <WorkSection icon={<Users/>} title="Personal y jornales">
-        {canEdit && <form className="mini-form" key={`labor-${formKey}`} onSubmit={labor}><input name="person" required placeholder="Persona"/><DateInput name="date" required/><input name="hours" type="number" min="0" step=".5" required placeholder="Horas"/><MoneyInput name="cost" required placeholder="Costo"/><button className="primary-btn">Agregar</button></form>}
-        <div className="detail-list">{work.labor?.slice().reverse().map((item, index) => <div className="detail-row" key={index}><b>{item.person}</b><span>{item.hours} h · {date(item.date)}</span><strong>{money(item.costCents)}</strong></div>)}</div>
-      </WorkSection>
     </div>
+
+    <WorkLabor workId={id} assigned={work.assignedWorkers || []} labor={work.labor || []} canEdit={canEdit}
+      onChanged={updated => setWork(updated as Work)} />
   </>;
 }
 

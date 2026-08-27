@@ -8,11 +8,12 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat,
   Landmark, LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart,
-  Truck, Users, WalletCards, X,
+  Truck, Users, WalletCards, X, PackageSearch,
 } from "lucide-react";
 import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
 import { canViewSection, type UserPermissions } from "@/lib/permissions";
 import { NotificationBell } from "@/components/notification-bell";
+import { TasksButton } from "@/components/tasks-button";
 
 type NavItem = { href: string; label: string; icon: LucideIcon; permission?: ViewSection; managerOnly?: boolean };
 type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] };
@@ -25,9 +26,11 @@ const groups: NavGroup[] = [
   ] },
   { id: "works", label: "Obras", icon: HardHat, items: [
     { href: "/app/works", label: "Obras", icon: HardHat, permission: "works" },
-    { href: "/app/tasks", label: "Tareas", icon: ListTodo, permission: "tasks" },
+    { href: "/app/workers", label: "Trabajadores", icon: Users, permission: "workers" },
+    { href: "/app/tasks", label: "Tareas y pendientes", icon: ListTodo, permission: "tasks" },
   ] },
-  { id: "purchases", label: "Compras", icon: ShoppingCart, items: [
+  { id: "purchases", label: "Compras y stock", icon: ShoppingCart, items: [
+    { href: "/app/stock", label: "Stock", icon: PackageSearch, permission: "stock" },
     { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
     { href: "/app/purchases", label: "Órdenes de compra", icon: ShoppingCart, permission: "purchases" },
     { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText, permission: "expenses" },
@@ -126,6 +129,7 @@ export function AppShell({ session, children }: { session: { name: string; email
           <button className="icon-btn mobile" onClick={() => setMobileOpen(true)} aria-label="Abrir menú"><Menu /></button>
           <div className="topbar-context"><span>Pino Gestión</span><b>{current.label}</b></div>
           <div className="top-spacer" />
+          <TasksButton />
           <NotificationBell />
           <div className="profile-wrap">
             <button className="profile" onClick={() => setProfileOpen(value => !value)} aria-expanded={profileOpen}>

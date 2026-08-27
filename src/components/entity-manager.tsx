@@ -1,15 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BriefcaseBusiness, CalendarDays, Download, Edit3, Eye, HardHat, History, ListTodo, Plus, Search, Trash2, Upload, UserRound, X } from "lucide-react";
+import { ArrowDownToLine, BriefcaseBusiness, CalendarDays, CheckCircle2, Download, Edit3, Eye, HardHat, History, ListTodo, Plus, Search, TriangleAlert, Trash2, Upload, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import type { Entity } from "@/lib/constants";
 import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
 import { date, money, titleCase } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput, PhoneList, SearchSelect, type Option } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
+import { StockMovementModal, type StockItem } from "@/components/stock-movement";
 
 type Item = Record<string, unknown> & { _id: string };
+
+// Modulos donde la fila entera abre el formulario y el estado se cambia sin entrar.
+const inlineEntities = new Set<Entity>(["works", "tasks", "quotes", "purchases"]);
+
+// Estados desde los que todavia tiene sentido aprobar una cotizacion.
+const approvable = new Set(["borrador", "enviada", "seguimiento", "vencida"]);
 
 /** Etiqueta corta de un registro, para títulos y para el buscador de los selects. */
 function itemLabel(item: Item) {
@@ -32,6 +39,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
   const [relationValues, setRelationValues] = useState<Record<string, string>>({});
   const [quickCreate, setQuickCreate] = useState<{ fieldKey: string; entity: Entity } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ _id: string; label: string } | null>(null);
+  const [movementFor, setMovementFor] = useState<{ item: StockItem; kind: "ingreso" | "egreso" } | null>(null);
+  const [convertFor, setConvertFor] = useState<Item | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,6 +81,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
     if (key.endsWith("Cents")) return money(Number(value || 0));
     if (key === "progress") return `${value || 0}%`;
     if (key === "phones") return Array.isArray(value) && value.length ? value.join(" · ") : "—";
+    if (key === "minQuantity") return Number(value || 0) || "—";
     if (key.toLowerCase().includes("date") || key === "validUntil") return date(value as string);
     if (key.endsWith("Id")) return relationLabel(key, value);
     if (key === "status" || key === "type" || key === "method" || key === "direction" || key === "assigneeRole") return <span className={`badge ${value}`}>{titleCase(String(value || ""))}</span>;
@@ -105,18 +115,11 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
     setStatusBusy("");
   }
 
-  async function convertQuote(item: Item) {
-    if (!confirm(`Estás por convertir la cotización ${String(item.number || "")} en una obra.\n\nLa cotización va a salir del listado activo y no se va a poder volver a convertir. Queda registrado que la convertiste vos.\n\n¿Estás de acuerdo?`)) return;
-    const code = prompt("Código para la nueva obra:", `OB-${String(item.number || "")}`); if (!code) return;
-    const name = prompt("Nombre de la obra:", String(item.title || "")); if (!name) return;
-    const response = await fetch(`/api/quotes/${item._id}/convert`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, name }) });
-    const result = await response.json(); if (!response.ok) setError(result.error); else void load();
-  }
-
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setSaving(true);
     const form = new FormData(event.currentTarget); const body: Record<string, unknown> = {};
     for (const field of config.fields) {
+      if (field.readOnly) continue;
       let value: unknown = form.get(field.key);
       if (field.type === "file") {
         if (value instanceof File && value.size) {
@@ -159,13 +162,17 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
     <div className="page-heading"><div><p className="eyebrow">GESTIÓN</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && <button className="primary-btn" onClick={() => open()}><Plus size={18} /> Nuevo {config.singular}</button>}</div>
     <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}`}><Download size={17} /> Exportar a Excel</a></div>
     {error && <div className="notice error">{error}</div>}
+    {entity === "stock" && <StockSummary items={items} />}
     <section className="table-panel"><div className="table-scroll"><table><thead><tr>{config.columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
-      const rowEditable = (entity === "works" || entity === "tasks") && canEdit;
-      return <tr key={item._id} className={rowEditable ? "clickable-row" : ""} onClick={rowEditable ? () => open(item) : undefined} onKeyDown={rowEditable ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(item); } } : undefined} tabIndex={rowEditable ? 0 : undefined} title={rowEditable ? (entity === "tasks" ? "Abrir detalle de la tarea" : "Seleccionar para editar") : undefined}>
-        {config.columns.map(column => <td key={column}>{(entity === "works" || entity === "tasks") && column === "status" && canEdit ? <select className={`inline-status ${item.status}`} value={String(item.status || "")} disabled={statusBusy === item._id} onClick={event => event.stopPropagation()} onChange={event => { event.stopPropagation(); void updateStatus(item, event.target.value); }} aria-label={`Estado de ${itemLabel(item)}`}>{statusOptions.map(option => <option key={option} value={option}>{titleCase(option)}</option>)}</select> : display(column, item[column])}</td>)}
+      const rowEditable = inlineEntities.has(entity) && canEdit;
+      return <tr key={item._id} className={rowEditable ? "clickable-row" : ""} onClick={rowEditable ? () => open(item) : undefined} onKeyDown={rowEditable ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(item); } } : undefined} tabIndex={rowEditable ? 0 : undefined} title={rowEditable ? (entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar") : undefined}>
+        {config.columns.map(column => <td key={column}>{inlineEntities.has(entity) && column === "status" && canEdit ? <select className={`inline-status ${item.status}`} value={String(item.status || "")} disabled={statusBusy === item._id} onClick={event => event.stopPropagation()} onChange={event => { event.stopPropagation(); void updateStatus(item, event.target.value); }} aria-label={`Estado de ${itemLabel(item)}`}>{statusOptions.map(option => <option key={option} value={option}>{titleCase(option)}</option>)}</select> : display(column, item[column])}</td>)}
         <td className="row-actions" onClick={event => event.stopPropagation()}>
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
-          {entity === "quotes" && canEdit && item.status === "aprobada" && <button title="Convertir en obra" onClick={() => { void convertQuote(item); }}><BriefcaseBusiness size={16} /></button>}
+          {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
+          {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void updateStatus(item, "aprobada"); }}><CheckCircle2 size={15} /> Aprobar</button>}
+          {entity === "stock" && canEdit && <button title="Registrar una compra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
+          {entity === "stock" && canEdit && <button title="Entregar a una obra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
           {entity !== "tasks" && <button title="Ver historial de cambios" onClick={() => setHistoryFor({ _id: item._id, label: itemLabel(item) })}><History size={16} /></button>}
           {canEdit && <button title={entity === "tasks" ? "Ver y editar tarea" : "Editar"} onClick={() => open(item)}><Edit3 size={16} /></button>}
           {canDeleteRecords && <button title="Eliminar" onClick={() => { void remove(item); }}><Trash2 size={16} /></button>}
@@ -193,8 +200,86 @@ export function EntityManager({ entity, canEdit, canDeleteRecords }: { entity: E
       setQuickCreate(null);
     }} />}
 
+    {convertFor && <ConvertQuoteModal quote={convertFor} onClose={() => setConvertFor(null)} onDone={() => { setConvertFor(null); void load(); }} />}
+
+    {movementFor && <StockMovementModal item={movementFor.item} initialKind={movementFor.kind}
+      onClose={() => setMovementFor(null)}
+      onSaved={updated => { setItems(current => current.map(row => row._id === updated._id ? { ...row, ...updated } as Item : row)); setMovementFor({ item: updated, kind: movementFor.kind }); }} />}
+
     {historyFor && <HistoryModal entity={entity} record={historyFor} onClose={() => setHistoryFor(null)} />}
   </>;
+}
+
+/**
+ * Pasar una cotización a obra. Antes eran tres `prompt()` del navegador, que no
+ * dejaban poner la fecha de inicio: justo el dato que Compras necesita para
+ * saber cuándo preparar los materiales.
+ */
+function ConvertQuoteModal({ quote, onClose, onDone }: { quote: Item; onClose: () => void; onDone: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setSaving(true); setError("");
+    const data = new FormData(event.currentTarget);
+    const response = await fetch(`/api/quotes/${quote._id}/convert`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: String(data.get("code") || ""), name: String(data.get("name") || ""), startDate: String(data.get("startDate") || "") || undefined }),
+    });
+    const result = await response.json();
+    setSaving(false);
+    if (!response.ok) return setError(result.error || "No se pudo crear la obra");
+    onDone();
+  }
+
+  return <div className="modal-layer">
+    <button className="modal-backdrop" onClick={onClose} aria-label="Cerrar" />
+    <section className="modal convert-modal" role="dialog" aria-modal="true" aria-labelledby="convert-modal-title">
+      <header><div className="modal-title-wrap"><span className="modal-heading-icon"><BriefcaseBusiness /></span><div>
+        <p className="eyebrow">COTIZACIÓN A OBRA</p>
+        <h2 id="convert-modal-title">Pasar {String(quote.number || "")} a obra</h2>
+        <small>{String(quote.title || "")}</small>
+      </div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
+      <form onSubmit={submit}>
+        <div className="modal-form-body">
+          <p className="convert-warning"><TriangleAlert size={17} /><span>Estás por convertir esta cotización en una obra. Va a salir del listado activo, no se va a poder volver a convertir y queda registrado que la pasaste vos. Compras recibe el aviso con la fecha de inicio.</span></p>
+          <div className="form-grid">
+            <label><span>Código de la obra *</span><input name="code" required defaultValue={`OB-${String(quote.number || "")}`} autoFocus /></label>
+            <label><span>Nombre de la obra *</span><input name="name" required defaultValue={String(quote.title || "")} /></label>
+            <label><span>Fecha de inicio</span><DateInput name="startDate" quickRanges={[7, 14, 30]} /></label>
+            <label className="readonly-field"><span>Presupuesto que hereda</span><output>{money(Number(quote.amountCents || 0))}</output></label>
+          </div>
+        </div>
+        {error && <p className="form-error modal-error">{error}</p>}
+        <footer>
+          <span>La conversión queda auditada.</span>
+          <button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button>
+          <button className="primary-btn" disabled={saving}>{saving ? "Creando la obra…" : "Sí, crear la obra"}</button>
+        </footer>
+      </form>
+    </section>
+  </div>;
+}
+
+/** Cabecera del stock: cuánto hay guardado y qué está por debajo del mínimo. */
+function StockSummary({ items }: { items: Item[] }) {
+  const valued = items.reduce((total, item) => total + Number(item.valueCents || 0), 0);
+  const low = items.filter(item => Number(item.minQuantity || 0) > 0 && Number(item.quantity || 0) <= Number(item.minQuantity || 0));
+  return <section className="stock-overview">
+    <div className="stock-kpi"><span>Materiales en catálogo</span><strong>{items.length}</strong></div>
+    <div className="stock-kpi"><span>Valorización del depósito</span><strong>{money(valued)}</strong></div>
+    <div className={low.length ? "stock-kpi alert" : "stock-kpi"}>
+      <span>{low.length ? <><TriangleAlert size={13} /> Bajo el mínimo</> : "Bajo el mínimo"}</span>
+      <strong>{low.length}</strong>
+      {low.length > 0 && <small>{low.slice(0, 3).map(item => String(item.name)).join(", ")}{low.length > 3 ? ` y ${low.length - 3} más` : ""}</small>}
+    </div>
+  </section>;
 }
 
 /** Traduce los errores por campo que devuelve zod a una frase legible. */
@@ -282,6 +367,7 @@ function FormField({ field, value, relationOptions, relationValue, onRelationCha
   const label = <span>{field.label}{field.required && " *"}{field.hint && <em className="field-hint">{field.hint}</em>}</span>;
   const text = String(value ?? "");
 
+  if (field.readOnly) return <label className="readonly-field">{label}<output>{field.type === "money" ? money(Number(value || 0)) : text || "0"}</output></label>;
   if (field.type === "money") return <label>{label}<MoneyInput name={field.key} defaultValue={Number(value || 0) / 100} required={field.required} autoFocus={autoFocus} /></label>;
   if (field.type === "date") return <label>{label}<DateInput name={field.key} defaultValue={value ? new Date(String(value)).toISOString().slice(0, 10) : ""} required={field.required} autoFocus={autoFocus} quickRanges={field.quickRanges} /></label>;
   if (field.type === "phones") return <label className="wide">{label}<PhoneList name={field.key} defaultValue={Array.isArray(value) ? value.map(String) : text ? [text] : []} /></label>;

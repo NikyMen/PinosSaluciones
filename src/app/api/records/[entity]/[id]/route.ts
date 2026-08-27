@@ -1,7 +1,7 @@
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
-import { modelByEntity } from "@/lib/models";
+import { composeWorkerName, modelByEntity } from "@/lib/models";
 import { schemas } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canDelete, canRead, canWrite } from "@/lib/permissions";
@@ -30,7 +30,11 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     if (!parsed.success) return Response.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
-    const item = await model.findByIdAndUpdate(id, { $set: parsed.data }, { new: true, runValidators: true }).lean();
+    const changes = parsed.data as Record<string, unknown>;
+    if (entity === "workers" && (changes.firstName || changes.lastName)) {
+      changes.name = composeWorkerName({ ...before as Record<string, unknown>, ...changes });
+    }
+    const item = await model.findByIdAndUpdate(id, { $set: changes }, { new: true, runValidators: true }).lean();
     if (entity === "quotes" && item && (before as Record<string, unknown>).status !== (item as Record<string, unknown>).status) {
       const { Quote } = await import("@/lib/models");
       await Quote.updateOne({ _id: id }, { $push: { history: { action: `Estado: ${(item as Record<string, unknown>).status}`, at: new Date(), userId: session.userId } } });

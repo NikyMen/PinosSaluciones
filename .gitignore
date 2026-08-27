@@ -59,3 +59,7 @@ next-env.d.ts
 
 # config real de nginx del servidor (se versiona solo nginx.conf.example)
 deploy/*.nginx.conf
+
+# pruebas locales del generador de PDF
+pdf-check.ts
+.pdf-preview.pdf

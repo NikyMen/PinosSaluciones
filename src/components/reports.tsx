@@ -5,6 +5,7 @@ import { Download, TrendingDown, TrendingUp } from "lucide-react";
 import { money } from "@/lib/format";
 import { AiChat } from "@/components/ai-chat";
 import { DateInput } from "@/components/fields";
+import { buildReportPdf } from "@/lib/report-pdf";
 
 export type Report = {
   cashflow: Array<{ period: string; incomeCents: number; outcomeCents: number }>;
@@ -49,35 +50,13 @@ export function Reports() {
 
   async function pdf() {
     if (!data) return;
-    const { jsPDF } = await import("jspdf");
+    const [{ jsPDF }, session] = await Promise.all([
+      import("jspdf"),
+      fetch("/api/auth/me").then(response => response.ok ? response.json() : null).catch(() => null),
+    ]);
     const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text("Pinos Soluciones — Reporte de gestión", 14, 18);
-    doc.setFontSize(10);
-    doc.text(`Período: ${from} a ${to}`, 14, 26);
-    let y = 38;
-    doc.setFontSize(13);
-    doc.text("Flujo de caja", 14, y);
-    y += 8;
-    data.cashflow.forEach(row => {
-      doc.setFontSize(10);
-      doc.text(`${row.period}   Ingresos ${money(row.incomeCents)}   Egresos ${money(row.outcomeCents)}   Neto ${money(row.incomeCents - row.outcomeCents)}`, 14, y);
-      y += 7;
-    });
-    y += 6;
-    doc.setFontSize(13);
-    doc.text("Rentabilidad por obra", 14, y);
-    y += 8;
-    data.profitability.forEach(row => {
-      if (y > 280) {
-        doc.addPage();
-        y = 18;
-      }
-      doc.setFontSize(10);
-      doc.text(`${row.name}: ingresos ${money(row.revenueCents)}, costos ${money(row.costCents)}, margen ${money(row.marginCents)}`, 14, y);
-      y += 7;
-    });
-    doc.save(`reporte-pinos-${to}.pdf`);
+    const filename = buildReportPdf(doc, data, { from, to, author: session?.name || "el sistema" });
+    doc.save(filename);
   }
 
   return (

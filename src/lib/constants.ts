@@ -24,7 +24,9 @@ export const entities = [
   "clients",
   "quotes",
   "works",
+  "workers",
   "suppliers",
+  "stock",
   "purchases",
   "expenses",
   "invoices",
@@ -45,7 +47,9 @@ export const entityLabels: Record<Entity, string> = {
   clients: "Clientes",
   quotes: "Cotizaciones",
   works: "Obras",
+  workers: "Trabajadores",
   suppliers: "Proveedores",
+  stock: "Stock",
   purchases: "Órdenes de compra",
   expenses: "Compras y gastos",
   invoices: "Facturación",
@@ -53,7 +57,7 @@ export const entityLabels: Record<Entity, string> = {
   payments: "Pagos",
   checks: "Cheques",
   cash: "Caja y bancos",
-  tasks: "Tareas",
+  tasks: "Tareas y pendientes",
 };
 
 export const viewSectionLabels: Record<ViewSection, string> = {

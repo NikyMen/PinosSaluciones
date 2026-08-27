@@ -1,6 +1,6 @@
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
-import { modelByEntity, nextQuoteNumber } from "@/lib/models";
+import { composeWorkerName, modelByEntity, nextQuoteNumber } from "@/lib/models";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
@@ -20,10 +20,12 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 20)));
     const search = sanitizeSearch(url.searchParams.get("search") || "");
-    const filter = search ? { $or: ["name", "title", "number", "code", "description", "bank", "cuit", "contactName"].map(key => ({ [key]: { $regex: search, $options: "i" } })) } : {};
+    const filter = search ? { $or: ["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku"].map(key => ({ [key]: { $regex: search, $options: "i" } })) } : {};
     const model = modelByEntity[entity];
+    // En ventas interesa lo que se movio recien, no lo que se creo primero.
+    const sort: Record<string, -1> = entity === "quotes" ? { updatedAt: -1 } : { createdAt: -1 };
     const [items, total] = await Promise.all([
-      model.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      model.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
       model.countDocuments(filter),
     ]);
     return Response.json({ items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
@@ -41,6 +43,7 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     const model = modelByEntity[entity];
     const data = parsed.data as Record<string, unknown>;
     if (entity === "quotes" && !data.number) data.number = await nextQuoteNumber();
+    if (entity === "workers") data.name = composeWorkerName(data);
     const item = await model.create(data as never);
 
     if (entity === "collections") await applyInvoiceCollection(item.invoiceId, item.amountCents);

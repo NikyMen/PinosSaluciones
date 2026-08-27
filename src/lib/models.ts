@@ -67,12 +67,80 @@ const WorkSchema = new Schema({
   activity: [WorkActivitySchema],
   advances: [{ percentage: Number, note: String, date: Date, userId: Schema.Types.ObjectId, photos: [String] }],
   certificates: [{ number: String, period: String, percentage: Number, amountCents: Number, approved: Boolean, invoiced: Boolean, file: String }],
-  labor: [{ person: String, date: Date, hours: Number, costCents: Number }],
+  // Se guardan los datos del trabajador junto a la asignacion: la obra tiene que
+  // poder mostrar nombre, DNI y telefono sin depender de otra consulta.
+  assignedWorkers: [{
+    workerId: { type: Schema.Types.ObjectId, ref: "Worker" },
+    name: String, dni: String, phone: String, category: String,
+    dailyRateCents: Number, hoursPerDay: Number,
+    assignedAt: { type: Date, default: Date.now }, assignedByName: String,
+  }],
+  // Parte diario: quien, que dia y cuantas horas. El importe se congela con el
+  // valor hora vigente al cargarlo, para que un cambio de jornal no reescriba el pasado.
+  labor: [{
+    workerId: { type: Schema.Types.ObjectId, ref: "Worker" },
+    person: String, date: Date, hours: Number,
+    hourlyRateCents: Number, costCents: Number,
+    note: String, loadedByName: String, createdAt: { type: Date, default: Date.now },
+  }],
+}, options);
+
+type WorkerDoc = {
+  name?: string; firstName: string; lastName: string; dni: string; phone?: string;
+  category?: string; dailyRateCents?: number; hoursPerDay?: number; active?: boolean; notes?: string;
+};
+
+const WorkerSchema = new Schema<WorkerDoc>({
+  // `name` se arma solo con apellido y nombre: es lo que muestran los listados,
+  // los selects y el buscador, que trabajan siempre contra ese campo.
+  name: { type: String, trim: true },
+  firstName: { type: String, required: true, trim: true },
+  lastName: { type: String, required: true, trim: true },
+  dni: { type: String, required: true, trim: true },
+  phone: { type: String, trim: true },
+  category: { type: String, enum: ["capataz", "oficial", "medio_oficial", "ayudante", "especialista"], default: "oficial" },
+  // El valor del jornal es el dato que maneja la empresa; el valor hora sale de dividirlo.
+  dailyRateCents: { type: Number, min: 0, default: 0 },
+  hoursPerDay: { type: Number, min: 1, max: 24, default: 8 },
+  active: { type: Boolean, default: true },
+  notes: String,
 }, options);
 
 const SupplierSchema = new Schema({
   name: { type: String, required: true }, contactName: String, email: String, phone: String,
   address: String, notes: String, active: { type: Boolean, default: true },
+}, options);
+
+// Cada entrada y salida de un material queda guardada: el stock actual es la
+// consecuencia de los movimientos, no un numero que alguien escribe a mano.
+const StockMovementSchema = new Schema({
+  kind: { type: String, enum: ["ingreso", "egreso", "ajuste"], required: true },
+  quantity: { type: Number, required: true },
+  unitCostCents: { type: Number, min: 0, default: 0 },
+  totalCents: { type: Number, min: 0, default: 0 },
+  supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
+  workId: { type: Schema.Types.ObjectId, ref: "Work" },
+  reference: String, note: String,
+  date: { type: Date, default: Date.now },
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+  // Rastro cruzado con los otros modulos, para poder auditar el circuito completo.
+  purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase" },
+  expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
+}, { timestamps: { createdAt: true, updatedAt: false } });
+
+const StockItemSchema = new Schema({
+  name: { type: String, required: true, trim: true },
+  sku: { type: String, trim: true },
+  category: { type: String, enum: ["materiales", "herramientas", "seguridad", "consumibles", "otros"], default: "materiales" },
+  unit: { type: String, enum: ["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "rollo"], default: "unidad" },
+  quantity: { type: Number, default: 0 },
+  minQuantity: { type: Number, min: 0, default: 0 },
+  // Costo promedio ponderado: cada compra a distinto precio lo recalcula.
+  avgCostCents: { type: Number, min: 0, default: 0 },
+  valueCents: { type: Number, min: 0, default: 0 },
+  supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
+  location: String, notes: String, active: { type: Boolean, default: true },
+  movements: [StockMovementSchema],
 }, options);
 
 const PurchaseSchema = new Schema({
@@ -159,6 +227,8 @@ export const User = mongoose.models.User || mongoose.model("User", UserSchema);
 export const Client = mongoose.models.Client || mongoose.model("Client", ClientSchema);
 export const Quote = mongoose.models.Quote || mongoose.model("Quote", QuoteSchema);
 export const Work = mongoose.models.Work || mongoose.model("Work", WorkSchema);
+export const StockItem = mongoose.models.StockItem || mongoose.model("StockItem", StockItemSchema);
+export const Worker = mongoose.models.Worker || mongoose.model("Worker", WorkerSchema);
 export const Supplier = mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
 export const Purchase = mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
 export const Expense = mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
@@ -174,6 +244,11 @@ export const Counter = mongoose.models.Counter || mongoose.model("Counter", Coun
 
 // COT-1: numeración correlativa. La primera vez arranca desde el número más alto ya cargado
 // para no pisar los que vienen del sistema anterior (llegan hasta COT-747).
+/** El listado, el buscador y los selects trabajan contra `name`: se arma acá. */
+export function composeWorkerName(doc: { firstName?: unknown; lastName?: unknown }) {
+  return [doc.lastName, doc.firstName].filter(Boolean).map(String).join(", ");
+}
+
 export async function nextQuoteNumber() {
   if (!await Counter.exists({ _id: "quotes" })) {
     const [highest] = await Quote.aggregate([
@@ -187,4 +262,4 @@ export async function nextQuoteNumber() {
   return `COT-${counter.seq}`;
 }
 
-export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, suppliers: Supplier, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task } as const;
+export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task } as const;
