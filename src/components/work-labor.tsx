@@ -297,15 +297,18 @@ export type LaborDraft = { workerId: string; date: string; mode: RateMode; quant
  * escribe otro importe final, ese manda y queda marcado; volver a tocar la
  * cantidad o el valor lo devuelve al calculado.
  */
-function LaborEditor({ assigned, entry, busy, submitLabel, onSubmit, onCancel }: {
+export function LaborEditor({ assigned, entry, busy, submitLabel, onSubmit, onCancel }: {
   assigned: AssignedWorker[]; entry?: LaborEntry; busy: boolean; submitLabel: string;
   onSubmit: (draft: LaborDraft) => void; onCancel?: () => void;
 }) {
-  const [workerId, setWorkerId] = useState(() => String(entry?.workerId || ""));
+  const initialWorker = entry ? assigned.find(row => String(row.workerId) === String(entry.workerId)) : assigned.length === 1 ? assigned[0] : undefined;
+  const [workerId, setWorkerId] = useState(() => String(entry?.workerId || initialWorker?.workerId || ""));
   const [when, setWhen] = useState(() => String(entry?.date || todayIso()).slice(0, 10));
-  const [mode, setMode] = useState<RateMode>(() => (entry?.mode === "jornada" ? "jornada" : entry ? "hora" : "jornada"));
+  const [mode, setMode] = useState<RateMode>(() => (entry?.mode === "jornada" ? "jornada" : entry ? "hora" : rateMode(initialWorker || {})));
   const [quantity, setQuantity] = useState(() => entry ? String(entry.mode === "jornada" ? entry.days ?? 0 : entry.hours) : "");
-  const [rateCents, setRateCents] = useState(() => entry ? (entry.mode === "jornada" ? Number(entry.dailyRateCents) || 0 : Number(entry.hourlyRateCents) || 0) : 0);
+  const [rateCents, setRateCents] = useState(() => entry
+    ? (entry.mode === "jornada" ? Number(entry.dailyRateCents) || 0 : Number(entry.hourlyRateCents) || 0)
+    : initialWorker ? (rateMode(initialWorker) === "jornada" ? dailyRateCents(initialWorker) : hourlyRateCents(initialWorker)) : 0);
   const [override, setOverride] = useState<number | null>(() => entry?.manualCost ? Number(entry.costCents) || 0 : null);
   const [note, setNote] = useState(() => String(entry?.note || ""));
 

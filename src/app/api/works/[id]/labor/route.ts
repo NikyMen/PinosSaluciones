@@ -31,7 +31,7 @@ const patchSchema = schema.partial().omit({ workerId: true });
 export async function POST(request: Request, context: RouteContext<"/api/works/[id]/labor">) {
   try {
     const session = await requireSession();
-    if (!canWrite(session, "works")) throw new Error("FORBIDDEN");
+    if (!canWrite(session, "works") && !canWrite(session, "workers")) throw new Error("FORBIDDEN");
     const { id } = await context.params;
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     const parsed = schema.safeParse(await request.json());
@@ -71,7 +71,7 @@ export async function POST(request: Request, context: RouteContext<"/api/works/[
 export async function PATCH(request: Request, context: RouteContext<"/api/works/[id]/labor">) {
   try {
     const session = await requireSession();
-    if (!canWrite(session, "works")) throw new Error("FORBIDDEN");
+    if (!canWrite(session, "works") && !canWrite(session, "workers")) throw new Error("FORBIDDEN");
     const { id } = await context.params;
     const entryId = new URL(request.url).searchParams.get("entryId") || "";
     if (!isValidObjectId(id) || !isValidObjectId(entryId)) return Response.json({ error: "ID inválido" }, { status: 400 });
@@ -114,7 +114,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/works/
 export async function DELETE(request: Request, context: RouteContext<"/api/works/[id]/labor">) {
   try {
     const session = await requireSession();
-    if (!canWrite(session, "works")) throw new Error("FORBIDDEN");
+    if (!canWrite(session, "works") && !canWrite(session, "workers")) throw new Error("FORBIDDEN");
     const { id } = await context.params;
     const entryId = new URL(request.url).searchParams.get("entryId") || "";
     if (!isValidObjectId(id) || !isValidObjectId(entryId)) return Response.json({ error: "ID inválido" }, { status: 400 });

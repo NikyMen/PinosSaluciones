@@ -896,6 +896,8 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 .row-action-wide.approve:hover { color: #fff; background: var(--success) !important; border-color: var(--success) !important; }
 .row-action-wide.convert { color: #fff; background: var(--brand-navy) !important; border-color: var(--brand-navy) !important; }
 .row-action-wide.convert:hover { background: var(--brand-navy-deep) !important; }
+.row-action-wide.labor { color: var(--brand-navy); background: #eef4f8 !important; border-color: #cad9e5 !important; }
+.row-action-wide.labor:hover { color: #fff; background: var(--brand-navy) !important; border-color: var(--brand-navy) !important; }
 
 .convert-modal { width: min(620px, 100%); }
 .convert-warning { margin: 0; padding: 13px 15px; display: flex; align-items: flex-start; gap: 11px; border: 1px solid #f3d9a8; border-radius: 12px; color: #7a5410; background: var(--warning-soft); font-size: .74rem; line-height: 1.5; }
@@ -1004,6 +1006,22 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 .settlement-total td { border-top: 2px solid var(--line-strong) !important; color: var(--brand-navy-deep); background: var(--surface-muted); }
 .labor-detail { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .labor-detail .detail-row { align-items: center; gap: 11px; }
+.worker-labor-modal { width: min(980px, 100%); }
+.worker-labor-modal > footer { position: sticky; bottom: 0; margin: 0; }
+.worker-labor-body { padding: 22px 24px; }
+.worker-work-select { display: flex; flex-direction: column; gap: 6px; }
+.worker-work-select > span { color: var(--muted-2); font-size: .65rem; font-weight: 850; text-transform: uppercase; }
+.worker-work-select select { height: 42px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; }
+.worker-labor-rate { padding: 11px 13px; display: flex; align-items: center; gap: 9px; border-radius: 10px; color: var(--brand-navy); background: #eef4f8; font-size: .73rem; }
+.worker-labor-rate span { flex: 1; }
+.worker-labor-section { display: grid; gap: 13px; padding-top: 18px; border-top: 1px solid var(--line); }
+.worker-labor-section h3 { margin: 2px 0 0; color: var(--brand-navy-deep); font-size: 1rem; }
+.worker-labor-totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.worker-labor-totals > div { padding: 13px; display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); }
+.worker-labor-totals span { color: var(--muted-2); font-size: .64rem; font-weight: 800; text-transform: uppercase; }
+.worker-labor-totals b { color: var(--brand-navy-deep); font-size: 1rem; }
+.worker-labor-totals .amount { border-color: #bfe3d4; background: var(--success-soft); }
+.worker-labor-totals .amount b { color: var(--success); }
 
 /* --- Atajo a tareas y pendientes ------------------------------------------- */
 .tasks-btn { position: relative; width: 40px; height: 40px; margin-right: 2px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); }
@@ -1014,6 +1032,11 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 @media (max-width: 720px) {
   .settlement-filters { flex-direction: column; align-items: stretch; }
   .worker-grid { grid-template-columns: 1fr; }
+  .worker-labor-body { padding-inline: 17px; }
+  .worker-labor-rate { align-items: flex-start; flex-wrap: wrap; }
+  .worker-labor-rate span { flex-basis: calc(100% - 28px); }
+  .worker-labor-rate b { margin-left: 25px; }
+  .worker-labor-totals { grid-template-columns: 1fr; }
 }
 
 

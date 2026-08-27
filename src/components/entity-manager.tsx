@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, Download, Edit3, Eye, FileCheck2, HardHat, History, ListTodo, Percent, Plus, Search, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { ArrowDownToLine, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, Download, Edit3, Eye, FileCheck2, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
 import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
@@ -11,6 +11,7 @@ import { HistoryModal, RecordHistory } from "@/components/record-history";
 import { StockMovementModal, type StockItem } from "@/components/stock-movement";
 import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
 import { buildInvoicePdf, readBrandLogo } from "@/lib/invoice-pdf";
+import { WorkerLaborModal } from "@/components/worker-labor-modal";
 
 type Item = Record<string, unknown> & { _id: string };
 
@@ -50,6 +51,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [relationValues, setRelationValues] = useState<Record<string, string>>({});
   const [quickCreate, setQuickCreate] = useState<{ fieldKey: string; entity: Entity } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ _id: string; label: string } | null>(null);
+  const [laborFor, setLaborFor] = useState<{ _id: string; label: string } | null>(null);
   const [movementFor, setMovementFor] = useState<{ item: StockItem; kind: "ingreso" | "egreso" } | null>(null);
   const [convertFor, setConvertFor] = useState<Item | null>(null);
   const [invoiceFor, setInvoiceFor] = useState<Item | null>(null);
@@ -254,6 +256,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "stock" && canEdit && <button title="Registrar una compra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Entregar a una obra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
           {entity !== "tasks" && <button title="Ver historial de cambios" onClick={() => setHistoryFor({ _id: item._id, label: itemLabel(item) })}><History size={16} /></button>}
+          {entity === "workers" && <button className="row-action-wide labor" title="Cargar horarios y ver la liquidación" onClick={() => setLaborFor({ _id: item._id, label: itemLabel(item) })}><Timer size={15} /> Horarios</button>}
           {canEdit && <button title={entity === "tasks" ? "Ver y editar tarea" : "Editar"} onClick={() => open(item)}><Edit3 size={16} /></button>}
           {canDeleteRecords && <button title="Eliminar" onClick={() => { void remove(item); }}><Trash2 size={16} /></button>}
         </td>
@@ -302,6 +305,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       onSaved={updated => { setItems(current => current.map(row => row._id === updated._id ? { ...row, ...updated } as Item : row)); setMovementFor({ item: updated, kind: movementFor.kind }); }} />}
 
     {historyFor && <HistoryModal entity={entity} record={historyFor} onClose={() => setHistoryFor(null)} />}
+    {laborFor && <WorkerLaborModal worker={laborFor} canEdit={canEdit} onClose={() => setLaborFor(null)} />}
   </>;
 }
 
