@@ -1,6 +1,6 @@
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
-import { composeWorkerName, modelByEntity, nextQuoteNumber } from "@/lib/models";
+import { composeWorkerName, modelByEntity, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
@@ -45,6 +45,8 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     const model = modelByEntity[entity];
     const data = parsed.data as Record<string, unknown>;
     if (entity === "quotes" && !data.number) data.number = await nextQuoteNumber();
+    // La version no se elige a mano: sale de cuantas cotizaciones hay ya con ese titulo.
+    if (entity === "quotes") data.version = await nextQuoteVersion(String(data.title || ""));
     if (entity === "tasks") await resolveTaskAssignee(session, data);
     if (entity === "workers") data.name = composeWorkerName(data);
     const item = await model.create(data as never);

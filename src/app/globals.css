@@ -116,7 +116,9 @@ svg { flex: none; }
 .brand small { overflow: hidden; color: #a9c0d2; font-size: .6rem; font-weight: 700; letter-spacing: .055em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar nav { position: relative; margin-top: 22px; padding: 0 2px 14px; display: flex; flex: 1; flex-direction: column; gap: 3px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.16) transparent; }
 .nav-caption { margin: 4px 10px 7px; color: #7899b1; font-size: .57rem; font-weight: 900; letter-spacing: .16em; }
-.nav-caption-secondary { margin-top: 16px; }
+.nav-caption-secondary { margin-top: 0; }
+/* Analisis y configuracion quedan pegados al pie de la barra. */
+.nav-secondary { margin-top: auto; padding-top: 14px; display: flex; flex-direction: column; gap: 3px; border-top: 1px solid rgba(255,255,255,.09); }
 .nav-link, .nav-group-trigger { width: 100%; min-height: 43px; padding: 0 11px; display: flex; align-items: center; gap: 11px; border: 0; border-radius: 10px; color: #b8cada; background: transparent; font-size: .77rem; font-weight: 700; text-align: left; }
 .nav-link:hover, .nav-group-trigger:hover { color: #fff; background: rgba(255,255,255,.075); }
 .nav-link.active { color: #fff; background: rgba(255,255,255,.12); box-shadow: inset 3px 0 var(--brand-red); }
@@ -879,12 +881,21 @@ td b { color: #273449; }
 }
 
 /* --- Botones de fila con texto completo ------------------------------------ */
-.row-action-wide { width: auto !important; padding: 0 11px !important; height: 31px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong) !important; border-radius: 9px !important; font-size: .7rem; font-weight: 800; white-space: nowrap; }
+/* La columna de acciones se queda con lo que necesita y el resto del ancho va a
+   las demas. Ademas queda pegada al borde derecho: cuando la tabla no entra y
+   hay que barrerla de costado, "Aprobar" y "Pasar a obra" se veian cortados. */
+.row-actions, thead th:last-child { position: sticky; right: 0; z-index: 1; }
+.row-actions { width: 1%; white-space: nowrap; background: var(--paper); box-shadow: -10px 0 12px -12px rgba(12, 38, 64, .5); }
+thead th:last-child { background: #f7f9fb; }
+tbody tr:hover .row-actions { background: #f9fbfd; }
+.clickable-row:hover .row-actions { background: #f2f7fb; }
+.row-actions > * { vertical-align: middle; }
+.row-action-wide { width: auto !important; min-width: max-content; padding: 0 11px !important; height: 31px; display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line-strong) !important; border-radius: 9px !important; font-size: .7rem; font-weight: 800; line-height: 1; white-space: nowrap; }
+.row-action-wide + .row-action-wide, .row-action-wide + button, .row-action-wide + a { margin-left: 4px; }
 .row-action-wide.approve { color: var(--success); background: var(--success-soft) !important; border-color: #bfe3d4 !important; }
 .row-action-wide.approve:hover { color: #fff; background: var(--success) !important; border-color: var(--success) !important; }
 .row-action-wide.convert { color: #fff; background: var(--brand-navy) !important; border-color: var(--brand-navy) !important; }
 .row-action-wide.convert:hover { background: var(--brand-navy-deep) !important; }
-.row-actions { white-space: nowrap; }
 
 .convert-modal { width: min(620px, 100%); }
 .convert-warning { margin: 0; padding: 13px 15px; display: flex; align-items: flex-start; gap: 11px; border: 1px solid #f3d9a8; border-radius: 12px; color: #7a5410; background: var(--warning-soft); font-size: .74rem; line-height: 1.5; }
@@ -921,6 +932,17 @@ td b { color: #273449; }
 .percent-input { display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; }
 .percent-input input { height: 42px; flex: 1; border: 0; background: none; font-size: 1rem; font-weight: 800; }
 .percent-input svg { color: var(--muted-2); }
+/* Facturar el avance en el mismo paso en que la cotizacion pasa a obra. */
+.convert-billing { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-muted); }
+.convert-billing .eyebrow { margin: 0 0 12px; }
+.convert-billing .invoice-note { margin-top: 12px; background: #fff; }
+.percent-quick { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.percent-quick button { padding: 5px 11px; border: 1px solid var(--line-strong); border-radius: 100px; color: var(--muted); background: #fff; font-size: .66rem; font-weight: 800; }
+.percent-quick button:hover { color: var(--brand-navy); border-color: var(--brand-navy); }
+.percent-quick button.active { color: #fff; border-color: var(--brand-navy); background: var(--brand-navy); }
+.convert-invoice-btn { display: inline-flex; align-items: center; gap: 7px; color: var(--brand-navy) !important; border-color: var(--brand-navy) !important; }
+.convert-invoice-btn:hover { color: #fff !important; background: var(--brand-navy) !important; }
+
 .invoice-note { margin: 14px 0 0; padding: 12px 14px; border-left: 3px solid var(--brand-navy); border-radius: 0 10px 10px 0; color: #3f4a5b; background: #f4f8fb; font-size: .74rem; line-height: 1.55; }
 
 /* Doble visto para guardar un cambio de estado desde el listado */
@@ -992,4 +1014,46 @@ td b { color: #273449; }
 @media (max-width: 720px) {
   .settlement-filters { flex-direction: column; align-items: stretch; }
   .worker-grid { grid-template-columns: 1fr; }
+}
+
+
+/* --- Listados en el telefono ------------------------------------------------
+   Una tabla de seis columnas en 390px es una tira que hay que barrer de
+   costado. Abajo de 720px cada fila pasa a ser una ficha: la etiqueta de la
+   columna (que viene en `data-label`) a la izquierda, el dato a la derecha, y
+   las acciones al pie con area de toque de dedo. */
+@media (max-width: 720px) {
+  .table-panel .table-scroll { overflow: visible; }
+  .table-panel table { min-width: 0; display: block; }
+  .table-panel thead { display: none; }
+  .table-panel tbody, .table-panel tbody tr, .table-panel tbody td { display: block; width: auto; }
+  .table-panel tbody tr { padding: 13px 15px 12px; border-bottom: 1px solid var(--line); }
+  .table-panel tbody tr:last-child { border-bottom: 0; }
+  .table-panel .clickable-row:hover { box-shadow: none; }
+  .table-panel tbody td { padding: 4px 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 0; font-size: .76rem; text-align: right; }
+  .table-panel tbody td::before { content: attr(data-label); flex: none; color: var(--muted-2); font-size: .58rem; font-weight: 850; letter-spacing: .075em; text-align: left; text-transform: uppercase; }
+  /* La primera columna es el titulo de la ficha: ocupa el ancho y va sin etiqueta. */
+  .table-panel tbody td:first-child { margin-bottom: 4px; display: block; color: var(--ink); font-size: .88rem; font-weight: 800; text-align: left; }
+  .table-panel tbody td:first-child::before { content: none; }
+  .table-panel tbody td:empty { display: none; }
+  .table-panel .status-cell { justify-content: flex-end; }
+  .table-panel .inline-status { max-width: none; }
+  .table-panel td.row-actions { position: static; width: auto; margin-top: 9px; padding-top: 10px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; border-top: 1px dashed var(--line); background: none; box-shadow: none; }
+  .table-panel td.row-actions::before { content: none; }
+  .table-panel .row-actions button, .table-panel .row-actions > a { width: 38px; height: 38px; border: 1px solid var(--line); }
+  .table-panel .row-action-wide { flex: 1; min-width: 140px; height: 38px; }
+  .table-panel .row-action-wide + .row-action-wide, .table-panel .row-action-wide + button, .table-panel .row-action-wide + a { margin-left: 0; }
+  .table-panel .status-confirm { flex-wrap: wrap; justify-content: flex-end; }
+}
+
+/* --- Modales y facturacion en el telefono ---------------------------------- */
+@media (max-width: 560px) {
+  /* Tres botones no entran en una linea: cada uno ocupa el ancho y el principal
+     queda arriba, que es el que se toca. */
+  .modal footer { gap: 8px; flex-direction: column-reverse; align-items: stretch; }
+  .modal footer button { width: 100%; height: 44px; justify-content: center; }
+  .convert-billing { padding: 13px; }
+  .percent-quick button { flex: 1; min-width: 62px; height: 34px; }
+  .invoice-summary { grid-template-columns: 1fr 1fr; }
+  .date-quick button, .phone-list button { min-height: 34px; }
 }

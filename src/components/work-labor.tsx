@@ -6,6 +6,7 @@ import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/f
 import { date, isoPlusDays, money, titleCase, todayIso } from "@/lib/format";
 import { computeLabor, dailyRateCents, hourlyRateCents, hoursPerDay, rateMode, type RateMode } from "@/lib/labor";
 import { buildLaborPdf } from "@/lib/labor-pdf";
+import { readBrandLogo } from "@/lib/invoice-pdf";
 
 export type AssignedWorker = {
   workerId: string; name: string; dni?: string; phone?: string; category?: string;
@@ -44,7 +45,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
       .then((result: { items?: Array<Record<string, unknown>> }) => setCatalog((result.items || []).map(row => ({
         value: String(row._id), label: String(row.name || `${row.lastName}, ${row.firstName}`),
         hint: `DNI ${row.dni} · ${titleCase(String(row.category || ""))}`,
-      })))).catch(() => setError("No se pudo cargar el legajo de trabajadores"));
+      })))).catch(() => setError("No se pudo cargar el legajo del personal"));
   }, []);
 
   const assignedIds = new Set(assigned.map(worker => String(worker.workerId)));
@@ -67,7 +68,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
   async function assign(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const workerId = String(new FormData(event.currentTarget).get("workerId") || "");
-    if (!workerId) return setError("Elegí un trabajador del legajo");
+    if (!workerId) return setError("Elegí a alguien del legajo");
     if (await call(`/api/works/${workId}/workers`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workerId }) })) {
       setFormKey(value => value + 1);
     }
@@ -168,7 +169,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
     try {
       const [{ jsPDF }, logo, session] = await Promise.all([
         import("jspdf"),
-        readLogo(),
+        readBrandLogo(),
         fetch("/api/auth/me").then(response => response.ok ? response.json() : null).catch(() => null),
       ]);
       const doc = new jsPDF();
@@ -199,7 +200,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
         <SearchSelect name="workerId" options={available} placeholder={available.length ? "Buscar en el legajo…" : "Ya están todos asignados"} />
         <button className="primary-btn" disabled={busy || !available.length}><UserPlus size={16} /> Asignar a la obra</button>
       </form>}
-      {!catalog.length && <p className="task-history-state">Todavía no hay nadie cargado en Trabajadores. Cargalos primero desde Obras → Trabajadores.</p>}
+      {!catalog.length && <p className="task-history-state">Todavía no hay nadie cargado en el legajo. Cargalos primero desde Obras → Personal asignado.</p>}
       <div className="worker-grid">
         {visibleWorkers.map(worker => <article className="worker-card" key={worker.workerId}>
           <div className="worker-card-head">
@@ -225,7 +226,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
       <div className="panel-head"><div className="section-title"><Timer /><div><h2>Partes diarios</h2><p>Trabajo por persona y por día, por jornada o por hora. El importe se calcula solo y se puede pisar a mano.</p></div></div></div>
       {canEdit && <LaborEditor key={`labor-${formKey}`} assigned={assigned} busy={busy} submitLabel="Cargar trabajo"
         onSubmit={draft => { void addHours(draft); }} />}
-      {!assigned.length && <p className="task-history-state">Asigná trabajadores para poder cargarles horas.</p>}
+      {!assigned.length && <p className="task-history-state">Asigná personal para poder cargarle horas.</p>}
     </section>
 
     <section className="panel work-detail-section">
@@ -245,7 +246,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
         </div>
       </div>
 
-      <div className="table-scroll"><table><thead><tr><th>Trabajador</th><th>DNI</th><th>Jornadas</th><th>Horas</th><th>A pagar</th></tr></thead><tbody>
+      <div className="table-scroll"><table><thead><tr><th>Persona</th><th>DNI</th><th>Jornadas</th><th>Horas</th><th>A pagar</th></tr></thead><tbody>
         {rows.map(row => <tr key={row.workerId}>
           <td><b>{row.name}</b></td><td>{row.dni}</td><td>{qty(row.days)}</td><td>{qty(row.hours)} h</td><td><strong>{money(row.totalCents)}</strong></td>
         </tr>)}
@@ -275,19 +276,6 @@ function initials(name: string) {
 }
 
 function round2(value: number) { return Math.round(value * 100) / 100; }
-
-/** El logo del sitio, en base64, que es como lo quiere jsPDF. */
-async function readLogo() {
-  try {
-    const blob = await (await fetch("/brand/pino-logo.png")).blob();
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("logo"));
-      reader.readAsDataURL(blob);
-    });
-  } catch { return undefined; }
-}
 
 /** Cantidades con coma decimal, como se escriben acá: 1,5 jornadas / 7,5 h. */
 function qty(value: number) { return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(round2(value)); }
@@ -343,7 +331,7 @@ function LaborEditor({ assigned, entry, busy, submitLabel, onSubmit, onCancel }:
   }}>
     {entry
       ? <span className="labor-editor-person">{entry.person}</span>
-      : <SearchSelect name="workerId" options={options} placeholder="Trabajador" value={workerId}
+      : <SearchSelect name="workerId" options={options} placeholder="Buscar en el legajo" value={workerId}
           onChange={value => {
             const next = assigned.find(row => String(row.workerId) === value);
             const nextMode = rateMode(next || {});

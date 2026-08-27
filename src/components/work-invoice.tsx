@@ -13,7 +13,8 @@ export type InvoiceableWork = {
 /** Meses en castellano, para el período que se escribe en el certificado. */
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-function currentPeriod() {
+/** El período que se propone en el certificado: el mes en curso. */
+export function currentPeriod() {
   const now = new Date();
   return `${MONTHS[now.getMonth()][0].toUpperCase()}${MONTHS[now.getMonth()].slice(1)} ${now.getFullYear()}`;
 }

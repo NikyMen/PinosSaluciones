@@ -1,6 +1,9 @@
 import type { Entity } from "./constants";
 
-export type Field = { key: string; label: string; type?: "text"|"email"|"tel"|"number"|"money"|"date"|"textarea"|"select"|"relation"|"user"|"file"|"phones"; /** Lo calcula el sistema: se muestra pero no se edita a mano. */ readOnly?: boolean; required?: boolean; options?: string[]; relation?: Entity; placeholder?: string; hint?: string; /** Atajos "7 / 14 / 30 días" en los campos de fecha. */ quickRanges?: number[] };
+export type Field = { key: string; label: string; type?: "text"|"email"|"tel"|"number"|"money"|"date"|"textarea"|"select"|"relation"|"user"|"file"|"phones"; /** Lo calcula el sistema: se muestra pero no se edita a mano. */ readOnly?: boolean; required?: boolean; options?: string[]; relation?: Entity; placeholder?: string; hint?: string; /** Atajos "7 / 14 / 30 días" en los campos de fecha. */ quickRanges?: number[];
+  /** Con qué viene cargado el campo al crear un registro nuevo. */ defaultValue?: string;
+  /** Igual que `defaultValue` pero para fechas: hoy + N días. */ defaultInDays?: number;
+  /** Saca el atajo "Hoy": no toda fecha puede ser la de hoy (un vencimiento, por ejemplo). */ hideToday?: boolean };
 export type EntityConfig = { title: string; description: string; singular: string; fields: Field[]; columns: string[] };
 const status = (...values: string[]): Field => ({ key: "status", label: "Estado", type: "select", options: values, required: true });
 
@@ -9,12 +12,18 @@ export const entityConfig: Record<Entity, EntityConfig> = {
     { key:"name",label:"Razón social / nombre",required:true },{key:"cuit",label:"CUIT",required:true,placeholder:"30-12345678-9",hint:"11 dígitos, con o sin guiones"},{key:"contactName",label:"Contacto"},{key:"email",label:"Correo",type:"email"},{key:"phones",label:"Teléfonos",type:"phones"},{key:"address",label:"Dirección"},{key:"notes",label:"Notas",type:"textarea"},
   ]},
   quotes: { title: "Ventas y cotizaciones", description: "Seguimiento completo desde el presupuesto hasta el cierre.", singular: "cotización", columns: ["number","title","clientId","amountCents","status"], fields: [
-    {key:"number",label:"Número",placeholder:"Se genera solo al guardar"},{key:"clientId",label:"Cliente",type:"relation",relation:"clients",required:true},{key:"title",label:"Título",required:true},{key:"description",label:"Descripción",type:"textarea"},{key:"version",label:"Versión",type:"number",required:true},{key:"amountCents",label:"Importe",type:"money",required:true},{key:"estimatedCostCents",label:"Costo estimado",type:"money"},status("borrador","enviada","seguimiento","aprobada","rechazada","vencida","convertida"),{key:"validUntil",label:"Válida hasta",type:"date",quickRanges:[7,14,30]},{key:"attachment",label:"Presupuesto en PDF",type:"file"},
+    {key:"number",label:"Número",placeholder:"Se genera solo al guardar"},{key:"clientId",label:"Cliente",type:"relation",relation:"clients",required:true},{key:"title",label:"Título",required:true},{key:"description",label:"Descripción",type:"textarea"},
+    // La versión la lleva el sistema: la primera cotización de un título es la 1 y cada revisión con el mismo título toma la siguiente.
+    {key:"version",label:"Versión",type:"number",readOnly:true,hint:"La primera es la 1; si ya hay otra con el mismo título, sale la siguiente"},
+    {key:"amountCents",label:"Importe para el cliente",type:"money",required:true},{key:"estimatedCostCents",label:"Costo estimado",type:"money"},
+    // "Aprobada" y "convertida" no se eligen a mano: salen del botón Aprobar y del pase a obra.
+    {...status("borrador","enviada","seguimiento","rechazada","vencida"),defaultValue:"borrador"},
+    {key:"validUntil",label:"Válida hasta",type:"date",quickRanges:[7,14,30],defaultInDays:7,hideToday:true},{key:"attachment",label:"Presupuesto en PDF",type:"file"},
   ]},
   works: { title: "Obras", description: "Avance, responsables, costos y certificados de cada trabajo.", singular: "obra", columns: ["code","name","clientId","progress","budgetCents","status"], fields: [
     {key:"code",label:"Código",required:true},{key:"name",label:"Nombre",required:true},{key:"clientId",label:"Cliente",type:"relation",relation:"clients",required:true},{key:"quoteId",label:"Cotización origen",type:"relation",relation:"quotes"},{key:"startDate",label:"Inicio",type:"date"},{key:"endDate",label:"Fin previsto",type:"date"},{key:"budgetCents",label:"Presupuesto",type:"money",required:true},{key:"progress",label:"Avance (%)",type:"number",required:true},status("planificada","en_curso","pausada","terminada","cancelada"),{key:"costCenter",label:"Centro de costo"},
   ]},
-  workers: { title:"Trabajadores", description:"Legajo del personal de obra, con su DNI, su teléfono y el valor de su jornal.", singular:"trabajador", columns:["lastName","firstName","dni","phone","category","dailyRateCents"], fields:[
+  workers: { title:"Personal asignado", description:"Legajo del personal de obra, con su DNI, su teléfono y el valor de su jornal.", singular:"integrante", columns:["lastName","firstName","dni","phone","category","dailyRateCents"], fields:[
     {key:"lastName",label:"Apellido",required:true},{key:"firstName",label:"Nombre",required:true},{key:"dni",label:"DNI",required:true,placeholder:"28123456",hint:"Sin puntos"},{key:"phone",label:"Teléfono",type:"tel"},{key:"category",label:"Categoría",type:"select",options:["capataz","oficial","medio_oficial","ayudante","especialista"],required:true},{key:"rateMode",label:"Cómo cobra",type:"select",options:["jornada","hora"],hint:"Por jornada o por hora"},{key:"dailyRateCents",label:"Valor del jornal",type:"money",hint:"Lo que cobra por día trabajado"},{key:"hoursPerDay",label:"Horas por jornal",type:"number",hint:"Para sacar el valor hora"},{key:"hourlyRateCents",label:"Valor hora",type:"money",hint:"Si va vacío, sale del jornal"},{key:"notes",label:"Notas",type:"textarea"},
   ]},
   suppliers: { title:"Proveedores",description:"Contactos y cuenta corriente de proveedores.",singular:"proveedor",columns:["name","contactName","phone","email"],fields:[{key:"name",label:"Nombre",required:true},{key:"contactName",label:"Contacto"},{key:"email",label:"Correo",type:"email"},{key:"phone",label:"Teléfono",type:"tel"},{key:"address",label:"Dirección"},{key:"notes",label:"Notas",type:"textarea"}]},

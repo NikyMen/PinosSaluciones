@@ -266,6 +266,22 @@ export function composeWorkerName(doc: { firstName?: unknown; lastName?: unknown
   return [doc.lastName, doc.firstName].filter(Boolean).map(String).join(", ");
 }
 
+/**
+ * Version de una cotizacion nueva.
+ *
+ * Las revisiones de un mismo trabajo se escriben con el mismo titulo: la
+ * primera es la 1 y cada una que llega despues toma el numero siguiente, asi
+ * queda claro cual es la ultima que vio el cliente. No se elige a mano.
+ */
+export async function nextQuoteVersion(title: string) {
+  const clean = String(title || "").trim();
+  if (!clean) return 1;
+  // El titulo lo escribe una persona: se compara literal y sin distinguir mayusculas.
+  const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const [highest] = await Quote.find({ title: { $regex: `^${escaped}$`, $options: "i" } }).sort({ version: -1 }).limit(1).lean();
+  return Math.max(1, Number(highest?.version || 0) + 1);
+}
+
 export async function nextQuoteNumber() {
   if (!await Counter.exists({ _id: "quotes" })) {
     const [highest] = await Quote.aggregate([

@@ -142,7 +142,7 @@ export function buildLaborPdf(doc: jsPDF, data: LaborPdfData, meta: { author: st
   /* ── De qué obra y de qué período estamos hablando ───────────────────────── */
   sectionTitle(`${data.work.code} - ${data.work.name}`, "Obra");
   const cards = [
-    { label: "Trabajadores", value: String(data.rows.length) },
+    { label: "Personal", value: String(data.rows.length) },
     { label: "Jornadas", value: qty(data.totals.days) },
     { label: "Horas", value: `${qty(data.totals.hours)} h` },
     { label: "Total a pagar", value: money(data.totals.cents), tone: NAVY },
@@ -204,7 +204,7 @@ export function buildLaborPdf(doc: jsPDF, data: LaborPdfData, meta: { author: st
   sectionTitle("Detalle de los partes diarios", "Respaldo");
   const detailColumns = [
     { label: "Fecha", x: MARGIN },
-    { label: "Trabajador", x: 38 },
+    { label: "Persona", x: 38 },
     { label: "Trabajo", x: 88 },
     { label: "Valor", x: 132 },
     { label: "Tarea", x: 152 },

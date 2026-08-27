@@ -33,8 +33,10 @@ export function MoneyInput({ name, defaultValue = 0, required, autoFocus, placeh
 }
 
 /** Fecha siempre en dd/mm/aaaa, con calendario nativo al costado. */
-export function DateInput({ name, defaultValue = "", required, autoFocus, quickRanges, onValueChange }: {
-  name: string; defaultValue?: string; required?: boolean; autoFocus?: boolean; quickRanges?: number[]; onValueChange?: (iso: string) => void;
+export function DateInput({ name, defaultValue = "", required, autoFocus, quickRanges, hideToday, onValueChange }: {
+  name: string; defaultValue?: string; required?: boolean; autoFocus?: boolean; quickRanges?: number[];
+  /** En un vencimiento el atajo "Hoy" no tiene sentido: se puede sacar. */ hideToday?: boolean;
+  onValueChange?: (iso: string) => void;
 }) {
   const initialIso = defaultValue ? String(defaultValue).slice(0, 10) : "";
   const [text, setText] = useState(() => isoToDisplayDate(initialIso));
@@ -63,7 +65,7 @@ export function DateInput({ name, defaultValue = "", required, autoFocus, quickR
     </div>
     {quickRanges?.length ? <div className="date-quick">
       {quickRanges.map(days => <button type="button" key={days} className={iso === isoPlusDays(days) ? "active" : ""} onClick={() => apply(isoPlusDays(days))}>{days} días</button>)}
-      <button type="button" className={iso === todayIso() ? "active" : ""} onClick={() => apply(todayIso())}>Hoy</button>
+      {!hideToday && <button type="button" className={iso === todayIso() ? "active" : ""} onClick={() => apply(todayIso())}>Hoy</button>}
     </div> : null}
     <input type="hidden" name={name} value={iso} />
     {required && !iso && <input type="text" className="validation-proxy" required tabIndex={-1} aria-hidden value="" onChange={() => {}} />}

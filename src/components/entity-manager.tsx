@@ -1,20 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, Download, Edit3, Eye, FileCheck2, HardHat, History, ListTodo, Plus, Search, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { ArrowDownToLine, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, Download, Edit3, Eye, FileCheck2, HardHat, History, ListTodo, Percent, Plus, Search, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
 import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
-import { date, money, titleCase } from "@/lib/format";
+import { date, isoPlusDays, money, titleCase } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput, PhoneList, SearchSelect, type Option } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
 import { StockMovementModal, type StockItem } from "@/components/stock-movement";
-import { InvoiceWorkModal, type InvoiceableWork } from "@/components/work-invoice";
+import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
+import { buildInvoicePdf, readBrandLogo } from "@/lib/invoice-pdf";
 
 type Item = Record<string, unknown> & { _id: string };
 
-// Modulos donde la fila entera abre el formulario y el estado se cambia sin entrar.
+// Modulos donde la fila entera abre el formulario.
 const inlineEntities = new Set<Entity>(["works", "tasks", "quotes", "purchases"]);
+// Donde ademas el estado se cambia sin entrar. En cotizaciones no: ahi el
+// estado lo mueve el formulario y "aprobada" solo sale del boton Aprobar.
+const inlineStatusEntities = new Set<Entity>(["works", "tasks", "purchases"]);
 
 // Estados desde los que todavia tiene sentido aprobar una cotizacion.
 const approvable = new Set(["borrador", "enviada", "seguimiento", "vencida"]);
@@ -147,6 +151,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     setPendingStatus({ id: item._id, status });
   }
 
+  /** Devuelve el registro ya guardado, o `null` si el cambio no entró. */
   async function updateStatus(item: Item, status: string) {
     setPendingStatus(null);
     const previous = item.status;
@@ -159,6 +164,17 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       setError(result.error || "No se pudo cambiar el estado");
     } else setItems(current => current.map(row => row._id === item._id ? { ...row, ...result } : row));
     setStatusBusy("");
+    return response.ok ? { ...item, ...result } as Item : null;
+  }
+
+  /**
+   * Aprobar una cotización y, sin soltar el hilo, ofrecer pasarla a obra: el
+   * pop-up sale solo con los datos a la vista. Ahí se decide si además se
+   * factura un porcentaje del trabajo.
+   */
+  async function approveQuote(item: Item) {
+    const approved = await updateStatus(item, "aprobada");
+    if (approved) setConvertFor(approved);
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -217,7 +233,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     <section className="table-panel"><div className="table-scroll"><table><thead><tr>{config.columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
       const rowEditable = inlineEntities.has(entity) && canEdit;
       return <tr key={item._id} className={rowEditable ? "clickable-row" : ""} onClick={rowEditable ? () => open(item) : undefined} onKeyDown={rowEditable ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(item); } } : undefined} tabIndex={rowEditable ? 0 : undefined} title={rowEditable ? (entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar") : undefined}>
-        {config.columns.map(column => <td key={column}>{inlineEntities.has(entity) && column === "status" && canEdit ? (() => {
+        {config.columns.map(column => <td key={column} data-label={columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
           const pending = pendingStatus?.id === item._id ? pendingStatus.status : "";
           return <div className="status-cell" onClick={event => event.stopPropagation()}>
             <select className={`inline-status ${pending || item.status}${pending ? " pending" : ""}`} value={pending || String(item.status || "")} disabled={statusBusy === item._id}
@@ -234,7 +250,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
         <td className="row-actions" onClick={event => event.stopPropagation()}>
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
-          {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void updateStatus(item, "aprobada"); }}><CheckCircle2 size={15} /> Aprobar</button>}
+          {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void approveQuote(item); }}><CheckCircle2 size={15} /> Aprobar</button>}
           {entity === "stock" && canEdit && <button title="Registrar una compra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Entregar a una obra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
           {entity !== "tasks" && <button title="Ver historial de cambios" onClick={() => setHistoryFor({ _id: item._id, label: itemLabel(item) })}><History size={16} /></button>}
@@ -278,7 +294,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       onClose={() => setInvoiceFor(null)}
       onDone={updated => { setInvoiceFor(null); setModal(false); setItems(current => current.map(row => row._id === (updated as Item)._id ? { ...row, ...updated as Item } : row)); }} />}
 
-    {convertFor && <ConvertQuoteModal quote={convertFor} onClose={() => setConvertFor(null)} onDone={() => { setConvertFor(null); void load(); }} />}
+    {convertFor && <ConvertQuoteModal quote={convertFor} client={(relations.clients || []).find(row => row._id === String(convertFor.clientId || ""))}
+      onClose={() => setConvertFor(null)} onDone={() => { setConvertFor(null); void load(); }} />}
 
     {movementFor && <StockMovementModal item={movementFor.item} initialKind={movementFor.kind}
       onClose={() => setMovementFor(null)}
@@ -327,10 +344,26 @@ function TaskFilters({ viewer, people, scope, role, person, onScope, onRole, onP
  * Pasar una cotización a obra. Antes eran tres `prompt()` del navegador, que no
  * dejaban poner la fecha de inicio: justo el dato que Compras necesita para
  * saber cuándo preparar los materiales.
+ *
+ * Sale solo al aprobar la cotización. Desde acá hay dos caminos: crear la obra
+ * y nada más, o facturar un porcentaje del trabajo en el mismo movimiento —el
+ * botón del medio abre el campo del porcentaje y el segundo clic ejecuta—, que
+ * además del certificado deja la factura de avance en PDF.
  */
-function ConvertQuoteModal({ quote, onClose, onDone }: { quote: Item; onClose: () => void; onDone: () => void }) {
+function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; client?: Item; onClose: () => void; onDone: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [billing, setBilling] = useState(false);
+  const [percentage, setPercentage] = useState("");
+  const percentRef = useRef<HTMLInputElement>(null);
+  // Qué botón disparó el envío: los dos son submit del mismo formulario.
+  const action = useRef<"work" | "invoice">("work");
+  // Si la obra ya se creó y falló lo de después, no se vuelve a convertir.
+  const created = useRef<Item | null>(null);
+
+  const budgetCents = Number(quote.amountCents || 0);
+  const percent = Number(percentage) || 0;
+  const invoiceCents = Math.round(budgetCents * percent / 100);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -338,16 +371,58 @@ function ConvertQuoteModal({ quote, onClose, onDone }: { quote: Item; onClose: (
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  useEffect(() => { if (billing) percentRef.current?.focus(); }, [billing]);
+
+  /** La factura de avance en PDF, con el logo del sitio incrustado. */
+  async function downloadInvoice(work: Item, number: string, period: string) {
+    const [{ jsPDF }, logo, session] = await Promise.all([
+      import("jspdf"),
+      readBrandLogo(),
+      fetch("/api/auth/me").then(response => response.ok ? response.json() : null).catch(() => null),
+    ]);
+    const doc = new jsPDF();
+    const filename = buildInvoicePdf(doc, {
+      number, period, percentage: percent, amountCents: invoiceCents,
+      client: { name: String(client?.name || "—"), cuit: String(client?.cuit || ""), address: String(client?.address || ""), email: String(client?.email || "") },
+      quote: { number: String(quote.number || ""), title: String(quote.title || ""), description: String(quote.description || ""), amountCents: budgetCents },
+      work: { code: String(work.code || ""), name: String(work.name || ""), startDate: String(work.startDate || "") },
+    }, { author: session?.name || "el sistema", logo });
+    doc.save(filename);
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setError("");
+    event.preventDefault();
+    const invoicing = action.current === "invoice";
+    if (invoicing && percent <= 0) return setError("Poné qué porcentaje de la obra vas a facturar");
+    setSaving(true); setError("");
     const data = new FormData(event.currentTarget);
-    const response = await fetch(`/api/quotes/${quote._id}/convert`, {
+
+    let work = created.current;
+    if (!work) {
+      const response = await fetch(`/api/quotes/${quote._id}/convert`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: String(data.get("code") || ""), name: String(data.get("name") || ""), startDate: String(data.get("startDate") || "") || undefined }),
+      });
+      const result = await response.json();
+      if (!response.ok) { setSaving(false); return setError(result.error || "No se pudo crear la obra"); }
+      work = result as Item;
+      created.current = work;
+    }
+    if (!invoicing) { setSaving(false); return onDone(); }
+
+    // El avance se guarda como certificado aprobado: eso avisa a Administración
+    // y le deja la tarea de emitir la factura de verdad.
+    const number = `${String(work.code || "")}-C1`;
+    const period = currentPeriod();
+    const response = await fetch(`/api/works/${work._id}/certificates`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: String(data.get("code") || ""), name: String(data.get("name") || ""), startDate: String(data.get("startDate") || "") || undefined }),
+      body: JSON.stringify({ number, period, percentage: percent, amountCents: invoiceCents, approved: true, file: "" }),
     });
     const result = await response.json();
+    if (!response.ok) { setSaving(false); return setError(`La obra ${String(work.code || "")} quedó creada, pero no se pudo facturar el avance: ${result.error || "error inesperado"}`); }
+    try { await downloadInvoice(work, number, period); }
+    catch { setSaving(false); return setError(`Se facturó el ${percent}% de la obra ${String(work.code || "")}, pero no se pudo generar el PDF. Podés volver a emitirlo desde la obra.`); }
     setSaving(false);
-    if (!response.ok) return setError(result.error || "No se pudo crear la obra");
     onDone();
   }
 
@@ -355,9 +430,9 @@ function ConvertQuoteModal({ quote, onClose, onDone }: { quote: Item; onClose: (
     <button className="modal-backdrop" onClick={onClose} aria-label="Cerrar" />
     <section className="modal convert-modal" role="dialog" aria-modal="true" aria-labelledby="convert-modal-title">
       <header><div className="modal-title-wrap"><span className="modal-heading-icon"><BriefcaseBusiness /></span><div>
-        <p className="eyebrow">COTIZACIÓN A OBRA</p>
+        <p className="eyebrow">COTIZACIÓN APROBADA</p>
         <h2 id="convert-modal-title">Pasar {String(quote.number || "")} a obra</h2>
-        <small>{String(quote.title || "")}</small>
+        <small>{String(quote.title || "")}{client ? ` · ${itemLabel(client)}` : ""}</small>
       </div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
       <form onSubmit={submit}>
         <div className="modal-form-body">
@@ -366,14 +441,39 @@ function ConvertQuoteModal({ quote, onClose, onDone }: { quote: Item; onClose: (
             <label><span>Código de la obra *</span><input name="code" required defaultValue={`OB-${String(quote.number || "")}`} autoFocus /></label>
             <label><span>Nombre de la obra *</span><input name="name" required defaultValue={String(quote.title || "")} /></label>
             <label><span>Fecha de inicio</span><DateInput name="startDate" quickRanges={[7, 14, 30]} /></label>
-            <label className="readonly-field"><span>Presupuesto que hereda</span><output>{money(Number(quote.amountCents || 0))}</output></label>
+            <label className="readonly-field"><span>Presupuesto que hereda</span><output>{money(budgetCents)}</output></label>
           </div>
+
+          {billing && <div className="convert-billing">
+            <p className="eyebrow">FACTURAR AVANCE</p>
+            <div className="form-grid">
+              <label><span>¿Qué porcentaje facturás? *</span>
+                <div className="percent-input">
+                  {/* Sin `required`: con el campo abierto todavía se puede crear la obra sin facturar. */}
+                  <input ref={percentRef} type="number" min="0.1" max="100" step="0.1" value={percentage}
+                    onChange={event => setPercentage(event.target.value)} />
+                  <Percent size={15} />
+                </div>
+                <div className="percent-quick">{[25, 50, 70, 100].map(value => <button key={value} type="button" className={percent === value ? "active" : ""} onClick={() => setPercentage(String(value))}>{value}%</button>)}</div>
+              </label>
+              <label className="readonly-field"><span>Importe a facturar</span><output>{money(invoiceCents)}</output></label>
+            </div>
+            <p className="invoice-note">
+              {percent > 0
+                ? <>Se certifica el <b>{percent}%</b> de {money(budgetCents)} = <b>{money(invoiceCents)}</b>. Se descarga la factura de avance en PDF (sin validez fiscal) y Administración recibe el aviso para emitir la factura real.</>
+                : <>Elegí el porcentaje que vas a facturar y el importe se calcula solo.</>}
+            </p>
+          </div>}
         </div>
         {error && <p className="form-error modal-error">{error}</p>}
         <footer>
-          <span>La conversión queda auditada.</span>
+          <span>Queda auditado.</span>
           <button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button>
-          <button className="primary-btn" disabled={saving}>{saving ? "Creando la obra…" : "Sí, crear la obra"}</button>
+          <button type={billing ? "submit" : "button"} className="secondary-btn convert-invoice-btn" disabled={saving}
+            onClick={() => { if (!billing) { setBilling(true); setError(""); return; } action.current = "invoice"; }}>
+            <FileCheck2 size={16} /> {billing && percent > 0 ? `Facturar el ${percent}% y pasar a obra` : "Facturar y pasar a obra"}
+          </button>
+          <button className="primary-btn" disabled={saving} onClick={() => { action.current = "work"; }}>{saving ? "Creando la obra…" : "Sí, crear la obra"}</button>
         </footer>
       </form>
     </section>
@@ -481,18 +581,26 @@ function FormField({ field, value, relationOptions, personOptions, relationValue
   const label = <span>{field.label}{field.required && " *"}{field.hint && <em className="field-hint">{field.hint}</em>}</span>;
   const text = String(value ?? "");
 
-  if (field.readOnly) return <label className="readonly-field">{label}<output>{field.type === "money" ? money(Number(value || 0)) : text || "0"}</output></label>;
+  if (field.readOnly) return <label className="readonly-field">{label}<output>{field.type === "money" ? money(Number(value || 0)) : text || "—"}</output></label>;
   if (field.type === "money") return <label>{label}<MoneyInput name={field.key} defaultValue={Number(value || 0) / 100} required={field.required} autoFocus={autoFocus} /></label>;
-  if (field.type === "date") return <label>{label}<DateInput name={field.key} defaultValue={value ? new Date(String(value)).toISOString().slice(0, 10) : ""} required={field.required} autoFocus={autoFocus} quickRanges={field.quickRanges} /></label>;
+  if (field.type === "date") return <label>{label}<DateInput name={field.key} required={field.required} autoFocus={autoFocus} quickRanges={field.quickRanges} hideToday={field.hideToday}
+    defaultValue={value ? new Date(String(value)).toISOString().slice(0, 10) : field.defaultInDays ? isoPlusDays(field.defaultInDays) : ""} /></label>;
   if (field.type === "phones") return <label className="wide">{label}<PhoneList name={field.key} defaultValue={Array.isArray(value) ? value.map(String) : text ? [text] : []} /></label>;
   if (field.type === "file") return <label className="wide">{label}<FileDrop name={field.key} currentPath={text || undefined} /></label>;
   if (field.type === "textarea") return <label className="wide">{label}<textarea name={field.key} required={field.required} defaultValue={text} autoFocus={autoFocus} placeholder={field.placeholder} /></label>;
-  if (field.type === "select") return <label>{label}<SearchSelect name={field.key} defaultValue={text} required={field.required} autoFocus={autoFocus} options={(field.options || []).map(option => ({ value: option, label: titleCase(option) }))} /></label>;
+  // El estado que ya tiene el registro siempre se ofrece, aunque no sea de los
+  // que se eligen a mano: si no, editar una cotización aprobada lo borraría.
+  if (field.type === "select") {
+    const options = [...(field.options || [])];
+    if (text && !options.includes(text)) options.push(text);
+    return <label>{label}<SearchSelect name={field.key} defaultValue={text || field.defaultValue || ""} required={field.required} autoFocus={autoFocus}
+      options={options.map(option => ({ value: option, label: titleCase(option) }))} /></label>;
+  }
   if (field.type === "user") return <label>{label}<SearchSelect name={field.key} options={personOptions} value={relationValue} onChange={onRelationChange}
     placeholder="Sin persona asignada" required={field.required} autoFocus={autoFocus} /></label>;
   if (field.type === "relation") return <label>{label}<SearchSelect name={field.key} options={relationOptions} value={relationValue} onChange={onRelationChange} required={field.required} autoFocus={autoFocus}
     createLabel={`Crear ${entityConfig[field.relation!].singular} nuevo`} onCreate={onCreateRelation} /></label>;
 
-  return <label>{label}<input name={field.key} type={field.type === "number" ? "number" : field.type || "text"} required={field.required} defaultValue={text} autoFocus={autoFocus}
+  return <label>{label}<input name={field.key} type={field.type === "number" ? "number" : field.type || "text"} required={field.required} defaultValue={text || field.defaultValue || ""} autoFocus={autoFocus}
     step={field.key === "progress" ? "1" : undefined} min={field.type === "number" ? "0" : undefined} placeholder={field.placeholder} /></label>;
 }

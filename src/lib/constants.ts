@@ -47,7 +47,7 @@ export const entityLabels: Record<Entity, string> = {
   clients: "Clientes",
   quotes: "Cotizaciones",
   works: "Obras",
-  workers: "Trabajadores",
+  workers: "Personal asignado",
   suppliers: "Proveedores",
   stock: "Stock",
   purchases: "Órdenes de compra",

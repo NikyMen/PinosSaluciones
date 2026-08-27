@@ -2,6 +2,7 @@ import { describe,expect,it } from "vitest";
 import { canDelete,canRead,canWrite } from "../src/lib/permissions";
 import { money,titleCase } from "../src/lib/format";
 import { schemas } from "../src/lib/schemas";
+import { entityConfig } from "../src/lib/entity-config";
 import { computeLabor,dailyRateCents,hourlyRateCents } from "../src/lib/labor";
 import { canSeeTask,taskScope } from "../src/lib/tasks";
 import type { AuthorizedSession } from "../src/lib/auth";
@@ -15,6 +16,18 @@ describe("cotizaciones",()=>{
   it("respeta el número si viene cargado",()=>{expect(schemas.quotes.safeParse({...quote,number:"COT-747"}).data?.number).toBe("COT-747")});
   it("admite el estado convertida",()=>{expect(schemas.quotes.safeParse({...quote,status:"convertida"}).success).toBe(true)});
   it("rechaza un estado inventado",()=>{expect(schemas.quotes.safeParse({...quote,status:"archivada"}).success).toBe(false)});
+  it("no ofrece aprobada ni convertida para elegir a mano: eso sale del botón Aprobar y del pase a obra",()=>{
+    const status=entityConfig.quotes.fields.find(field=>field.key==="status");
+    expect(status?.options).not.toContain("aprobada");
+    expect(status?.options).not.toContain("convertida");
+    expect(status?.defaultValue).toBe("borrador");
+  });
+  it("deja la versión en manos del sistema y propone siete días de validez",()=>{
+    expect(entityConfig.quotes.fields.find(field=>field.key==="version")?.readOnly).toBe(true);
+    const validUntil=entityConfig.quotes.fields.find(field=>field.key==="validUntil");
+    expect(validUntil?.defaultInDays).toBe(7);
+    expect(validUntil?.hideToday).toBe(true);
+  });
 });
 
 describe("mano de obra",()=>{

@@ -26,7 +26,7 @@ const groups: NavGroup[] = [
   ] },
   { id: "works", label: "Obras", icon: HardHat, items: [
     { href: "/app/works", label: "Obras", icon: HardHat, permission: "works" },
-    { href: "/app/workers", label: "Trabajadores", icon: Users, permission: "workers" },
+    { href: "/app/workers", label: "Personal asignado", icon: Users, permission: "workers" },
     { href: "/app/tasks", label: "Tareas y pendientes", icon: ListTodo, permission: "tasks" },
   ] },
   { id: "purchases", label: "Compras y stock", icon: ShoppingCart, items: [
@@ -114,11 +114,15 @@ export function AppShell({ session, children }: { session: { name: string; email
             );
           })}
 
-          <p className="nav-caption nav-caption-secondary">ANÁLISIS</p>
-          {visibleDirectItems.map(item => {
-            const Icon = item.icon;
-            return <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? "nav-link active" : "nav-link"} onClick={() => setMobileOpen(false)}><Icon size={19} /><span>{item.label}</span></Link>;
-          })}
+          {/* Análisis y configuración no son del día a día: van pegados al pie
+              de la barra, debajo de todo lo operativo. */}
+          <div className="nav-secondary">
+            <p className="nav-caption nav-caption-secondary">ANÁLISIS</p>
+            {visibleDirectItems.map(item => {
+              const Icon = item.icon;
+              return <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? "nav-link active" : "nav-link"} onClick={() => setMobileOpen(false)}><Icon size={19} /><span>{item.label}</span></Link>;
+            })}
+          </div>
         </nav>
 
         <div className="sidebar-foot"><span className="status-dot" /><span><b>Sistema operativo</b><small>Datos actualizados</small></span></div>
