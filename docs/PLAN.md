@@ -80,13 +80,17 @@ Los 7 quick wins de [[requerimientos/cotizaciones]] están implementados y verif
 
 El más importante: la conversión **exigía** lo contrario de lo pedido. Ahora valida en vez de asignar.
 
+**COT-11 y COT-7 — el cotizador cascada.** La cotización dejó de ser un importe
+suelto: tiene ítems con composición por insumo, el catálogo de 40 conceptos de
+gastos generales y los 9 escalones hasta el precio. El motor es
+`src/lib/cascada.ts`, una función pura, y los 7 libros del cliente son la tabla
+de casos de `tests/cascada.test.ts`.
+
 ### Lo que sigue
 
-Por dependencia, no por preferencia:
-
-1. **COT-11 — ítems jerárquicos en la cotización.** Desbloquea todo lo demás
-2. **COT-7 — el costeo Cascada** sobre esos ítems
-3. **OBR-3 — certificados por ítem**, que dependen de 1 y 2
+1. **OBR-3 — certificados por ítem**, que ahora tienen de dónde colgarse
+2. Las seis preguntas abiertas de [[modelo-datos/cascada-comparativa]] §5, que hay
+   que llevar a la próxima reunión con el equipo de cotizaciones
 
 ### Convención
 

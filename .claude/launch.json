@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "pinos-dev",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev.mjs"],
       "port": 3000
     }
   ]

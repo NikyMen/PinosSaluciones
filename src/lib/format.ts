@@ -28,6 +28,16 @@ export function dateTime(value?: string | Date) {
   }).format(new Date(value));
 }
 
+/** Cantidades con coma decimal, como se escriben aca: 1,5 jornadas · 0,4 lts/m2. */
+export function qty(value = 0, maximumFractionDigits = 2) {
+  return new Intl.NumberFormat("es-AR", { maximumFractionDigits }).format(Number(value) || 0);
+}
+
+/** Importe con centavos: para precios unitarios, donde money() redondea demasiado. */
+export function preciseMoney(cents = 0) {
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((Number(cents) || 0) / 100);
+}
+
 export function titleCase(value?: string) {
   return value ? value.replaceAll("_", " ").replace(/^./, character => character.toUpperCase()) : "—";
 }

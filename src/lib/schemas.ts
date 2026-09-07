@@ -34,4 +34,56 @@ export const schemas: Record<Entity, z.ZodObject<z.ZodRawShape>> = {
   tasks: z.object({ title: text, description: optionalText, type: z.enum(["general", "facturar_certificado", "cobranza", "vencimiento"]), status: z.enum(["pendiente", "en_curso", "completada"]), dueDate: optionalDate, assigneeRole: z.union([z.enum(["gerencia", "arquitecto", "auxiliar", "administracion", "compras", "ventas", "contador"]), z.literal("")]).optional().transform(v => v || undefined), assigneeId: optionalId, relatedType: optionalText, relatedId: optionalId }),
 };
 
+/*
+ * El payload del cotizador cascada. No va dentro de `schemas` porque no es una
+ * entidad: se guarda por su propia ruta (PUT /api/quotes/[id]/cascada), que
+ * recalcula la cascada en el servidor y de ahi escribe amountCents.
+ */
+const coef = z.coerce.number().min(0);
+const insumo = z.object({
+  rubro: z.enum(["MAT", "MO", "EQUIPOS"]).default("MAT"),
+  code: optionalText,
+  name: text,
+  unit: z.string().trim().max(20).default("u"),
+  coefPerUnit: coef.default(0),
+  unitPriceCents: cents.default(0),
+  currency: z.enum(["ARS", "USD"]).default("ARS"),
+  fxRate: z.coerce.number().min(0).default(0),
+  stockItemId: optionalId,
+  workerId: optionalId,
+  personas: z.coerce.number().min(0).default(0),
+});
+
+export const cascadaPayload = z.object({
+  items: z.array(z.object({
+    code: optionalText,
+    name: text,
+    unit: z.string().trim().max(20).default("m2"),
+    qty: coef.default(0),
+    detail: optionalText,
+    composition: z.array(insumo).default([]),
+  })).default([]),
+  overheads: z.array(z.object({
+    conceptKey: text,
+    group: optionalText, label: optionalText, unit: optionalText,
+    qty: coef.default(0),
+    unitPriceCents: cents.default(0),
+    formula: z.enum(["impuesto_cheque", "representacion_tecnica", "mes_hombre"]).optional(),
+    // Los porcentajes no son dinero: llevan decimales y no van en centavos.
+    formulaPct: z.coerce.number().min(0).max(100).optional(),
+    personas: z.coerce.number().min(0).optional(),
+    dias: z.coerce.number().min(0).optional(),
+  })).default([]),
+  cascade: z.object({
+    ggiPct: z.coerce.number().min(0).max(100).default(18),
+    // El beneficio puede ser negativo cuando se despeja desde un precio que no cubre el costo.
+    benefitPct: z.coerce.number().min(-100).max(1000).default(30),
+    financialPct: z.coerce.number().min(0).max(100).default(0),
+    iibbPct: z.coerce.number().min(0).max(100).default(2.5),
+    ivaPct: z.coerce.number().min(0).max(100).default(21),
+    ivaBase: z.enum(["st2", "st3"]).default("st2"),
+    chequePct: z.coerce.number().min(0).max(100).default(0),
+  }).default({ ggiPct: 18, benefitPct: 30, financialPct: 0, iibbPct: 2.5, ivaPct: 21, ivaBase: "st2", chequePct: 0 }),
+});
+
 export function sanitizeSearch(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").slice(0, 100); }

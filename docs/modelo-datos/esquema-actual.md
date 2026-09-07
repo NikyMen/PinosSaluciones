@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-08-27 · 17 colecciones.
+Generado el 2026-09-07 · 17 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -54,6 +54,43 @@ Colección `quotes` · entidad `quotes`
 | `validUntil` | fecha | — | — |
 | `workId` | referencia | — | apunta a **Work** |
 | `attachment` | texto | — | — |
+| `items` | lista de objetos | — | por defecto `[]` |
+| `items.code` | texto | — | — |
+| `items.name` | texto | sí | — |
+| `items.unit` | texto | — | por defecto `"m2"` |
+| `items.qty` | número | — | por defecto `0` |
+| `items.detail` | texto | — | — |
+| `items.composition` | lista de objetos | — | por defecto `[]` |
+| `items.composition.rubro` | texto | — | valores: `MAT` · `MO` · `EQUIPOS` · por defecto `"MAT"` |
+| `items.composition.code` | texto | — | — |
+| `items.composition.name` | texto | sí | — |
+| `items.composition.unit` | texto | — | por defecto `"u"` |
+| `items.composition.coefPerUnit` | número | — | por defecto `0` |
+| `items.composition.unitPriceCents` | número | — | mínimo 0 · por defecto `0` |
+| `items.composition.currency` | texto | — | valores: `ARS` · `USD` · por defecto `"ARS"` |
+| `items.composition.fxRate` | número | — | por defecto `0` |
+| `items.composition.stockItemId` | referencia | — | apunta a **StockItem** |
+| `items.composition.workerId` | referencia | — | apunta a **Worker** |
+| `items.composition.personas` | número | — | por defecto `0` |
+| `overheads` | lista de objetos | — | por defecto `[]` |
+| `overheads.conceptKey` | texto | sí | — |
+| `overheads.group` | texto | — | — |
+| `overheads.label` | texto | — | — |
+| `overheads.unit` | texto | — | — |
+| `overheads.qty` | número | — | por defecto `0` |
+| `overheads.unitPriceCents` | número | — | mínimo 0 · por defecto `0` |
+| `overheads.formula` | texto | — | valores: `impuesto_cheque` · `representacion_tecnica` · `mes_hombre` |
+| `overheads.formulaPct` | número | — | — |
+| `overheads.personas` | número | — | — |
+| `overheads.dias` | número | — | — |
+| `cascade` | objeto | — | — |
+| `cascade.ggiPct` | número | — | por defecto `18` |
+| `cascade.benefitPct` | número | — | por defecto `30` |
+| `cascade.financialPct` | número | — | por defecto `0` |
+| `cascade.iibbPct` | número | — | por defecto `2.5` |
+| `cascade.ivaPct` | número | — | por defecto `21` |
+| `cascade.ivaBase` | texto | — | valores: `st2` · `st3` · por defecto `"st2"` |
+| `cascade.chequePct` | número | — | por defecto `0` |
 | `history` | lista de objetos | — | — |
 | `history.action` | texto | — | — |
 | `history.note` | texto | — | — |
@@ -103,6 +140,8 @@ Colección `works` · entidad `works`
 | `certificates.period` | texto | — | — |
 | `certificates.percentage` | número | — | — |
 | `certificates.amountCents` | número | — | — |
+| `certificates.expensesCents` | número | — | mínimo 0 · por defecto `0` |
+| `certificates.includeExpenses` | sí/no | — | por defecto `false` |
 | `certificates.approved` | sí/no | — | — |
 | `certificates.invoiced` | sí/no | — | — |
 | `certificates.file` | texto | — | — |
@@ -135,7 +174,7 @@ Colección `works` · entidad `works`
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
-### Trabajadores
+### Personal asignado
 
 Colección `workers` · entidad `workers`
 

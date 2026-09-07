@@ -12,8 +12,8 @@ import { amountToInput, displayDateToIso, isoPlusDays, isoToDisplayDate, maskAmo
    ───────────────────────────────────────────────────────────────────────────── */
 
 /** Importe con separador de miles en vivo: al tipear 1234567 se ve 1.234.567. */
-export function MoneyInput({ name, defaultValue = 0, required, autoFocus, placeholder = "0,00", onValueChange }: {
-  name: string; defaultValue?: number; required?: boolean; autoFocus?: boolean; placeholder?: string; onValueChange?: (value: number) => void;
+export function MoneyInput({ name, defaultValue = 0, required, autoFocus, disabled, placeholder = "0,00", onValueChange }: {
+  name: string; defaultValue?: number; required?: boolean; autoFocus?: boolean; disabled?: boolean; placeholder?: string; onValueChange?: (value: number) => void;
 }) {
   const [text, setText] = useState(() => amountToInput(defaultValue));
   const amount = parseAmount(text);
@@ -21,7 +21,7 @@ export function MoneyInput({ name, defaultValue = 0, required, autoFocus, placeh
   return <div className="money-input">
     <span className="money-prefix">$</span>
     <input
-      inputMode="decimal" autoComplete="off" autoFocus={autoFocus} placeholder={placeholder}
+      inputMode="decimal" autoComplete="off" autoFocus={autoFocus} disabled={disabled} placeholder={placeholder}
       value={text}
       onChange={event => { const next = maskAmount(event.target.value); setText(next); onValueChange?.(parseAmount(next)); }}
       onBlur={() => setText(current => (current ? amountToInput(parseAmount(current)) : ""))}

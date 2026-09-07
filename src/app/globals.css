@@ -931,6 +931,14 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 .invoice-summary > div { padding: 11px 13px; display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-muted); }
 .invoice-summary span { color: var(--muted-2); font-size: .63rem; font-weight: 800; text-transform: uppercase; }
 .invoice-summary strong { color: var(--brand-navy-deep); font-size: .82rem; }
+.invoice-expenses-check { display: flex; align-items: center; gap: 10px; margin: 14px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-muted); cursor: pointer; }
+.invoice-expenses-check input { width: 17px; height: 17px; accent-color: var(--brand-navy); }
+.invoice-expenses-check > span { display: flex; flex: 1; flex-direction: column; gap: 3px; }
+.invoice-expenses-check b { display: inline-flex; align-items: center; gap: 6px; color: var(--brand-navy-deep); font-size: .76rem; }
+.invoice-expenses-check small { color: var(--muted-2); font-size: .68rem; }
+.invoice-expenses-check > strong { color: var(--brand-red); font-size: .82rem; }
+.work-expense-total { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 11px 13px; border-radius: 10px; background: var(--surface-muted); color: var(--muted-2); font-size: .72rem; font-weight: 700; text-transform: uppercase; }
+.work-expense-total strong { color: var(--brand-navy-deep); font-size: .95rem; }
 .percent-input { display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; }
 .percent-input input { height: 42px; flex: 1; border: 0; background: none; font-size: 1rem; font-weight: 800; }
 .percent-input svg { color: var(--muted-2); }
@@ -1079,4 +1087,92 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
   .percent-quick button { flex: 1; min-width: 62px; height: 34px; }
   .invoice-summary { grid-template-columns: 1fr 1fr; }
   .date-quick button, .phone-list button { min-height: 34px; }
+}
+
+/* --- Cotizador cascada ----------------------------------------------------- */
+/* La planilla de analisis de precios. Los campos son chicos a proposito: en una
+   fila entran rubro, denominacion, unidad, coeficiente, precio y moneda, y hay
+   que poder leer varias filas de un vistazo como en el Excel. */
+
+.cascade-heading { align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.cascade-actions { display: flex; align-items: center; gap: 14px; }
+.cascade-k { padding: 8px 15px; display: grid; gap: 2px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-muted); text-align: center; }
+.cascade-k small { color: var(--muted-2); font-size: .58rem; font-weight: 800; letter-spacing: .08em; }
+.cascade-k b { color: var(--brand-navy); font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.cascade-saved { margin: 0 0 14px; padding: 9px 14px; border-radius: 10px; color: var(--success); background: var(--success-soft); font-size: .78rem; font-weight: 700; }
+
+.cascade-item { margin-bottom: 20px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-muted); }
+.cascade-item-head { margin-bottom: 11px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cascade-item-head input { height: 38px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; font-size: .82rem; }
+.cascade-item-head .cascade-name { flex: 1; min-width: 190px; font-weight: 700; }
+.cascade-code { width: 74px; }
+.cascade-unit { width: 68px; }
+.cascade-qty { width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.cascade-table { font-size: .78rem; }
+.cascade-table td { padding: 6px 8px; vertical-align: middle; }
+.cascade-table input, .cascade-table select { width: 100%; height: 34px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; font-size: .78rem; }
+.cascade-table .money-input { height: 34px; min-width: 118px; }
+.cascade-table .money-input input { height: 34px; font-size: .78rem; }
+.cascade-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cascade-coef { text-align: right; font-variant-numeric: tabular-nums; }
+.cascade-fx { margin-top: 4px; }
+.cascade-hint { display: block; margin-top: 2px; color: var(--muted-2); font-size: .62rem; text-align: right; }
+.secondary-btn.compact { margin-top: 10px; height: 34px; padding: 0 13px; font-size: .72rem; }
+
+/* Los 40 conceptos de gastos generales van casi todos en cero: se ven los
+   cargados y el resto queda plegado, que es como se usa la lista en la planilla. */
+.cascade-group { border-bottom: 1px solid var(--line); }
+.cascade-group:last-child { border-bottom: 0; }
+.cascade-group-head { width: 100%; padding: 11px 0; display: flex; align-items: center; gap: 9px; border: 0; background: none; text-align: left; }
+.cascade-group-head b { font-size: .84rem; }
+.cascade-group-head small { margin-left: auto; color: var(--muted-2); font-size: .68rem; }
+.cascade-concept { padding: 7px 0 7px 24px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cascade-concept.off { opacity: .7; }
+.cascade-concept-name { flex: 1; min-width: 150px; font-size: .78rem; }
+.cascade-concept .money-input { height: 36px; width: 132px; }
+.cascade-concept .money-input input { height: 36px; font-size: .78rem; }
+.cascade-concept .percent-input { height: 36px; font-size: .72rem; color: var(--muted); }
+.cascade-concept .percent-input input { height: 34px; width: 62px; font-size: .8rem; }
+.cascade-concept .cascade-qty { height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; font-size: .78rem; }
+.cascade-concept .num { min-width: 108px; text-align: right; font-variant-numeric: tabular-nums; }
+.cascade-mes-hombre { display: flex; gap: 5px; }
+.cascade-mes-hombre input { width: 54px; height: 34px; padding: 0 7px; border: 1px solid var(--line-strong); border-radius: 8px; text-align: right; }
+.cascade-calculado { width: 132px; color: var(--muted-2); font-size: .7rem; font-style: italic; }
+
+/* Los 9 escalones. Cada uno muestra de donde sale el numero, porque el punto de
+   traer esto al sistema es que se entienda sin abrir la formula de la celda. */
+.cascade-steps { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.cascade-step { padding: 10px 15px; display: grid; grid-template-columns: 26px 1fr auto 150px; align-items: center; gap: 12px; background: #fff; }
+.cascade-step.sub { background: var(--surface-muted); }
+.cascade-step.final { background: var(--brand-navy); color: #fff; }
+.cascade-step.final .cascade-step-value, .cascade-step.final b { color: #fff; font-size: 1.05rem; }
+.cascade-step-n { color: var(--muted-2); font-size: .7rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cascade-step-label b { display: block; font-size: .82rem; }
+.cascade-step-label small { display: block; margin-top: 1px; color: var(--muted-2); font-size: .66rem; }
+.cascade-step-control { display: flex; align-items: center; gap: 6px; }
+.cascade-step-control .percent-input { height: 34px; }
+.cascade-step-control .percent-input input { height: 32px; width: 62px; font-size: .8rem; }
+.cascade-step-control select { height: 34px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; font-size: .72rem; }
+.cascade-step-value { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.cascade-inverse { margin-top: 18px; padding: 14px; display: flex; align-items: center; gap: 13px; flex-wrap: wrap; border: 1px dashed var(--line-strong); border-radius: 12px; background: var(--surface-muted); }
+.cascade-inverse svg { color: var(--brand-red); }
+.cascade-inverse b { display: block; font-size: .82rem; }
+.cascade-inverse small { color: var(--muted); font-size: .7rem; }
+.cascade-inverse > div { flex: 1; min-width: 210px; }
+.cascade-inverse .money-input { width: 170px; }
+
+.cascade-subhead { margin: 26px 0 4px; font-size: .92rem; }
+.cascade-note { margin: 0 0 12px; color: var(--muted); font-size: .76rem; }
+
+@media (max-width: 900px) {
+  /* La planilla no entra: se barre de costado, pero el escalon de la cascada si
+     se apila, porque ahi lo que importa es el numero y no la fila. */
+  .cascade-step { grid-template-columns: 22px 1fr; grid-template-areas: "n label" ". control" ". value"; row-gap: 6px; }
+  .cascade-step-n { grid-area: n; }
+  .cascade-step-label { grid-area: label; }
+  .cascade-step-control { grid-area: control; }
+  .cascade-step-value { grid-area: value; text-align: left; }
+  .cascade-concept { padding-left: 0; }
 }

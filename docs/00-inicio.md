@@ -29,6 +29,7 @@ Estos salieron de los archivos reales de la empresa, no de la charla.
 Son la referencia contra la que se valida cualquier diseño.
 
 - [[modelo-datos/cotizador-cascada]] — los 9 pasos que van del costo al precio
+  - [[modelo-datos/cascada-comparativa]] — las 7 planillas lado a lado: qué es plantilla y qué es parámetro
 - [[modelo-datos/liquidacion-quincenal]] — el parte diario y la liquidación
 - [[modelo-datos/certificado-obra]] — el avance por ítem y el anticipo
 - [[modelo-datos/cotizacion-pdf]] — lo que efectivamente ve el cliente

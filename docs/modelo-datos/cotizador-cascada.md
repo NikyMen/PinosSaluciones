@@ -2,6 +2,7 @@
 
 **Fuente:** 7 planillas en `_inbox/*.xlsx` (revoque interior/exterior, impermeabilización, pintura interior/altura, poliurea, poliuretano).
 Todas comparten la misma plantilla. Es el corazón de lo que el cliente pidió meter en el sistema.
+Comparativa celda por celda de las 7, con lo común y lo que varía: [[cascada-comparativa]].
 
 > *"A mí me interesa poder ponerle valor a todo ese Excel de mierda que tienen en otro lugar."*
 

@@ -28,6 +28,61 @@ const ClientSchema = new Schema({
   address: String, notes: String, active: { type: Boolean, default: true },
 }, options);
 
+/*
+ * El analisis de precios: cada item de obra con los insumos que lo componen.
+ * La cantidad del insumo es un COEFICIENTE por unidad de obra (0,4 lts por m2),
+ * no una cantidad absoluta. Los precios se copian del catalogo pero quedan
+ * congelados aca: el precio del dia que se cotizo no se puede mover despues.
+ * Las cuentas viven en src/lib/cascada.ts.
+ */
+const InsumoSchema = new Schema({
+  rubro: { type: String, enum: ["MAT", "MO", "EQUIPOS"], default: "MAT" },
+  code: String,
+  name: { type: String, required: true, trim: true },
+  // Unidad de texto libre: el enum de stock no cubre hs, lts, dia, mes, km ni juego.
+  unit: { type: String, default: "u", trim: true },
+  coefPerUnit: { type: Number, default: 0 },
+  unitPriceCents: money,
+  currency: { type: String, enum: ["ARS", "USD"], default: "ARS" },
+  fxRate: { type: Number, default: 0 },
+  stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" },
+  workerId: { type: Schema.Types.ObjectId, ref: "Worker" },
+  personas: { type: Number, default: 0 },
+}, { _id: false });
+
+const QuoteItemSchema = new Schema({
+  code: String,
+  name: { type: String, required: true, trim: true },
+  unit: { type: String, default: "m2", trim: true },
+  qty: { type: Number, default: 0 },
+  // Texto largo de memoria descriptiva: es lo unico de aca que ve el cliente.
+  detail: String,
+  composition: { type: [InsumoSchema], default: [] },
+}, { _id: false });
+
+/* Los gastos generales directos, sobre el catalogo de src/lib/cascada-conceptos.ts. */
+const OverheadSchema = new Schema({
+  conceptKey: { type: String, required: true },
+  group: String, label: String, unit: String,
+  qty: { type: Number, default: 0 },
+  unitPriceCents: money,
+  // Tres conceptos son formula y no dato: cheque sobre materiales, representacion
+  // tecnica sobre el costo, y el prorrateo mes-hombre de seguros y EPP.
+  formula: { type: String, enum: ["impuesto_cheque", "representacion_tecnica", "mes_hombre"] },
+  formulaPct: Number, personas: Number, dias: Number,
+}, { _id: false });
+
+/* Los porcentajes de la cascada. Los defaults son los de las 7 planillas. */
+const CascadeSchema = new Schema({
+  ggiPct: { type: Number, default: 18 },
+  benefitPct: { type: Number, default: 30 },
+  financialPct: { type: Number, default: 0 },
+  iibbPct: { type: Number, default: 2.5 },
+  ivaPct: { type: Number, default: 21 },
+  ivaBase: { type: String, enum: ["st2", "st3"], default: "st2" },
+  chequePct: { type: Number, default: 0 },
+}, { _id: false });
+
 const QuoteSchema = new Schema({
   number: { type: String, required: true, unique: true, trim: true },
   clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
@@ -38,6 +93,12 @@ const QuoteSchema = new Schema({
   ownerId: { type: Schema.Types.ObjectId, ref: "User" }, validUntil: Date,
   workId: { type: Schema.Types.ObjectId, ref: "Work" },
   attachment: String,
+  // El cotizador cascada. Una cotizacion vieja no tiene nada de esto y sigue
+  // funcionando igual: amountCents y estimatedCostCents se siguen leyendo desde
+  // el listado, el tablero y el pase a obra, solo que ahora los escribe la cascada.
+  items: { type: [QuoteItemSchema], default: [] },
+  overheads: { type: [OverheadSchema], default: [] },
+  cascade: { type: CascadeSchema, default: () => ({}) },
   history: [{ action: String, note: String, at: { type: Date, default: Date.now }, userId: Schema.Types.ObjectId, userName: String }],
 }, options);
 
@@ -66,7 +127,7 @@ const WorkSchema = new Schema({
   checklist: [ChecklistItemSchema],
   activity: [WorkActivitySchema],
   advances: [{ percentage: Number, note: String, date: Date, userId: Schema.Types.ObjectId, photos: [String] }],
-  certificates: [{ number: String, period: String, percentage: Number, amountCents: Number, approved: Boolean, invoiced: Boolean, file: String }],
+  certificates: [{ number: String, period: String, percentage: Number, amountCents: Number, expensesCents: { type: Number, min: 0, default: 0 }, includeExpenses: { type: Boolean, default: false }, approved: Boolean, invoiced: Boolean, file: String }],
   // Se guardan los datos del trabajador junto a la asignacion: la obra tiene que
   // poder mostrar nombre, DNI y telefono sin depender de otra consulta.
   assignedWorkers: [{

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarRange, Check, Download, FileText, IdCard, Pencil, Phone, Plus, Search, Timer, Trash2, UserPlus, Users, X } from "lucide-react";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
-import { date, isoPlusDays, money, titleCase, todayIso } from "@/lib/format";
+import { date, isoPlusDays, money, qty, titleCase, todayIso } from "@/lib/format";
 import { computeLabor, dailyRateCents, hourlyRateCents, hoursPerDay, rateMode, type RateMode } from "@/lib/labor";
 import { buildLaborPdf } from "@/lib/labor-pdf";
 import { readBrandLogo } from "@/lib/invoice-pdf";
@@ -271,14 +271,12 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
   </>;
 }
 
+function round2(value: number) { return Math.round(value * 100) / 100; }
+
 function initials(name: string) {
   return name.split(/[\s,]+/).filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
-function round2(value: number) { return Math.round(value * 100) / 100; }
-
-/** Cantidades con coma decimal, como se escriben acá: 1,5 jornadas / 7,5 h. */
-function qty(value: number) { return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(round2(value)); }
 
 /** "1,5 jornadas (12 h)" o "6 h", segun como se cargo el parte. */
 function describeEntry(entry: LaborEntry) {
