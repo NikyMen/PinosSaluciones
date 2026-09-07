@@ -3,8 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ClipboardCheck, FileCheck2, ImagePlus, MessageSquareText, Plus, Send, Timer, Trash2, Users } from "lucide-react";
-import { date, dateTime, money } from "@/lib/format";
+import { ArrowLeft, Check, ClipboardCheck, FileCheck2, ImagePlus, MessageSquareText, Plus, ReceiptText, Send, Timer, Trash2, Users } from "lucide-react";
+import { date, dateTime, money, titleCase } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput } from "@/components/fields";
 import { WorkLabor, type AssignedWorker, type LaborEntry } from "@/components/work-labor";
 import { InvoiceWorkModal } from "@/components/work-invoice";
@@ -13,12 +13,14 @@ type Checklist = { _id: string; title: string; done: boolean; completedAt?: stri
 type Activity = { _id: string; detail: string; photos: string[]; authorName: string; createdAt: string };
 type Advance = { percentage: number; note: string; date: string };
 type Certificate = { number: string; period: string; percentage: number; amountCents: number; approved: boolean; invoiced: boolean };
+type WorkExpense = { _id: string; number?: string; description: string; category: string; amountCents: number; issueDate: string; status: string };
 
 type Work = { _id: string; name: string; code: string; progress: number; budgetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; advances: Advance[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
 
 export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
   const [error, setError] = useState("");
+  const [expenses, setExpenses] = useState<WorkExpense[]>([]);
   const [checklistBusy, setChecklistBusy] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
@@ -28,10 +30,16 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   const [invoicing, setInvoicing] = useState(false);
 
   const load = useCallback(async () => {
-    const response = await fetch(`/api/records/works/${id}`);
+    const [response, expensesResponse] = await Promise.all([
+      fetch(`/api/records/works/${id}`),
+      fetch(`/api/works/${id}/expenses`),
+    ]);
     const result = await response.json();
-    if (response.ok && rGuard(result)) { setWork(result); setError(""); }
-    else setError(result.error || "No se pudo cargar la obra");
+    const expensesResult = await expensesResponse.json();
+    if (response.ok && rGuard(result)) { setWork(result); }
+    else { setError(result.error || "No se pudo cargar la obra"); return; }
+    if (expensesResponse.ok) { setExpenses(expensesResult.items || []); setError(""); }
+    else setError(expensesResult.error || "No se pudieron cargar los gastos de la obra");
   }, [id]);
 
   useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, [load]);
@@ -130,6 +138,7 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
       <div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>Avance actual: {work.progress}% · Presupuesto {money(work.budgetCents || 0)}</p></div>
       <div className="work-heading-actions">
         <a className="secondary-btn" href="#personal" onClick={event => { event.preventDefault(); document.getElementById("personal")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Users size={17} /> Personal asignado</a>
+        <a className="secondary-btn" href="#gastos" onClick={event => { event.preventDefault(); document.getElementById("gastos")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><ReceiptText size={17} /> Gastos de obra</a>
         {canEdit && <button className="primary-btn" onClick={() => setInvoicing(true)}><FileCheck2 size={17} /> Facturar</button>}
       </div>
       <span className="work-progress-big" style={{ background: `conic-gradient(var(--brand-red) 0 ${work.progress}%, var(--brand-navy) ${work.progress}% 100%)` }}>{work.progress}%</span>
@@ -167,9 +176,14 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
         {canEdit && <form className="mini-form" key={`certificate-${formKey}`} onSubmit={certificate}><input name="number" required placeholder="Número"/><input name="period" required placeholder="Período"/><input name="percentage" type="number" min="0" max="100" required placeholder="%"/><MoneyInput name="amount" required placeholder="Importe"/><FileDrop name="file" accept=".pdf,.jpg,.jpeg,.png"/><button className="primary-btn">Aprobar</button></form>}
         <div className="detail-list">{work.certificates?.slice().reverse().map((item, index) => <div className="detail-row" key={index}><b>#{item.number}</b><span>{item.period} · {item.percentage}%</span><strong>{money(item.amountCents)}</strong><small>{item.invoiced ? "Facturado" : "Pendiente de facturar"}</small></div>)}</div>
       </WorkSection>
+      <WorkSection id="gastos" icon={<ReceiptText/>} title="Gastos de obra">
+        <div className="work-expense-total"><span>Total asignado</span><strong>{money(expenses.reduce((total, item) => total + Number(item.amountCents || 0), 0))}</strong></div>
+        <div className="detail-list">{expenses.map(item => <div className="detail-row" key={item._id}><b>{money(item.amountCents)}</b><span>{item.description}</span><small>{date(item.issueDate)} · {titleCase(item.category)}{item.number ? ` · ${item.number}` : ""}</small></div>)}</div>
+        {!expenses.length && <div className="empty-state compact">Todavía no hay gastos asignados a esta obra. Al crear un gasto, elegí esta obra en el campo “Obra”.</div>}
+      </WorkSection>
     </div>
 
-    {invoicing && <InvoiceWorkModal work={{ _id: id, code: work.code, name: work.name, budgetCents: work.budgetCents, progress: work.progress, certificates: work.certificates }}
+    {invoicing && <InvoiceWorkModal work={{ _id: id, code: work.code, name: work.name, budgetCents: work.budgetCents, progress: work.progress, certificates: work.certificates, expenses }}
       onClose={() => setInvoicing(false)} onDone={updated => { setInvoicing(false); setWork(updated as Work); }} />}
 
     <WorkLabor work={{ _id: id, code: work.code, name: work.name }} assigned={work.assignedWorkers || []} labor={work.labor || []} canEdit={canEdit}
@@ -177,6 +191,6 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   </>;
 }
 
-function WorkSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) { return <section className="panel work-detail-section"><div className="panel-head"><div className="section-title">{icon}<h2>{title}</h2></div></div>{children}</section>; }
+function WorkSection({ id, icon, title, children }: { id?: string; icon: React.ReactNode; title: string; children: React.ReactNode }) { return <section id={id} className="panel work-detail-section"><div className="panel-head"><div className="section-title">{icon}<h2>{title}</h2></div></div>{children}</section>; }
 function rGuard(value: unknown): value is Work { return typeof value === "object" && value !== null && "_id" in value; }
 function initials(name: string) { return name.split(" ").filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase(); }

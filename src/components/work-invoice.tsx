@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FileCheck2, Percent, X } from "lucide-react";
+import { FileCheck2, Percent, ReceiptText, X } from "lucide-react";
 import { MoneyInput } from "@/components/fields";
 import { money } from "@/lib/format";
 
 export type InvoiceableWork = {
   _id: string; code: string; name: string; budgetCents?: number; progress?: number;
   certificates?: Array<{ number?: string; percentage?: number; amountCents?: number }>;
+  expenses?: Array<{ _id: string; description: string; category: string; amountCents?: number; issueDate?: string; status?: string }>;
 };
 
 /** Meses en castellano, para el período que se escribe en el certificado. */
@@ -28,6 +29,9 @@ export function currentPeriod() {
  */
 export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableWork; onClose: () => void; onDone: (work: unknown) => void }) {
   const certificates = useMemo(() => work.certificates || [], [work.certificates]);
+  const [expenses, setExpenses] = useState(work.expenses || []);
+  const [expensesLoading, setExpensesLoading] = useState(!work.expenses);
+  const [includeExpenses, setIncludeExpenses] = useState(true);
   const budgetCents = Number(work.budgetCents || 0);
   // Lo ya certificado marca cuánto queda: nadie quiere facturar dos veces lo mismo.
   const usedPercent = certificates.reduce((total, item) => total + Number(item.percentage || 0), 0);
@@ -43,9 +47,26 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const expensesCents = expenses.reduce((total, item) => total + Number(item.amountCents || 0), 0);
   const percent = Number(percentage) || 0;
   const computedCents = Math.round(budgetCents * percent / 100);
-  const amountCents = override ?? computedCents;
+  const invoiceExpensesCents = includeExpenses ? expensesCents : 0;
+  const amountCents = override ?? computedCents + invoiceExpensesCents;
+
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/works/${work._id}/expenses`)
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "No se pudieron cargar los gastos de la obra");
+        return result as { items?: typeof expenses };
+      })
+      .then(result => { if (active) setExpenses(result.items || []); })
+      .catch(problem => { if (active) setError(problem instanceof Error ? problem.message : "No se pudieron cargar los gastos de la obra"); })
+      .finally(() => { if (active) setExpensesLoading(false); });
+    return () => { active = false; };
+  }, [work._id]);
+
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -60,7 +81,7 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
     setSaving(true); setError("");
     const response = await fetch(`/api/works/${work._id}/certificates`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ number, period, percentage: percent, amountCents, approved: true, file: "" }),
+      body: JSON.stringify({ number, period, percentage: percent, amountCents, includeExpenses, approved: true, file: "" }),
     });
     const result = await response.json();
     setSaving(false);
@@ -86,6 +107,12 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
             <div><span>Avance de obra</span><strong>{Number(work.progress || 0)}%</strong></div>
           </div>
 
+          <label className="invoice-expenses-check">
+            <input type="checkbox" checked={includeExpenses} onChange={event => { setIncludeExpenses(event.target.checked); setOverride(null); }} disabled={expensesLoading || expensesCents === 0} />
+            <span><b><ReceiptText size={16} /> Incluir gastos de obra</b><small>{expensesLoading ? "Cargando gastos…" : expensesCents ? `${expenses.length} gasto${expenses.length === 1 ? "" : "s"} vinculado${expenses.length === 1 ? "" : "s"}` : "No hay gastos vinculados"}</small></span>
+            <strong>{money(expensesCents)}</strong>
+          </label>
+
           <div className="form-grid">
             <label><span>¿Qué porcentaje facturás? *</span>
               <div className="percent-input">
@@ -94,8 +121,8 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
                 <Percent size={15} />
               </div>
             </label>
-            <label><span>Importe a facturar<em className="field-hint">Sale del presupuesto; se puede ajustar</em></span>
-              <MoneyInput name="amountCents" key={`amount-${computedCents}`} defaultValue={amountCents / 100}
+            <label><span>Importe a facturar<em className="field-hint">Avance + gastos seleccionados; se puede ajustar</em></span>
+              <MoneyInput name="amountCents" key={`amount-${computedCents + invoiceExpensesCents}`} defaultValue={amountCents / 100}
                 onValueChange={value => setOverride(Math.round(value * 100))} />
             </label>
             <label><span>Número de certificado *</span><input value={number} required onChange={event => setNumber(event.target.value)} /></label>
@@ -104,7 +131,7 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
 
           <p className="invoice-note">
             {percent > 0
-              ? <>Se certifica el <b>{percent}%</b> de {money(budgetCents)} = <b>{money(amountCents)}</b>{override !== null && override !== computedCents ? <> (calculado {money(computedCents)}, ajustado a mano)</> : null}. Administración recibe el aviso y le queda la tarea de emitir la factura.</>
+              ? <>Se certifica el <b>{percent}%</b> de {money(budgetCents)}{includeExpenses && expensesCents ? <> + <b>{money(expensesCents)}</b> de gastos</> : null} = <b>{money(amountCents)}</b>{override !== null && override !== computedCents + invoiceExpensesCents ? <> (calculado {money(computedCents + invoiceExpensesCents)}, ajustado a mano)</> : null}. Administración recibe el aviso y le queda la tarea de emitir la factura.</>
               : <>Elegí el porcentaje que querés facturar y el importe se calcula solo.</>}
           </p>
         </div>
@@ -112,7 +139,7 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
         <footer>
           <span>El certificado queda auditado con tu nombre.</span>
           <button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button>
-          <button className="primary-btn" disabled={saving || percent <= 0}>{saving ? "Generando…" : "Facturar y avisar"}</button>
+          <button className="primary-btn" disabled={saving || expensesLoading || percent <= 0}>{saving ? "Generando…" : "Facturar y avisar"}</button>
         </footer>
       </form>
     </section>
