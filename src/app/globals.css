@@ -1101,6 +1101,12 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 .cascade-k b { color: var(--brand-navy); font-size: 1.35rem; font-variant-numeric: tabular-nums; }
 .cascade-saved { margin: 0 0 14px; padding: 9px 14px; border-radius: 10px; color: var(--success); background: var(--success-soft); font-size: .78rem; font-weight: 700; }
 
+/* El aviso de "cerrada" + el botón de destrabar van en la misma franja, para que
+   gerencia vea de un vistazo que existe la salida sin tener que buscarla. */
+.cascade-unlock { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.cascade-unlock button { flex: none; }
+@media (max-width: 560px) { .cascade-unlock { flex-direction: column; align-items: stretch; } }
+
 .cascade-item { margin-bottom: 20px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-muted); }
 .cascade-item-head { margin-bottom: 11px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cascade-item-head input { height: 38px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; font-size: .82rem; }

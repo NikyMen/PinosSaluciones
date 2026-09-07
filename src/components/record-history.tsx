@@ -8,7 +8,10 @@ import { date, dateTime, money, titleCase } from "@/lib/format";
 
 export type AuditEntry = { _id: string; action: string; userName?: string; userEmail?: string; before?: Record<string, unknown> | null; after?: Record<string, unknown> | null; createdAt?: string };
 
-const ignored = new Set(["_id", "__v", "createdAt", "updatedAt", "history", "activity", "checklist", "advances", "certificates", "labor"]);
+// items/overheads/cascade son la composición del costeo: cambian casi siempre juntos y
+// listarlos campo por campo sería ruido, no trazabilidad. El resumen sale de amountCents
+// y estimatedCostCents, que sí se comparan abajo y ya cuentan la historia que importa.
+const ignored = new Set(["_id", "__v", "createdAt", "updatedAt", "history", "activity", "checklist", "advances", "certificates", "labor", "items", "overheads", "cascade"]);
 
 /** Muestra el valor de un campo como lo ve el usuario, no como lo guarda Mongo. */
 function readable(entity: Entity, key: string, value: unknown) {
@@ -39,6 +42,11 @@ function changes(entity: Entity, entry: AuditEntry) {
 
 function headline(entity: Entity, entry: AuditEntry) {
   if (entry.action === "convert_to_work") return "Convirtió la cotización en obra";
+  if (entry.action === "edit_cascada" || entry.action === "edit_cascada_forzado") {
+    const prefix = entry.action === "edit_cascada_forzado" ? "Destrabó y guardó el costeo" : "Guardó el costeo";
+    const price = readable(entity, "amountCents", entry.after?.amountCents);
+    return `${prefix} · precio ${price}`;
+  }
   if (!entry.before && entry.after) return `Creó ${entityConfig[entity].singular === "cotización" ? "la" : "el"} ${entityConfig[entity].singular}`;
   if (!entry.after) return "Eliminó el registro";
   const list = changes(entity, entry);

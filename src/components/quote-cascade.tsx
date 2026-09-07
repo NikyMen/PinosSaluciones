@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Calculator, ChevronDown, ChevronRight, Layers, Plus, Save, Target, Trash2, Wallet } from "lucide-react";
+import { ArrowLeft, Calculator, ChevronDown, ChevronRight, History, Layers, LockOpen, Plus, Save, Target, Trash2, Wallet } from "lucide-react";
 import { MoneyInput } from "@/components/fields";
+import { HistoryModal } from "@/components/record-history";
 import { money, preciseMoney, qty as formatQty } from "@/lib/format";
 import { computeCascade, defaultCascadeParams, insumosSummary, parseCoef, rubroLabels, solveBenefitPct, targetPriceFromUnitPrice } from "@/lib/cascada";
 import type { CascadeParams, Insumo, OverheadLine, QuoteItem, Rubro } from "@/lib/cascada";
@@ -36,7 +37,7 @@ type DraftOverhead = Omit<OverheadLine, "qty"> & { qtyText: string };
 const rubros: Rubro[] = ["MAT", "MO", "EQUIPOS"];
 const CERRADAS = ["aprobada", "convertida"];
 
-export function QuoteCascade({ id, canEdit }: { id: string; canEdit: boolean }) {
+export function QuoteCascade({ id, canEdit, canForceUnlock }: { id: string; canEdit: boolean; canForceUnlock: boolean }) {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [items, setItems] = useState<DraftItem[]>([]);
   const [overheads, setOverheads] = useState<Record<string, DraftOverhead>>({});
@@ -46,6 +47,11 @@ export function QuoteCascade({ id, canEdit }: { id: string; canEdit: boolean }) 
   const [saved, setSaved] = useState("");
   const [saving, setSaving] = useState(false);
   const [targetCents, setTargetCents] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
+  // Se destraba a propósito, en esta sesión de pantalla: cada guardado con esto
+  // activo queda anotado en el historial con una acción distinta ("forzado"),
+  // no se pisa en silencio el candado.
+  const [forceUnlocked, setForceUnlocked] = useState(false);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/records/quotes/${id}`);
@@ -69,7 +75,14 @@ export function QuoteCascade({ id, canEdit }: { id: string; canEdit: boolean }) 
   const result = useMemo(() => computeCascade(payload), [payload]);
   const insumos = useMemo(() => insumosSummary(result), [result]);
 
-  const locked = !canEdit || CERRADAS.includes(String(quote?.status));
+  const closedByStatus = CERRADAS.includes(String(quote?.status));
+  const locked = !canEdit || (closedByStatus && !forceUnlocked);
+
+  function unlock() {
+    if (!confirm(`Esta cotización está ${quote?.status}: el precio ya se le mostró a alguien. Vas a poder editar el costeo igual, y va a quedar anotado en el historial con tu nombre y la hora. ¿Seguimos?`)) return;
+    setForceUnlocked(true);
+    setError("");
+  }
 
   function edit(mutate: () => void) { mutate(); setSaved(""); }
 
@@ -111,11 +124,11 @@ export function QuoteCascade({ id, canEdit }: { id: string; canEdit: boolean }) 
     setSaving(true); setError("");
     const response = await fetch(`/api/quotes/${id}/cascada`, {
       method: "PUT", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ items: payload.items, overheads: payload.overheads, cascade: params }),
+      body: JSON.stringify({ items: payload.items, overheads: payload.overheads, cascade: params, force: forceUnlocked }),
     });
     const body = await response.json();
     if (!response.ok) setError(body.error || "No se pudo guardar el costeo");
-    else { setQuote(body.quote); setSaved(`Guardado · precio ${money(body.cascade.priceCents)}`); }
+    else { setQuote(body.quote); setSaved(`Guardado · precio ${money(body.cascade.priceCents)}${forceUnlocked ? " · destrabado" : ""}`); }
     setSaving(false);
   }
 
@@ -135,15 +148,26 @@ export function QuoteCascade({ id, canEdit }: { id: string; canEdit: boolean }) 
           <small>COEFICIENTE k</small>
           <b>{result.k ? result.k.toFixed(3).replace(".", ",") : "—"}</b>
         </div>
+        <button className="secondary-btn" onClick={() => setShowHistory(true)}><History size={16} /> Historial</button>
         {!locked && <button className="primary-btn" onClick={() => { void save(); }} disabled={saving}>
           <Save size={16} /> {saving ? "Guardando…" : "Guardar costeo"}
         </button>}
       </div>
     </div>
 
-    {locked && <div className="notice">Esta cotización está <b>{quote.status}</b>: el costeo queda de sólo lectura para que el precio que alguien aprobó no se mueva por debajo.</div>}
+    {locked && closedByStatus && canForceUnlock && <div className="notice warn cascade-unlock">
+      <div>
+        <p className="eyebrow">Solo gerencia</p>
+        <p>Esta cotización está <b>{quote.status}</b>: el costeo queda de sólo lectura para que el precio que alguien aprobó no se mueva por debajo sin que se note.</p>
+      </div>
+      <button className="secondary-btn" onClick={unlock}><LockOpen size={16} /> Destrabar para editar</button>
+    </div>}
+    {locked && closedByStatus && !canForceUnlock && <div className="notice">Esta cotización está <b>{quote.status}</b>: el costeo queda de sólo lectura para que el precio que alguien aprobó no se mueva por debajo. Sólo gerencia puede destrabarla.</div>}
+    {locked && !closedByStatus && <div className="notice">No tenés permiso para editar cotizaciones.</div>}
+    {forceUnlocked && closedByStatus && <div className="notice warn">Costeo destrabado a mano: lo que guardes acá va a quedar anotado en el historial, con tu nombre y la hora.</div>}
     {error && <p className="form-error">{error}</p>}
     {saved && <p className="cascade-saved">{saved}</p>}
+    {showHistory && <HistoryModal entity="quotes" record={{ _id: id, label: `${quote.number} — ${quote.title}` }} onClose={() => setShowHistory(false)} />}
 
     {/* ─── 1 · Análisis de precios ─────────────────────────────────────────── */}
     <section className="panel">
