@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, Download, Edit3, Eye, FileCheck2, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { ArrowDownToLine, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
 import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
@@ -12,6 +12,7 @@ import { StockMovementModal, type StockItem } from "@/components/stock-movement"
 import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
 import { buildInvoicePdf, readBrandLogo } from "@/lib/invoice-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
+import { displayedProgress, progressModeHints, progressModeOf } from "@/lib/inspections";
 
 type Item = Record<string, unknown> & { _id: string };
 
@@ -117,9 +118,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     return row ? itemLabel(row) : value ? "…" : "—";
   }
 
-  function display(key: string, value: unknown) {
+  function display(key: string, value: unknown, item?: Item) {
     if (key.endsWith("Cents")) return money(Number(value || 0));
-    if (key === "progress") return `${value || 0}%`;
+    if (key === "progress") return item ? <ProgressCell item={item} /> : `${value || 0}%`;
     if (key === "phones") return Array.isArray(value) && value.length ? value.join(" · ") : "—";
     if (key === "minQuantity") return Number(value || 0) || "—";
     if (key.toLowerCase().includes("date") || key === "validUntil") return date(value as string);
@@ -215,7 +216,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   /** Props comunes que necesita cada campo del formulario. */
   const fieldProps = (field: Field) => ({
     field,
-    value: editing?.[field.key],
+    // El avance se muestra, no se edita: sale de las inspecciones.
+    value: field.key === "progress" && editing ? (displayedProgress(editing) === null ? "Sin base de avance" : `${displayedProgress(editing)}%`) : editing?.[field.key],
     relationOptions: field.relation ? (relations[field.relation] || []).map(item => ({ value: item._id, label: itemLabel(item), hint: String(item.cuit || item.email || "") || undefined })) : [],
     relationValue: relationValues[field.key] ?? "",
     personOptions: field.type === "user" ? people.map(person => ({ value: person._id, label: person.name, hint: roleLabels[person.role] })) : [],
@@ -234,7 +236,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {entity === "stock" && <StockSummary items={items} />}
     <section className="table-panel"><div className="table-scroll"><table><thead><tr>{config.columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
       const rowEditable = inlineEntities.has(entity) && canEdit;
-      return <tr key={item._id} className={rowEditable ? "clickable-row" : ""} onClick={rowEditable ? () => open(item) : undefined} onKeyDown={rowEditable ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(item); } } : undefined} tabIndex={rowEditable ? 0 : undefined} title={rowEditable ? (entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar") : undefined}>
+      // En obras la fila entera se pinta de rojo suave según el avance: 50% = media fila.
+      const rowProgress = entity === "works" ? displayedProgress(item) : null;
+      const rowClass = [rowEditable ? "clickable-row" : "", entity === "works" ? "progress-row" : ""].filter(Boolean).join(" ");
+      return <tr key={item._id} className={rowClass} style={rowProgress !== null ? { "--row-progress": `${rowProgress}%` } as React.CSSProperties : undefined} onClick={rowEditable ? () => open(item) : undefined} onKeyDown={rowEditable ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(item); } } : undefined} tabIndex={rowEditable ? 0 : undefined} title={rowEditable ? (entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar") : undefined}>
         {config.columns.map(column => <td key={column} data-label={columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
           const pending = pendingStatus?.id === item._id ? pendingStatus.status : "";
           return <div className="status-cell" onClick={event => event.stopPropagation()}>
@@ -248,8 +253,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
               <button type="button" className="status-confirm-no" onClick={() => setPendingStatus(null)} aria-label="Dejarlo como estaba"><X size={14} /></button>
             </span>}
           </div>;
-        })() : display(column, item[column])}</td>)}
+        })() : display(column, item[column], item)}</td>)}
         <td className="row-actions" onClick={event => event.stopPropagation()}>
+          {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
@@ -270,7 +276,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
         {/* En una obra manda el nombre: el título dice de qué obra se trata, no "editar registro". */}
         <p className="eyebrow">{entity === "works" && editing ? `OBRA ${String(editing.code || "")}` : editing ? "EDITAR REGISTRO" : "NUEVO REGISTRO"}</p>
         <h2 id="entity-modal-title">{entity === "works" && editing ? String(editing.name || "Obra") : editing ? `Editar ${config.singular}` : `Nuevo ${config.singular}`}</h2>
-        <small>{entity === "works" && editing ? `Avance ${Number(editing.progress || 0)}% · Presupuesto ${money(Number(editing.budgetCents || 0))}` : entity === "works" ? "Información general, planificación y control de la obra" : `Completá los datos del ${config.singular}`}</small>
+        <small>{entity === "works" && editing ? `${displayedProgress(editing) === null ? "Sin base de avance" : `Avance ${displayedProgress(editing)}%`} · Presupuesto ${money(Number(editing.budgetCents || 0))}` : entity === "works" ? "Información general, planificación y control de la obra" : `Completá los datos del ${config.singular}`}</small>
       </div></div>
       {entity === "works" && editing && <div className="modal-head-actions">
         <Link className="secondary-btn" href={`/app/works/${editing._id}#personal`}><Users size={16} /> Personal asignado</Link>
@@ -498,6 +504,22 @@ function StockSummary({ items }: { items: Item[] }) {
       {low.length > 0 && <small>{low.slice(0, 3).map(item => String(item.name)).join(", ")}{low.length > 3 ? ` y ${low.length - 3} más` : ""}</small>}
     </div>
   </section>;
+}
+
+/**
+ * Avance de una obra en el listado: el porcentaje escrito (para leerlo y para
+ * los lectores de pantalla) y una barra. Sin base de avance no se muestra 0%:
+ * se dice que falta la base.
+ */
+function ProgressCell({ item }: { item: Item }) {
+  const value = displayedProgress(item);
+  const mode = progressModeOf(item);
+  if (value === null) return <span className="progress-cell empty" title={progressModeHints.sin_base}>Sin base de avance</span>;
+  return <span className="progress-cell" title={progressModeHints[mode]}>
+    <b>{value}%</b>
+    <span className="progress-cell-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-label={`Avance ${value}%`}><i style={{ width: `${value}%` }} /></span>
+    {mode === "manual" && <small>manual</small>}
+  </span>;
 }
 
 /** Traduce los errores por campo que devuelve zod a una frase legible. */

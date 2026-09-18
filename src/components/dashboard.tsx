@@ -10,9 +10,10 @@ import {
 import { compactMoney, date, money, titleCase } from "@/lib/format";
 import type { DashboardPeriod, DashboardRange } from "@/lib/dashboard";
 import { DateInput } from "@/components/fields";
+import { displayedProgress } from "@/lib/inspections";
 
 type MonthlyPoint = { period: string; salesCents: number; invoicedCents: number; collectedCents: number; expenseCents: number };
-type ActiveWork = { _id: string; name: string; code: string; progress: number; budgetCents: number; costCents: number; status: string; endDate?: string };
+type ActiveWork = { _id: string; name: string; code: string; progress: number; progressMode?: string; budgetCents: number; costCents: number; status: string; endDate?: string };
 type DashboardData = {
   period: { range: DashboardPeriod; months: number; from: string; to: string; generatedAt: string };
   kpis: { activeWorks: number; averageProgress: number; salesCents: number; invoicedCents: number; receivableCents: number; netMarginCents: number; netMarginPercent: number | null };
@@ -278,13 +279,15 @@ function LegendRow({ color, label, value }: { color: string; label: string; valu
 }
 
 function WorkCard({ work }: { work: ActiveWork }) {
-  const progress = Math.min(100, Math.max(0, work.progress || 0));
+  // Sin base de avance no hay porcentaje que mostrar: la barra queda vacía y se dice.
+  const measured = displayedProgress(work);
+  const progress = measured ?? 0;
   const spent = work.budgetCents ? Math.min(100, Math.round(work.costCents / work.budgetCents * 100)) : 0;
   const style = { "--work-progress": `${progress}%`, "--budget-progress": `${spent}%` } as CSSProperties;
   return <Link href={`/app/works/${work._id}`} className="work-progress-card" style={style}>
     <div className="work-card-top"><span className="work-number">{work.code}</span><span className="badge en_curso">{titleCase(work.status)}</span></div>
     <div><h3>{work.name}</h3><p><CalendarDays size={14} /> {work.endDate ? `Fin previsto ${date(work.endDate)}` : "Sin fecha de cierre"}</p></div>
-    <div className="work-progress-heading"><span>Avance de obra</span><b><AnimatedNumber value={progress} format={value => `${Math.round(value)}%`} /></b></div>
+    <div className="work-progress-heading"><span>Avance de obra</span><b>{measured === null ? "Sin base" : <AnimatedNumber value={progress} format={value => `${Math.round(value)}%`} />}</b></div>
     <div className="work-progress-track"><i /></div>
     <div className="budget-row"><span><small>Presupuesto</small><b>{compactMoney(work.budgetCents)}</b></span><span><small>Ejecutado</small><b>{spent}%</b></span></div>
     <div className="budget-track"><i /></div>

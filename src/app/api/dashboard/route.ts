@@ -5,6 +5,7 @@ import { apiError } from "@/lib/api";
 import { comparisonPercent, marginPercent, monthKeys, monthsBetween, parseDashboardDate, parseDashboardRange, rangeMonths, type DashboardPeriod } from "@/lib/dashboard";
 import { canViewSection } from "@/lib/permissions";
 import { taskScope } from "@/lib/tasks";
+import { displayedProgress } from "@/lib/inspections";
 
 type TotalRow = { total?: number };
 type MonthlyRow = { _id: string; value: number };
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       Client.countDocuments({ active: true }),
       Quote.countDocuments({ status: { $in: ["enviada", "seguimiento"] } }),
-      Work.find({ status: "en_curso" }).select("name code progress budgetCents status endDate updatedAt").sort({ updatedAt: -1 }).limit(4).lean(),
+      Work.find({ status: "en_curso" }).select("name code progress progressMode budgetCents status endDate updatedAt").sort({ updatedAt: -1 }).limit(4).lean(),
       Expense.aggregate([
         { $match: { workId: { $ne: null }, status: { $ne: "anulado" } } },
         { $group: { _id: "$workId", total: { $sum: "$amountCents" } } },
@@ -148,7 +149,9 @@ export async function GET(request: Request) {
     const paidCents = total(paymentRows);
     const receivables = receivableRows[0] || { total: 0, overdue: 0, dueSoon: 0, future: 0 };
     const costsByWork = new Map(workCosts.map(row => [String(row._id), Number(row.total || 0)]));
-    const progressTotal = activeWorks.reduce((sum, work) => sum + Number(work.progress || 0), 0);
+    // Una obra sin base de avance no tiene porcentaje: no entra en el promedio como si fuera 0%.
+    const measuredWorks = activeWorks.filter(work => displayedProgress(work) !== null);
+    const progressTotal = measuredWorks.reduce((sum, work) => sum + Number(work.progress || 0), 0);
 
     const salesByMonth = monthlyMap(monthlySalesRows);
     const invoicesByMonth = monthlyMap(monthlyInvoiceRows);
@@ -166,7 +169,7 @@ export async function GET(request: Request) {
       period: { range, months, from, to, generatedAt: now },
       kpis: {
         activeWorks: activeWorks.length,
-        averageProgress: activeWorks.length ? Math.round(progressTotal / activeWorks.length) : 0,
+        averageProgress: measuredWorks.length ? Math.round(progressTotal / measuredWorks.length) : 0,
         salesCents,
         invoicedCents: billedCents,
         receivableCents: Number(receivables.total || 0),

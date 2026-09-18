@@ -19,7 +19,8 @@
     "user:password": "tsx --env-file-if-exists=.env scripts/reset-password.ts",
     "admin:sync": "node --env-file-if-exists=.env scripts/sync-admin.mjs",
     "postbuild": "node scripts/postbuild-standalone.mjs",
-    "migrate:clients": "node --env-file-if-exists=.env scripts/migrate-client-phones.mjs"
+    "migrate:clients": "node --env-file-if-exists=.env scripts/migrate-client-phones.mjs",
+    "migrate:progress": "node --env-file-if-exists=.env scripts/migrate-work-progress.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

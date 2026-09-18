@@ -111,6 +111,10 @@ async function main() {
       code: work.code, name: work.name, clientId: clientIds.get(work.client), quoteId: quoteIds.get(work.quote),
       status: "en_curso", startDate: monthDate(work.startAge, 3), endDate: monthDate(work.endAhead, 26),
       budgetCents: pesos(work.budget), progress: work.progress, costCenter: work.center,
+      // El avance sale de las inspecciones: la demo arranca con una base de avance
+      // y lo ya ejecutado cargado, asi el porcentaje coincide con el de siempre.
+      progressMode: "inspecciones", progressUpdatedAt: monthDate(0, 6),
+      progressBase: [{ _id: new mongoose.Types.ObjectId(), rubro: "albanileria", label: "Obra general", unit: "m2", plannedQty: 1000, initialQty: work.progress * 10, amountCents: pesos(work.budget) }],
       checklist: [
         { title: "Replanteo y documentación", done: true, completedAt: monthDate(work.startAge, 8) },
         { title: "Control de materiales", done: true, completedAt: monthDate(Math.max(work.startAge - 1, 0), 12) },

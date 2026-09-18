@@ -1,5 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 import { entities, ROLES, viewSections } from "./constants";
+import { CHECK_RESULTS, DEVIATIONS, INSPECTION_RUBROS, MATERIAL_CONDITIONS, ORDER_STATUS, PERFORMANCE, PRODUCTION_CONSUMPTION, WEATHER } from "./inspections";
 
 const options = { timestamps: true, strict: true } as const;
 const money = { type: Number, min: 0, default: 0 };
@@ -117,15 +118,39 @@ const WorkActivitySchema = new Schema({
   authorName: { type: String, required: true },
 }, { timestamps: { createdAt: true, updatedAt: false } });
 
+/*
+ * La base del avance fisico: que se contrato, en cantidades. El avance de la
+ * obra sale de la produccion que informan las inspecciones cerradas contra esta
+ * base, ponderada por el importe de cada linea. Las cuentas: src/lib/inspections.ts.
+ */
+const ProgressLineSchema = new Schema({
+  rubro: { type: String, enum: INSPECTION_RUBROS, required: true },
+  label: { type: String, required: true, trim: true },
+  unit: { type: String, default: "m2", trim: true },
+  plannedQty: { type: Number, min: 0, default: 0 },
+  // Lo ejecutado antes de las inspecciones (migracion del avance manual).
+  initialQty: { type: Number, min: 0, default: 0 },
+  amountCents: money,
+});
+
 const WorkSchema = new Schema({
   code: { type: String, required: true, unique: true },
   name: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, managerId: { type: Schema.Types.ObjectId, ref: "User" },
   status: { type: String, enum: ["planificada", "en_curso", "pausada", "terminada", "cancelada"], default: "planificada" },
-  startDate: Date, endDate: Date, budgetCents: money, progress: { type: Number, min: 0, max: 100, default: 0 },
+  startDate: Date, endDate: Date, budgetCents: money,
+  // El avance fisico ya no se escribe a mano: lo recalcula el cierre de cada
+  // inspeccion. Se guarda para que listados y tablero no tengan que calcularlo.
+  // "manual" es el avance que venia cargado antes de las inspecciones;
+  // "sin_base" es una obra sin cantidades previstas (no se inventa un porcentaje).
+  progress: { type: Number, min: 0, max: 100, default: 0 },
+  progressMode: { type: String, enum: ["inspecciones", "manual", "sin_base"], default: "sin_base" },
+  progressUpdatedAt: Date,
+  progressBase: [ProgressLineSchema],
   costCenter: String,
   checklist: [ChecklistItemSchema],
   activity: [WorkActivitySchema],
+  // Avances cargados a mano antes de las inspecciones. Quedan como registro anterior: ya no se agregan.
   advances: [{ percentage: Number, note: String, date: Date, userId: Schema.Types.ObjectId, photos: [String] }],
   certificates: [{ number: String, period: String, percentage: Number, amountCents: Number, expensesCents: { type: Number, min: 0, default: 0 }, includeExpenses: { type: Boolean, default: false }, approved: Boolean, invoiced: Boolean, file: String }],
   // Se guardan los datos del trabajador junto a la asignacion: la obra tiene que
@@ -154,6 +179,82 @@ const WorkSchema = new Schema({
     note: String, loadedByName: String, createdAt: { type: Date, default: Date.now },
   }],
 }, options);
+
+/*
+ * Inspeccion diaria de obra, una por obra, rubro y dia. Va en su propia coleccion
+ * porque una obra junta muchas. Los puntos de control se copian de la plantilla
+ * del rubro al crearla, asi un cambio de plantilla no reescribe el pasado.
+ */
+const checkPoint = { key: String, label: String, result: { type: String, enum: [...CHECK_RESULTS, ""], default: "" }, notes: String };
+
+const WorkInspectionSchema = new Schema({
+  workId: { type: Schema.Types.ObjectId, ref: "Work", required: true },
+  date: { type: Date, required: true },
+  // El dia en texto (aaaa-mm-dd): es la clave para no duplicar y para ordenar.
+  dayKey: { type: String, required: true },
+  rubro: { type: String, enum: INSPECTION_RUBROS, required: true },
+  templateVersion: { type: Number, default: 1 },
+  status: { type: String, enum: ["borrador", "cerrada"], default: "borrador" },
+  managerName: String,
+  weather: { type: String, enum: [...WEATHER, ""], default: "" },
+  qualityResponsibleName: String,
+  // Personal: sale de los partes diarios de la obra. Solo si ese dia no hay
+  // partes se carga a mano ("manual"). Al cerrar queda la foto del dia.
+  staff: {
+    source: { type: String, enum: ["partes", "manual"], default: "partes" },
+    oficiales: { type: Number, min: 0, default: 0 }, medioOficiales: { type: Number, min: 0, default: 0 },
+    ayudantes: { type: Number, min: 0, default: 0 }, otros: { type: Number, min: 0, default: 0 },
+    hoursWorked: { type: Number, min: 0, default: 0 }, checkIn: String, checkOut: String,
+    people: [{ _id: false, name: String, category: String, hours: Number }],
+  },
+  // Una fila por linea de la base de avance del rubro. previous/accumulated se
+  // calculan en el servidor al cerrar: nadie los tipea.
+  production: [{
+    _id: false,
+    lineId: Schema.Types.ObjectId, label: String, unit: String,
+    plannedQty: { type: Number, default: 0 }, previousQty: { type: Number, default: 0 },
+    todayQty: { type: Number, min: 0 }, accumulatedQty: { type: Number, default: 0 },
+    progressPct: Number,
+  }],
+  rubroProgressPct: Number, workProgressPct: Number,
+  stage: String,
+  performance: { type: String, enum: [...PERFORMANCE, ""], default: "" },
+  lowPerformanceReason: String,
+  productionConsumption: { type: String, enum: [...PRODUCTION_CONSUMPTION, ""], default: "" },
+  quality: [{ _id: false, ...checkPoint }],
+  qualityNotes: String,
+  // Lo que entro hoy: lo que Stock entrego a la obra ese dia, mas lo que haya
+  // llegado por fuera del deposito. El estado (OK / danado) lo pone la inspeccion.
+  materialsReceived: [{
+    _id: false,
+    source: { type: String, enum: ["stock", "manual"], default: "manual" },
+    stockItemId: Schema.Types.ObjectId, movementId: Schema.Types.ObjectId,
+    name: String, unit: String, quantity: { type: Number, min: 0, default: 0 },
+    condition: { type: String, enum: [...MATERIAL_CONDITIONS, ""], default: "ok" }, notes: String,
+  }],
+  mainMaterial: {
+    stockItemId: Schema.Types.ObjectId, name: String, unit: String,
+    plannedQty: Number, stockStart: Number, receivedToday: Number, stockEnd: Number,
+    receivedPrevious: Number, receivedAccumulated: Number,
+    consumptionToday: Number, previousConsumption: Number, consumptionAccumulated: Number,
+    remaining: Number, consumptionPct: Number, enough: Boolean,
+    deviation: { type: String, enum: DEVIATIONS }, notes: String,
+  },
+  shortages: [{ _id: false, material: String, quantity: Number, unit: String }],
+  shortageNeededBy: Date,
+  shortageOrderStatus: { type: String, enum: [...ORDER_STATUS, ""], default: "" },
+  safety: [{ _id: false, ...checkPoint }],
+  incidents: String,
+  colors: [{ _id: false, sector: String, color: String, paintType: String, brand: String, notes: String }],
+  photos: [String],
+  notes: String,
+  alerts: [{ _id: false, kind: String, message: String }],
+  createdById: { type: Schema.Types.ObjectId, ref: "User" }, createdByName: String,
+  closedAt: Date, closedById: { type: Schema.Types.ObjectId, ref: "User" }, closedByName: String,
+}, options);
+// Una sola inspeccion por obra, rubro y dia: la segunda se abre, no se duplica.
+WorkInspectionSchema.index({ workId: 1, rubro: 1, dayKey: 1 }, { unique: true });
+WorkInspectionSchema.index({ workId: 1, status: 1, dayKey: -1 });
 
 type WorkerDoc = {
   name?: string; firstName: string; lastName: string; dni: string; phone?: string;
@@ -339,6 +440,7 @@ export const Client = mongoose.models.Client || mongoose.model("Client", ClientS
 export const Quote = mongoose.models.Quote || mongoose.model("Quote", QuoteSchema);
 export const Work = mongoose.models.Work || mongoose.model("Work", WorkSchema);
 export const StockItem = mongoose.models.StockItem || mongoose.model("StockItem", StockItemSchema);
+export const WorkInspection = mongoose.models.WorkInspection || mongoose.model("WorkInspection", WorkInspectionSchema);
 export const Worker = mongoose.models.Worker || mongoose.model("Worker", WorkerSchema);
 export const Supplier = mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
 export const Purchase = mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);

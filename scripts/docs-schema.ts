@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import type { Schema } from "mongoose";
 import { entityLabels, entities } from "../src/lib/constants";
-import { modelByEntity, User, AuditLog, Counter } from "../src/lib/models";
+import { modelByEntity, User, AuditLog, Counter, WorkInspection } from "../src/lib/models";
 
 const OUT = "docs/modelo-datos/esquema-actual.md";
 
@@ -67,6 +67,7 @@ const extras = [
   ["User", User, "Usuarios del sistema y sus permisos."],
   ["AuditLog", AuditLog, "Registro de auditoría: quién cambió qué y cuándo."],
   ["Counter", Counter, "Contadores para numeración correlativa (hoy: cotizaciones)."],
+  ["WorkInspection", WorkInspection, "Inspecciones diarias de obra, una por obra, rubro y día. De acá sale el avance físico."],
 ] as const;
 
 const parts: string[] = [

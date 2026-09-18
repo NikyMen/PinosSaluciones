@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-09-07 · 17 colecciones.
+Generado el 2026-09-18 · 18 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -116,6 +116,15 @@ Colección `works` · entidad `works`
 | `endDate` | fecha | — | — |
 | `budgetCents` | número | — | mínimo 0 · por defecto `0` |
 | `progress` | número | — | mínimo 0 · máximo 100 · por defecto `0` |
+| `progressMode` | texto | — | valores: `inspecciones` · `manual` · `sin_base` · por defecto `"sin_base"` |
+| `progressUpdatedAt` | fecha | — | — |
+| `progressBase` | lista de objetos | — | — |
+| `progressBase.rubro` | texto | sí | valores: `albanileria` · `impermeabilizacion` · `espuma_poliuretano` · `pintura` · `trabajos_altura` |
+| `progressBase.label` | texto | sí | — |
+| `progressBase.unit` | texto | — | por defecto `"m2"` |
+| `progressBase.plannedQty` | número | — | mínimo 0 · por defecto `0` |
+| `progressBase.initialQty` | número | — | mínimo 0 · por defecto `0` |
+| `progressBase.amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `costCenter` | texto | — | — |
 | `checklist` | lista de objetos | — | — |
 | `checklist.title` | texto | sí | — |
@@ -440,3 +449,108 @@ Contadores para numeración correlativa (hoy: cotizaciones). Colección `counter
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
 | `seq` | número | — | por defecto `0` |
+
+### WorkInspection
+
+Inspecciones diarias de obra, una por obra, rubro y día. De acá sale el avance físico. Colección `workinspections`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `workId` | referencia | sí | apunta a **Work** |
+| `date` | fecha | sí | — |
+| `dayKey` | texto | sí | — |
+| `rubro` | texto | sí | valores: `albanileria` · `impermeabilizacion` · `espuma_poliuretano` · `pintura` · `trabajos_altura` |
+| `templateVersion` | número | — | por defecto `1` |
+| `status` | texto | — | valores: `borrador` · `cerrada` · por defecto `"borrador"` |
+| `managerName` | texto | — | — |
+| `weather` | texto | — | valores: `seco` · `humedo` · `lluvia` · `viento` · `` · por defecto `""` |
+| `qualityResponsibleName` | texto | — | — |
+| `staff.source` | texto | — | valores: `partes` · `manual` · por defecto `"partes"` |
+| `staff.oficiales` | número | — | mínimo 0 · por defecto `0` |
+| `staff.medioOficiales` | número | — | mínimo 0 · por defecto `0` |
+| `staff.ayudantes` | número | — | mínimo 0 · por defecto `0` |
+| `staff.otros` | número | — | mínimo 0 · por defecto `0` |
+| `staff.hoursWorked` | número | — | mínimo 0 · por defecto `0` |
+| `staff.checkIn` | texto | — | — |
+| `staff.checkOut` | texto | — | — |
+| `staff.people` | lista de objetos | — | — |
+| `staff.people.name` | texto | — | — |
+| `staff.people.category` | texto | — | — |
+| `staff.people.hours` | número | — | — |
+| `production` | lista de objetos | — | — |
+| `production.lineId` | referencia | — | — |
+| `production.label` | texto | — | — |
+| `production.unit` | texto | — | — |
+| `production.plannedQty` | número | — | por defecto `0` |
+| `production.previousQty` | número | — | por defecto `0` |
+| `production.todayQty` | número | — | mínimo 0 |
+| `production.accumulatedQty` | número | — | por defecto `0` |
+| `production.progressPct` | número | — | — |
+| `rubroProgressPct` | número | — | — |
+| `workProgressPct` | número | — | — |
+| `stage` | texto | — | — |
+| `performance` | texto | — | valores: `bueno` · `normal` · `bajo` · `` · por defecto `""` |
+| `lowPerformanceReason` | texto | — | — |
+| `productionConsumption` | texto | — | valores: `acorde` · `consumo_alto` · `produccion_baja` · `` · por defecto `""` |
+| `quality` | lista de objetos | — | — |
+| `quality.key` | texto | — | — |
+| `quality.label` | texto | — | — |
+| `quality.result` | texto | — | valores: `cumple` · `no_cumple` · `na` · `` · por defecto `""` |
+| `quality.notes` | texto | — | — |
+| `qualityNotes` | texto | — | — |
+| `materialsReceived` | lista de objetos | — | — |
+| `materialsReceived.source` | texto | — | valores: `stock` · `manual` · por defecto `"manual"` |
+| `materialsReceived.stockItemId` | referencia | — | — |
+| `materialsReceived.movementId` | referencia | — | — |
+| `materialsReceived.name` | texto | — | — |
+| `materialsReceived.unit` | texto | — | — |
+| `materialsReceived.quantity` | número | — | mínimo 0 · por defecto `0` |
+| `materialsReceived.condition` | texto | — | valores: `ok` · `danado` · `` · por defecto `"ok"` |
+| `materialsReceived.notes` | texto | — | — |
+| `mainMaterial.stockItemId` | referencia | — | — |
+| `mainMaterial.name` | texto | — | — |
+| `mainMaterial.unit` | texto | — | — |
+| `mainMaterial.plannedQty` | número | — | — |
+| `mainMaterial.stockStart` | número | — | — |
+| `mainMaterial.receivedToday` | número | — | — |
+| `mainMaterial.stockEnd` | número | — | — |
+| `mainMaterial.receivedPrevious` | número | — | — |
+| `mainMaterial.receivedAccumulated` | número | — | — |
+| `mainMaterial.consumptionToday` | número | — | — |
+| `mainMaterial.previousConsumption` | número | — | — |
+| `mainMaterial.consumptionAccumulated` | número | — | — |
+| `mainMaterial.remaining` | número | — | — |
+| `mainMaterial.consumptionPct` | número | — | — |
+| `mainMaterial.enough` | sí/no | — | — |
+| `mainMaterial.deviation` | texto | — | valores: `acorde` · `consumo_alto` · `consumo_bajo` |
+| `mainMaterial.notes` | texto | — | — |
+| `shortages` | lista de objetos | — | — |
+| `shortages.material` | texto | — | — |
+| `shortages.quantity` | número | — | — |
+| `shortages.unit` | texto | — | — |
+| `shortageNeededBy` | fecha | — | — |
+| `shortageOrderStatus` | texto | — | valores: `pedido_realizado` · `pedido_pendiente` · `` · por defecto `""` |
+| `safety` | lista de objetos | — | — |
+| `safety.key` | texto | — | — |
+| `safety.label` | texto | — | — |
+| `safety.result` | texto | — | valores: `cumple` · `no_cumple` · `na` · `` · por defecto `""` |
+| `safety.notes` | texto | — | — |
+| `incidents` | texto | — | — |
+| `colors` | lista de objetos | — | — |
+| `colors.sector` | texto | — | — |
+| `colors.color` | texto | — | — |
+| `colors.paintType` | texto | — | — |
+| `colors.brand` | texto | — | — |
+| `colors.notes` | texto | — | — |
+| `photos` | lista | — | — |
+| `notes` | texto | — | — |
+| `alerts` | lista de objetos | — | — |
+| `alerts.kind` | texto | — | — |
+| `alerts.message` | texto | — | — |
+| `createdById` | referencia | — | apunta a **User** |
+| `createdByName` | texto | — | — |
+| `closedAt` | fecha | — | — |
+| `closedById` | referencia | — | apunta a **User** |
+| `closedByName` | texto | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
