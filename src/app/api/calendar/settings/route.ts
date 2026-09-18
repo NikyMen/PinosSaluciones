@@ -22,7 +22,7 @@ const schema = z.object({
 
 /** Devuelve la config sin exponer los tokens crudos: solo si hay una cuenta conectada. */
 function toPublic(settings: Awaited<ReturnType<typeof getCalendarSettings>>) {
-  const { refreshToken, accessToken, tokenExpiry, ...rest } = settings;
+  const { refreshToken, accessToken, tokenExpiry: _tokenExpiry, ...rest } = settings;
   return { ...rest, connected: !!refreshToken, tokenValid: !!accessToken };
 }
 

@@ -21,8 +21,8 @@ describe("agenda: calculo de horarios libres", () => {
 
   it("no ofrece un turno que no entra completo antes del cierre", () => {
     const slots = computeDaySlots({ date: "2026-01-05", duration: 45, rules, now: earlyNow });
-    // El ultimo que entra completo es 11:15-12:00; 11:30 ya se pasaria del cierre.
-    expect(slots.at(-1)?.time).toBe("11:15");
+    // El ultimo que entra completo es 11:00-11:45; el siguiente (11:30) terminaria a las 12:15, despues del cierre.
+    expect(slots.at(-1)?.time).toBe("11:00");
   });
 
   it("descarta los horarios que ya pasaron (con el margen de 15 minutos)", () => {

@@ -76,7 +76,7 @@ async function runTool(name: string, rawArgs: string, session: { userId: string;
       date: String(args.date),
       time: String(args.time),
       notes: args.notes ? String(args.notes) : undefined,
-      createdBy: session,
+      createdBy: { id: session.userId, name: session.name },
     });
     return { booking };
   }

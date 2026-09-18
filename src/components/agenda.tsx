@@ -35,10 +35,15 @@ const DAY_LABELS = [
   { value: 5, label: "Vie" }, { value: 6, label: "Sáb" }, { value: 7, label: "Dom" },
 ];
 
+function oauthQueryParam(key: string) {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get(key);
+}
+
 export function Agenda({ isManager }: { isManager: boolean }) {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => oauthQueryParam("calendarError"));
+  const [notice, setNotice] = useState<string | null>(() => (oauthQueryParam("calendarConnected") ? "Cuenta de Google conectada correctamente." : null));
 
   const [clients, setClients] = useState<Option[]>([]);
   const [clientId, setClientId] = useState("");
@@ -53,10 +58,7 @@ export function Agenda({ isManager }: { isManager: boolean }) {
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("calendarConnected")) setNotice("Cuenta de Google conectada correctamente.");
-    if (params.get("calendarError")) setError(params.get("calendarError"));
-    if (params.toString()) window.history.replaceState(null, "", "/app/calendario");
+    if (typeof window !== "undefined" && window.location.search) window.history.replaceState(null, "", "/app/calendario");
   }, []);
 
   async function loadBookings() {
@@ -71,7 +73,10 @@ export function Agenda({ isManager }: { isManager: boolean }) {
   }
 
   useEffect(() => {
-    void loadBookings();
+    fetch("/api/calendar/bookings").then(res => res.json()).then(data => {
+      if (data.items) setBookings(data.items);
+      else setError(data.error || "No se pudieron cargar los turnos.");
+    }).catch(() => setError("No se pudieron cargar los turnos."));
     fetch("/api/records/clients?limit=200").then(res => res.json()).then(data => {
       setClients((data.items || []).map((client: { _id: string; name: string }) => ({ value: client._id, label: client.name })));
     }).catch(() => {});
@@ -79,9 +84,9 @@ export function Agenda({ isManager }: { isManager: boolean }) {
 
   useEffect(() => {
     let active = true;
-    setSlotsLoading(true);
-    setTime("");
-    fetch(`/api/calendar/slots?date=${date}`)
+    Promise.resolve()
+      .then(() => { setSlotsLoading(true); setTime(""); })
+      .then(() => fetch(`/api/calendar/slots?date=${date}`))
       .then(res => res.json())
       .then(data => { if (active) setSlots(data.slots || []); })
       .catch(() => { if (active) setSlots([]); })
@@ -216,7 +221,12 @@ function CalendarSettingsPanel() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    fetch("/api/calendar/settings").then(res => res.json()).then(data => {
+      if (data.error) setError(data.error);
+      else setSettings(data);
+    }).catch(() => setError("No se pudo cargar la configuración."));
+  }, []);
 
   async function save(event: FormEvent) {
     event.preventDefault();
