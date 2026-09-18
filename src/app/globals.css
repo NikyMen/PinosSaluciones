@@ -1126,6 +1126,15 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 .cascade-hint { display: block; margin-top: 2px; color: var(--muted-2); font-size: .62rem; text-align: right; }
 .secondary-btn.compact { margin-top: 10px; height: 34px; padding: 0 13px; font-size: .72rem; }
 
+/* Agenda */
+.agenda-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.slot-grid { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+.agenda-list { list-style: none; margin: 0; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.agenda-item { padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.agenda-item p { margin: 2px 0 0; color: var(--muted); font-size: .72rem; }
+.agenda-item a { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--brand-navy); font-size: .68rem; font-weight: 800; text-decoration: none; }
+@media (max-width: 860px) { .agenda-grid { grid-template-columns: 1fr; } }
+
 /* Los 40 conceptos de gastos generales van casi todos en cero: se ven los
    cargados y el resto queda plegado, que es como se usa la lista en la planilla. */
 .cascade-group { border-bottom: 1px solid var(--line); }

@@ -282,6 +282,39 @@ const TaskSchema = new Schema({
   relatedType: String, relatedId: Schema.Types.ObjectId,
 }, options);
 
+// Documento unico (_id fijo "main"), igual que CounterSchema. Las credenciales
+// de Google (client id/secret) van por variable de entorno, no acá: esto solo
+// guarda lo que cambia por uso (tokens, reglas de agenda).
+const CalendarSettingsSchema = new Schema({
+  _id: String,
+  enabled: { type: Boolean, default: false },
+  calendarId: { type: String, default: "primary" },
+  refreshToken: String, accessToken: String, tokenExpiry: Date, userEmail: String,
+  meetingDurationMinutes: { type: Number, default: 45 },
+  slotIntervalMinutes: { type: Number, default: 30 },
+  bufferBetweenMeetings: { type: Number, default: 15 },
+  workingDays: { type: [Number], default: [1, 2, 3, 4, 5] },
+  workingHoursStart: { type: String, default: "09:00" },
+  workingHoursEnd: { type: String, default: "18:00" },
+  timezone: { type: String, default: "America/Argentina/Buenos_Aires" },
+  createMeetLink: { type: Boolean, default: true },
+  defaultTitle: { type: String, default: "Reunión - {{name}}" },
+  defaultDescription: { type: String, default: "Reunión agendada desde Pino Soluciones.\nContacto: {{name}}\nTeléfono: {{phone}}" },
+}, options);
+
+const CalendarBookingSchema = new Schema({
+  eventId: String,
+  clientId: { type: Schema.Types.ObjectId, ref: "Client" },
+  contactName: { type: String, required: true, trim: true },
+  contactPhone: String, contactEmail: String,
+  summary: { type: String, required: true }, description: String, meetUrl: String,
+  startAt: { type: Date, required: true }, endAt: { type: Date, required: true },
+  status: { type: String, enum: ["confirmado", "cancelado"], default: "confirmado" },
+  createdBy: { type: Schema.Types.ObjectId, ref: "User" }, createdByName: String,
+}, options);
+CalendarBookingSchema.index({ startAt: 1, endAt: 1 });
+CalendarBookingSchema.index({ clientId: 1 });
+
 const AuditSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String, userEmail: String,
   action: { type: String, required: true }, entity: { type: String, required: true }, entityId: Schema.Types.ObjectId,
@@ -319,6 +352,8 @@ export const Task = mongoose.models.Task || mongoose.model("Task", TaskSchema);
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditSchema);
 export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);
 export const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
+export const CalendarSettings = mongoose.models.CalendarSettings || mongoose.model("CalendarSettings", CalendarSettingsSchema);
+export const CalendarBooking = mongoose.models.CalendarBooking || mongoose.model("CalendarBooking", CalendarBookingSchema);
 
 // COT-1: numeración correlativa. La primera vez arranca desde el número más alto ya cargado
 // para no pisar los que vienen del sistema anterior (llegan hasta COT-747).

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  BarChart3, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat,
+  BarChart3, CalendarDays, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat,
   Landmark, LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart,
   Truck, Users, WalletCards, X, PackageSearch,
 } from "lucide-react";
@@ -45,6 +45,7 @@ const groups: NavGroup[] = [
 ];
 
 const directItems: NavItem[] = [
+  { href: "/app/calendario", label: "Agenda", icon: CalendarDays, permission: "calendario" },
   { href: "/app/reports", label: "iA y Reportes", icon: BarChart3, permission: "reports" },
   { href: "/app/settings", label: "Usuarios", icon: Settings, managerOnly: true },
 ];

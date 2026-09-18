@@ -39,7 +39,7 @@ export const entities = [
 
 export type Entity = (typeof entities)[number];
 
-export const viewSections = ["dashboard", ...entities, "reports"] as const;
+export const viewSections = ["dashboard", ...entities, "calendario", "reports"] as const;
 
 export type ViewSection = (typeof viewSections)[number];
 
@@ -63,5 +63,6 @@ export const entityLabels: Record<Entity, string> = {
 export const viewSectionLabels: Record<ViewSection, string> = {
   dashboard: "Tablero gerencial",
   ...entityLabels,
+  calendario: "Agenda",
   reports: "iA y Reportes",
 };
