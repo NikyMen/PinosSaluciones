@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3, CalendarDays, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat,
-  Landmark, LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart,
+  LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart,
   Tags, Truck, Users, WalletCards, X, PackageSearch,
 } from "lucide-react";
 import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
@@ -40,13 +40,11 @@ const groups: NavGroup[] = [
     { href: "/app/invoices", label: "Facturación", icon: FileText, permission: "invoices" },
     { href: "/app/collections", label: "Cobranzas", icon: HandCoins, permission: "collections" },
     { href: "/app/payments", label: "Pagos", icon: CreditCard, permission: "payments" },
-    { href: "/app/checks", label: "Cheques", icon: Landmark, permission: "checks" },
-    { href: "/app/cash", label: "Caja y bancos", icon: WalletCards, permission: "cash" },
   ] },
 ];
 
 const directItems: NavItem[] = [
-  { href: "/app/calendario", label: "Agenda", icon: CalendarDays, permission: "calendario" },
+  { href: "/app/calendario", label: "Calendario", icon: CalendarDays, permission: "calendario" },
   { href: "/app/reports", label: "iA y Reportes", icon: BarChart3, permission: "reports" },
 ];
 
@@ -140,7 +138,6 @@ export function AppShell({ session, children }: { session: { name: string; email
           </div>
         </nav>
 
-        <div className="sidebar-foot"><span className="status-dot" /><span><b>Sistema operativo</b><small>Datos actualizados</small></span></div>
       </aside>
 
       <div className="main-wrap">

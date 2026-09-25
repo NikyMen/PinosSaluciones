@@ -1,5 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { date, dateTime, money } from "./format";
+import { drawFooter, drawLetterhead } from "./pdf-brand";
 
 export type ReportData = {
   cashflow: Array<{ period: string; incomeCents: number; outcomeCents: number }>;
@@ -26,7 +27,7 @@ const WIDTH = 210;
 const BOTTOM = 276;
 
 /** Escribe el PDF de gestión. Devuelve el nombre con el que conviene guardarlo. */
-export function buildReportPdf(doc: jsPDF, data: ReportData, period: { from: string; to: string; author: string }) {
+export function buildReportPdf(doc: jsPDF, data: ReportData, period: { from: string; to: string; author: string; logo?: string }) {
   let y = 0;
   let page = 1;
 
@@ -34,28 +35,11 @@ export function buildReportPdf(doc: jsPDF, data: ReportData, period: { from: str
   const setFill = ([r, g, b]: [number, number, number]) => doc.setFillColor(r, g, b);
 
   function header() {
-    setFill(NAVY);
-    doc.rect(0, 0, WIDTH, 30, "F");
-    setFill(RED);
-    doc.rect(0, 30, WIDTH, 1.6, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(15);
-    doc.text("PINO SOLUCIONES TECNICAS", MARGIN, 13);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("Reporte de gestion", MARGIN, 20);
-    doc.text(plain(`Periodo: ${date(period.from)} al ${date(period.to)}`), WIDTH - MARGIN, 13, { align: "right" });
-    doc.text(plain(`Emitido: ${dateTime(new Date())}`), WIDTH - MARGIN, 20, { align: "right" });
-    y = 42;
+    y = drawLetterhead(doc, { title: "Reporte de gestión", logo: period.logo, lines: [`Período: ${date(period.from)} al ${date(period.to)}`, `Emitido: ${dateTime(new Date())}`] });
   }
 
   function footer() {
-    setColor(MUTED);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.text(plain(`Generado por ${period.author} - Documento interno, sin validez fiscal`), MARGIN, 288);
-    doc.text(`Pagina ${page}`, WIDTH - MARGIN, 288, { align: "right" });
+    drawFooter(doc, { page, author: period.author, note: "Documento interno, sin validez fiscal" });
   }
 
   /** Salta de hoja si lo que viene no entra, para no cortar una fila al medio. */
@@ -123,7 +107,7 @@ export function buildReportPdf(doc: jsPDF, data: ReportData, period: { from: str
   const margin = revenue - costs;
   const marginPercent = revenue > 0 ? Math.round((margin / revenue) * 1000) / 10 : null;
 
-  sectionTitle("Resumen del periodo", "Sintesis");
+  sectionTitle("Resumen del período", "Síntesis");
   const cards = [
     { label: "Cobrado", value: money(income) },
     { label: "Pagado", value: money(outcome) },

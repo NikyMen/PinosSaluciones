@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { connectDB } from "./db";
@@ -31,7 +32,12 @@ export async function getSession(): Promise<Session | null> {
   } catch { return null; }
 }
 
-export async function requireSession(): Promise<AuthorizedSession> {
+/**
+ * La sesión de quien pide, con sus permisos al día. En una misma navegación la
+ * piden el layout y la página: con cache() la base se consulta una sola vez por
+ * pedido en vez de dos.
+ */
+export const requireSession = cache(async (): Promise<AuthorizedSession> => {
   const session = await getSession();
   if (!session) throw new Error("UNAUTHORIZED");
   await connectDB();
@@ -39,4 +45,4 @@ export async function requireSession(): Promise<AuthorizedSession> {
   if (!active) throw new Error("UNAUTHORIZED");
   const user = active as unknown as { name: string; email: string; role: Role; permissions?: UserPermissions };
   return { userId: session.userId, name: user.name, email: user.email, role: user.role, permissions: normalizePermissions(user.role, user.permissions) };
-}
+});

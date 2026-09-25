@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { ArrowDownToLine, ArrowRightLeft, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
@@ -10,9 +10,13 @@ import { date, money, qty, titleCase } from "@/lib/format";
 import { DateInput } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
 import { FormField, QuickCreateModal, fieldErrors, type FieldProps } from "@/components/record-form";
-import { StockMovementModal, type StockItem } from "@/components/stock-movement";
+import { StockMovementModal, type StockItem, type StockMovement } from "@/components/stock-movement";
+import { ReceivePurchaseModal } from "@/components/receive-purchase";
+import { levelsOf, lowWarehouses } from "@/lib/stock-levels";
+import { warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
 import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
-import { buildInvoicePdf, readBrandLogo } from "@/lib/invoice-pdf";
+import { buildInvoicePdf } from "@/lib/invoice-pdf";
+import { readPdfLogo } from "@/lib/pdf-brand";
 import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-order-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
 
@@ -57,7 +61,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [quickCreate, setQuickCreate] = useState<{ fieldKey: string; entity: Entity } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ _id: string; label: string } | null>(null);
   const [laborFor, setLaborFor] = useState<{ _id: string; label: string } | null>(null);
-  const [movementFor, setMovementFor] = useState<{ item: StockItem; kind: "ingreso" | "egreso" } | null>(null);
+  const [movementFor, setMovementFor] = useState<{ item: StockItem; kind: StockMovement["kind"] } | null>(null);
+  const [receiveFor, setReceiveFor] = useState<Item | null>(null);
   const [convertFor, setConvertFor] = useState<Item | null>(null);
   const [invoiceFor, setInvoiceFor] = useState<Item | null>(null);
   // Estado elegido en una fila que todavía espera el visto bueno.
@@ -88,7 +93,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     setLoading(false);
   }, [entity, search, taskQuery]);
 
-  useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer); }, [load]);
+  // La espera es sólo mientras se tipea en el buscador: al entrar a la sección la lista se pide de una.
+  useEffect(() => { const timer = setTimeout(load, search ? 250 : 0); return () => clearTimeout(timer); }, [load, search]);
   const relationEntities = useMemo(() => [...new Set(config.fields.filter(field => field.relation).map(field => field.relation!))], [config.fields]);
 
   useEffect(() => {
@@ -122,7 +128,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     return row ? itemLabel(row) : value ? "…" : "—";
   }
 
-  function display(key: string, value: unknown) {
+  function display(key: string, value: unknown, item: Item) {
+    // Lo que hay en cada depósito: un material viejo no tiene el campo y todo lo suyo está en el Central.
+    if (key.startsWith("qty_")) { const amount = levelsOf(item)[key.slice(4) as WarehouseKey] ?? 0; return amount ? qty(amount) : "—"; }
+    if (key === "quantity" && entity === "stock") return qty(Number(value || 0));
     if (key.endsWith("Cents")) return money(Number(value || 0));
     if (key === "phones") return Array.isArray(value) && value.length ? value.join(" · ") : "—";
     if (key === "minQuantity") return Number(value || 0) || "—";
@@ -258,7 +267,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
               <button type="button" className="status-confirm-no" onClick={() => setPendingStatus(null)} aria-label="Dejarlo como estaba"><X size={14} /></button>
             </span>}
           </div>;
-        })() : display(column, item[column])}</td>)}
+        })() : display(column, item[column], item)}</td>)}
         <td className="row-actions" onClick={event => event.stopPropagation()}>
           {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
@@ -269,8 +278,12 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
             <Download size={15} /> PDF</button>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
           {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void approveQuote(item); }}><CheckCircle2 size={15} /> Aprobar</button>}
-          {entity === "stock" && canEdit && <button title="Registrar una compra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
-          {entity === "stock" && canEdit && <button title="Entregar a una obra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
+          {entity === "stock" && canEdit && <button title="Entrada: una compra que llegó" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
+          {entity === "stock" && canEdit && <button title="Pasar entre el Depósito Central y el Salón de Ventas" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "transferencia" })}><ArrowRightLeft size={16} /></button>}
+          {entity === "stock" && canEdit && <button title="Salida a obra, con remito" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
+          {entity === "purchases" && canEdit && Array.isArray(item.items) && item.items.length > 0 && (item.stockedAt
+            ? <span className="row-stocked" title={`Pasada al stock por ${String(item.stockedByName || "")}`}><PackageCheck size={14} /> En stock · {warehouseLabel(String(item.stockedWarehouse || ""))}</span>
+            : item.status !== "cancelada" && <button className="row-action-wide approve" title="Llegó la mercadería: sumarla al stock" onClick={() => setReceiveFor(item)}><PackagePlus size={15} /> Pasar a stock</button>)}
           {entity !== "tasks" && <button title="Ver historial de cambios" onClick={() => setHistoryFor({ _id: item._id, label: itemLabel(item) })}><History size={16} /></button>}
           {entity === "workers" && <button className="row-action-wide labor" title="Cargar horarios y ver la liquidación" onClick={() => setLaborFor({ _id: item._id, label: itemLabel(item) })}><Timer size={15} /> Horarios</button>}
           {canEdit && <button title={entity === "tasks" ? "Ver y editar tarea" : "Editar"} onClick={() => open(item)}><Edit3 size={16} /></button>}
@@ -316,6 +329,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {convertFor && <ConvertQuoteModal quote={convertFor} client={(relations.clients || []).find(row => row._id === String(convertFor.clientId || ""))}
       onClose={() => setConvertFor(null)} onDone={() => { setConvertFor(null); void load(); }} />}
 
+    {receiveFor && <ReceivePurchaseModal purchase={receiveFor} onClose={() => setReceiveFor(null)} onDone={() => { void load(); }} />}
     {movementFor && <StockMovementModal item={movementFor.item} initialKind={movementFor.kind}
       onClose={() => setMovementFor(null)}
       onSaved={updated => { setItems(current => current.map(row => row._id === updated._id ? { ...row, ...updated } as Item : row)); setMovementFor({ item: updated, kind: movementFor.kind }); }} />}
@@ -397,7 +411,7 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
   async function downloadInvoice(work: Item, number: string, period: string) {
     const [{ jsPDF }, logo, session] = await Promise.all([
       import("jspdf"),
-      readBrandLogo(),
+      readPdfLogo(),
       fetch("/api/auth/me").then(response => response.ok ? response.json() : null).catch(() => null),
     ]);
     const doc = new jsPDF();
@@ -503,14 +517,15 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
 /** Cabecera del stock: cuánto hay guardado y qué está por debajo del mínimo. */
 function StockSummary({ items }: { items: Item[] }) {
   const valued = items.reduce((total, item) => total + Number(item.valueCents || 0), 0);
-  const low = items.filter(item => Number(item.minQuantity || 0) > 0 && Number(item.quantity || 0) <= Number(item.minQuantity || 0));
+  // Bajo el mínimo en algún depósito: "Látex (Salón)".
+  const low = items.flatMap(item => lowWarehouses(item).map(warehouse => `${String(item.name)} (${warehouse.short})`));
   return <section className="stock-overview">
-    <div className="stock-kpi"><span>Materiales en catálogo</span><strong>{items.length}</strong></div>
-    <div className="stock-kpi"><span>Valorización del depósito</span><strong>{money(valued)}</strong></div>
+    <div className="stock-kpi"><span>Materiales en catálogo</span><strong>{items.length}</strong><small>Central y Salón de Ventas</small></div>
+    <div className="stock-kpi"><span>Valorización entre depósitos</span><strong>{money(valued)}</strong></div>
     <div className={low.length ? "stock-kpi alert" : "stock-kpi"}>
       <span>{low.length ? <><TriangleAlert size={13} /> Bajo el mínimo</> : "Bajo el mínimo"}</span>
       <strong>{low.length}</strong>
-      {low.length > 0 && <small>{low.slice(0, 3).map(item => String(item.name)).join(", ")}{low.length > 3 ? ` y ${low.length - 3} más` : ""}</small>}
+      {low.length > 0 && <small>{low.slice(0, 3).join(", ")}{low.length > 3 ? ` y ${low.length - 3} más` : ""}</small>}
     </div>
   </section>;
 }

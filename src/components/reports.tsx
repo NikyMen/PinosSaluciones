@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, TrendingDown, TrendingUp } from "lucide-react";
+import { BarChart3, Bot, Download, TrendingDown, TrendingUp } from "lucide-react";
 import { money } from "@/lib/format";
 import { AiChat } from "@/components/ai-chat";
 import { DateInput } from "@/components/fields";
 import { buildReportPdf } from "@/lib/report-pdf";
+import { readPdfLogo } from "@/lib/pdf-brand";
 
 export type Report = {
   cashflow: Array<{ period: string; incomeCents: number; outcomeCents: number }>;
   profitability: Array<{ id: string; name: string; budgetCents: number; revenueCents: number; costCents: number; marginCents: number }>;
 };
 
+/** Dos secciones: el asistente (que conversa sobre estos mismos números) y los reportes. */
+type Tab = "asistente" | "reportes";
+
 export function Reports() {
   const now = new Date();
+  const [tab, setTab] = useState<Tab>("asistente");
   const [from, setFrom] = useState(`${now.getFullYear()}-01-01`);
   const [to, setTo] = useState(now.toISOString().slice(0, 10));
   const [data, setData] = useState<Report | null>(null);
@@ -50,12 +55,13 @@ export function Reports() {
 
   async function pdf() {
     if (!data) return;
-    const [{ jsPDF }, session] = await Promise.all([
+    const [{ jsPDF }, logo, session] = await Promise.all([
       import("jspdf"),
+      readPdfLogo(),
       fetch("/api/auth/me").then(response => response.ok ? response.json() : null).catch(() => null),
     ]);
     const doc = new jsPDF();
-    const filename = buildReportPdf(doc, data, { from, to, author: session?.name || "el sistema" });
+    const filename = buildReportPdf(doc, data, { from, to, author: session?.name || "el sistema", logo });
     doc.save(filename);
   }
 
@@ -65,10 +71,15 @@ export function Reports() {
         <div>
           <p className="eyebrow">ANÁLISIS</p>
           <h1>iA y Reportes</h1>
-          <p>Reporte de gestión, flujo percibido y rentabilidad real por obra.</p>
+          <p>{tab === "asistente" ? "Preguntale a la iA sobre el flujo de caja y la rentabilidad de las obras." : "Reporte de gestión, flujo percibido y rentabilidad real por obra."}</p>
         </div>
-        <button className="primary-btn" onClick={pdf} disabled={!data}><Download size={18} /> Descargar PDF</button>
+        {tab === "reportes" && <button className="primary-btn" onClick={pdf} disabled={!data}><Download size={18} /> Descargar PDF</button>}
       </div>
+      <div className="report-tabs task-filter-chips" role="tablist" aria-label="Secciones">
+        <button type="button" role="tab" aria-selected={tab === "asistente"} className={tab === "asistente" ? "active" : ""} onClick={() => setTab("asistente")}><Bot size={15} /> Asistente</button>
+        <button type="button" role="tab" aria-selected={tab === "reportes"} className={tab === "reportes" ? "active" : ""} onClick={() => setTab("reportes")}><BarChart3 size={15} /> Reportes</button>
+      </div>
+      {tab === "asistente" ? <AiChat report={data} /> : <>
       <div className="report-filters">
         <label>Desde<DateInput name="from" defaultValue={from} onValueChange={value => { if (!value) return; setLoading(true); setFrom(value); }} /></label>
         <label>Hasta<DateInput name="to" defaultValue={to} onValueChange={value => { if (!value) return; setLoading(true); setTo(value); }} /></label>
@@ -87,7 +98,7 @@ export function Reports() {
           {!data?.profitability.length && <div className="empty-state compact">Asigná facturas y gastos a obras para ver su rentabilidad.</div>}
         </section>
       </>}
-      <AiChat report={data} />
+      </>}
     </>
   );
 }

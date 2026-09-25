@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 import { entities, ROLES, viewSections } from "./constants";
 import { CHECK_RESULTS, DEVIATIONS, INSPECTION_RUBROS, MATERIAL_CONDITIONS, ORDER_STATUS, PERFORMANCE, PRODUCTION_CONSUMPTION, WEATHER } from "./inspections";
+import { WAREHOUSE_KEYS } from "./warehouses";
 
 const options = { timestamps: true, strict: true } as const;
 const money = { type: Number, min: 0, default: 0 };
@@ -162,7 +163,10 @@ const WorkSchema = new Schema({
   activity: [WorkActivitySchema],
   // Avances cargados a mano antes de las inspecciones. Quedan como registro anterior: ya no se agregan.
   advances: [{ percentage: Number, note: String, date: Date, userId: Schema.Types.ObjectId, photos: [String] }],
-  certificates: [{ number: String, period: String, percentage: Number, amountCents: Number, expensesCents: { type: Number, min: 0, default: 0 }, includeExpenses: { type: Boolean, default: false }, approved: Boolean, invoiced: Boolean, file: String }],
+  // `file` es el archivo que se subía antes, uno solo; `files` son los de ahora,
+  // todos los que hagan falta (el PDF firmado, fotos, la planilla).
+  certificates: [{ number: String, period: String, percentage: Number, amountCents: Number, expensesCents: { type: Number, min: 0, default: 0 }, includeExpenses: { type: Boolean, default: false }, approved: Boolean, invoiced: Boolean, file: String,
+    files: [{ path: { type: String, required: true }, name: String, uploadedAt: { type: Date, default: Date.now }, uploadedByName: String }] }],
   // Se guardan los datos del trabajador junto a la asignacion: la obra tiene que
   // poder mostrar nombre, DNI y telefono sin depender de otra consulta.
   assignedWorkers: [{
@@ -339,9 +343,23 @@ PriceListItemSchema.index({ priceListId: 1 });
 
 // Cada entrada y salida de un material queda guardada: el stock actual es la
 // consecuencia de los movimientos, no un numero que alguien escribe a mano.
+// Cantidad y mínimo por depósito, en campos planos: qty_central, min_central, qty_salon… Sin default:
+// un material cargado antes de que hubiera depósitos no tiene ninguno y todo lo suyo está en el Central.
+const warehouseStockFields = Object.fromEntries(WAREHOUSE_KEYS.flatMap(key => [
+  [`qty_${key}`, { type: Number }],
+  [`min_${key}`, { type: Number, min: 0 }],
+]));
+
 const StockMovementSchema = new Schema({
-  kind: { type: String, enum: ["ingreso", "egreso", "ajuste"], required: true },
+  kind: { type: String, enum: ["ingreso", "egreso", "transferencia", "ajuste"], required: true },
   quantity: { type: Number, required: true },
+  // De qué depósito sale (o a cuál entra) y, en un pase entre depósitos, a cuál va.
+  warehouse: { type: String, enum: WAREHOUSE_KEYS },
+  toWarehouse: { type: String, enum: WAREHOUSE_KEYS },
+  // Cada salida a obra y cada pase entre depósitos lleva su remito, con número propio.
+  remito: String,
+  // A dónde fue ("Obra OB-99 · Fachada") y la cotización de esa obra, para el remito.
+  destinationLabel: String, quoteNumber: String,
   unitCostCents: { type: Number, min: 0, default: 0 },
   totalCents: { type: Number, min: 0, default: 0 },
   supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
@@ -359,8 +377,10 @@ const StockItemSchema = new Schema({
   sku: { type: String, trim: true },
   category: { type: String, enum: ["materiales", "herramientas", "seguridad", "consumibles", "otros"], default: "materiales" },
   unit: { type: String, enum: ["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "rollo"], default: "unidad" },
+  // El total entre todos los depósitos. Lo que hay en cada uno va en qty_central, qty_salon…
   quantity: { type: Number, default: 0 },
   minQuantity: { type: Number, min: 0, default: 0 },
+  ...warehouseStockFields,
   // Costo promedio ponderado: cada compra a distinto precio lo recalcula.
   avgCostCents: { type: Number, min: 0, default: 0 },
   valueCents: { type: Number, min: 0, default: 0 },
@@ -391,6 +411,11 @@ const PurchaseSchema = new Schema({
   subtotalCents: Number, vatCents: Number, notes: String,
   priceListId: { type: Schema.Types.ObjectId, ref: "PriceList" }, priceListDate: Date,
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+  // Dónde entrega el proveedor (un depósito o la obra) y la cotización de la obra, como en las órdenes de antes.
+  deliverTo: { type: String, enum: [...WAREHOUSE_KEYS, "obra"], default: "central" },
+  quoteNumber: String,
+  // Cuando la mercadería llegó y se sumó al stock: a qué depósito y quién lo hizo. Se pasa una sola vez.
+  stockedAt: Date, stockedWarehouse: { type: String, enum: WAREHOUSE_KEYS }, stockedByName: String,
 }, options);
 
 const ExpenseSchema = new Schema({

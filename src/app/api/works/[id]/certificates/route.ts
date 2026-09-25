@@ -9,7 +9,8 @@ import { apiError } from "@/lib/api";
 import { notify } from "@/lib/notifications";
 import { money } from "@/lib/format";
 
-const schema = z.object({ number: z.string().trim().min(1), period: z.string().trim().min(1), percentage: z.coerce.number().min(0).max(100), amountCents: z.coerce.number().int().min(0), includeExpenses: z.boolean().default(false), approved: z.boolean().default(false), file: z.string().optional().default("") });
+const schema = z.object({ number: z.string().trim().min(1), period: z.string().trim().min(1), percentage: z.coerce.number().min(0).max(100), amountCents: z.coerce.number().int().min(0), includeExpenses: z.boolean().default(false), approved: z.boolean().default(false), file: z.string().optional().default(""),
+  files: z.array(z.object({ path: z.string().regex(/^\/api\/uploads\/[\w.-]+$/), name: z.string().trim().max(200).optional().default("") })).max(20).optional().default([]) });
 
 export async function POST(request: Request, context: RouteContext<"/api/works/[id]/certificates">) {
   try {
@@ -20,7 +21,7 @@ export async function POST(request: Request, context: RouteContext<"/api/works/[
     const [expenseTotal] = parsed.data.includeExpenses
       ? await Expense.aggregate([{ $match: { workId: before._id, status: { $ne: "anulado" } } }, { $group: { _id: null, totalCents: { $sum: "$amountCents" } } }])
       : [];
-    const certificate = { ...parsed.data, expensesCents: Number(expenseTotal?.totalCents || 0), invoiced: false };
+    const certificate = { ...parsed.data, files: parsed.data.files.map(file => ({ ...file, uploadedByName: session.name })), expensesCents: Number(expenseTotal?.totalCents || 0), invoiced: false };
     const work = await Work.findByIdAndUpdate(id, { $push: { certificates: certificate } }, { new: true });
     if (parsed.data.approved) await notify({
       title: `Certificado ${parsed.data.number} listo para facturar`,

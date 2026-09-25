@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CalendarDays, Check, ChevronDown, FileUp, Paperclip, Phone, Plus, Search, Trash2, X } from "lucide-react";
 import { amountToInput, displayDateToIso, isoPlusDays, isoToDisplayDate, maskAmount, maskDate, parseAmount, todayIso } from "@/lib/format";
+import { UPLOAD_ACCEPT, UPLOAD_FORMATS_TEXT } from "@/lib/upload-types";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Campos de formulario compartidos.
@@ -159,20 +160,23 @@ export function PhoneList({ name, defaultValue = [] }: { name: string; defaultVa
   </div>;
 }
 
-/** Zona para soltar o elegir un archivo, en vez del "Choose file…" del navegador. */
-export function FileDrop({ name, currentPath, accept = ".pdf,.jpg,.jpeg,.png,.webp,.xlsx", formats = "PDF, JPG, PNG o XLSX" }: { name: string; currentPath?: string; accept?: string; /** Lo que dice la ayuda: qué archivos se aceptan. */ formats?: string }) {
+/** Zona para soltar o elegir archivos, en vez del "Choose file…" del navegador. Con `multiple` acepta varios. */
+export function FileDrop({ name, currentPath, accept = UPLOAD_ACCEPT, formats = UPLOAD_FORMATS_TEXT, multiple = false }: {
+  name: string; currentPath?: string; accept?: string; /** Lo que dice la ayuda: qué archivos se aceptan. */ formats?: string; multiple?: boolean;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName] = useState("");
+  const [fileNames, setFileNames] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
 
   function assign(files: FileList | null) {
     if (!files?.length || !inputRef.current) return;
     const transfer = new DataTransfer();
-    transfer.items.add(files[0]);
+    for (const file of multiple ? Array.from(files) : [files[0]]) transfer.items.add(file);
     inputRef.current.files = transfer.files;
-    setFileName(files[0].name);
+    setFileNames(Array.from(transfer.files).map(file => file.name));
   }
 
+  const label = fileNames.length > 1 ? `${fileNames.length} archivos: ${fileNames.join(", ")}` : fileNames[0] || "";
   return <div className={dragging ? "file-drop dragging" : "file-drop"}
     onDragOver={event => { event.preventDefault(); setDragging(true); }}
     onDragLeave={() => setDragging(false)}
@@ -181,11 +185,11 @@ export function FileDrop({ name, currentPath, accept = ".pdf,.jpg,.jpeg,.png,.we
     onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); inputRef.current?.click(); } }}
     role="button" tabIndex={0}
   >
-    <input ref={inputRef} name={name} type="file" accept={accept} hidden onChange={event => setFileName(event.target.files?.[0]?.name || "")} />
+    <input ref={inputRef} name={name} type="file" accept={accept} multiple={multiple} hidden onChange={event => setFileNames(Array.from(event.target.files || []).map(file => file.name))} />
     <span className="file-drop-icon"><FileUp size={20} /></span>
-    {fileName ? <div className="file-drop-copy"><b>{fileName}</b><small>Listo para subir · hacé clic para cambiarlo</small></div>
-      : <div className="file-drop-copy"><b>Arrastrá el archivo acá</b><small>o hacé clic para buscarlo · {formats}</small></div>}
-    {fileName && <button type="button" className="file-drop-clear" aria-label="Quitar archivo" onClick={event => { event.stopPropagation(); if (inputRef.current) inputRef.current.value = ""; setFileName(""); }}><X size={15} /></button>}
-    {currentPath && !fileName && <a className="file-drop-current" href={currentPath} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}><Paperclip size={13} /> Ver el archivo actual</a>}
+    {label ? <div className="file-drop-copy"><b>{label}</b><small>Listo para subir · hacé clic para cambiarlo</small></div>
+      : <div className="file-drop-copy"><b>{multiple ? "Arrastrá los archivos acá" : "Arrastrá el archivo acá"}</b><small>o hacé clic para buscarlo · {formats}</small></div>}
+    {label && <button type="button" className="file-drop-clear" aria-label="Quitar archivos" onClick={event => { event.stopPropagation(); if (inputRef.current) inputRef.current.value = ""; setFileNames([]); }}><X size={15} /></button>}
+    {currentPath && !label && <a className="file-drop-current" href={currentPath} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}><Paperclip size={13} /> Ver el archivo actual</a>}
   </div>;
 }

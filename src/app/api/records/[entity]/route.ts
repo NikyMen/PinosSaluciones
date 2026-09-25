@@ -11,6 +11,19 @@ import { applyExpensePayment, applyInvoiceCollection } from "@/lib/balances";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
+/*
+ * Lo que un listado no necesita. Una obra arrastra todas sus horas cargadas,
+ * su historial y su checklist; una cotización, su análisis de precios; un
+ * material, cada entrada y salida. Nada de eso se ve en la tabla ni en los
+ * selects de otros módulos, y con el uso crece mes a mes: se deja afuera y lo
+ * pide la pantalla de detalle cuando hace falta.
+ */
+const listProjection: Partial<Record<Entity, Record<string, unknown>>> = {
+  works: { labor: 0, activity: 0, checklist: 0, advances: 0, progressBase: 0 },
+  quotes: { items: 0, overheads: 0, cascade: 0, history: 0 },
+  stock: { movements: { $slice: -12 } },
+};
+
 export async function GET(request: Request, context: RouteContext<"/api/records/[entity]">) {
   try {
     const session = await requireSession();
@@ -27,7 +40,7 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     // En ventas interesa lo que se movio recien, no lo que se creo primero.
     const sort: Record<string, -1> = entity === "quotes" ? { updatedAt: -1 } : { createdAt: -1 };
     const [items, total] = await Promise.all([
-      model.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
+      model.find(filter, listProjection[entity] || {}).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
       model.countDocuments(filter),
     ]);
     return Response.json({ items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });

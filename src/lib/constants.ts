@@ -63,6 +63,6 @@ export const entityLabels: Record<Entity, string> = {
 export const viewSectionLabels: Record<ViewSection, string> = {
   dashboard: "Tablero gerencial",
   ...entityLabels,
-  calendario: "Agenda",
+  calendario: "Calendario",
   reports: "iA y Reportes",
 };

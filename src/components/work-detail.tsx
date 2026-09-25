@@ -3,16 +3,38 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ClipboardCheck, FileCheck2, ImagePlus, ListChecks, MessageSquareText, Plus, ReceiptText, Send, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Check, ClipboardCheck, Download, FileCheck2, ImagePlus, ListChecks, MessageSquareText, Paperclip, Plus, ReceiptText, Send, Trash2, Users, X } from "lucide-react";
 import { date, dateTime, money, titleCase } from "@/lib/format";
 import { FileDrop, MoneyInput } from "@/components/fields";
 import { WorkLabor, type AssignedWorker, type LaborEntry } from "@/components/work-labor";
 import { InvoiceWorkModal } from "@/components/work-invoice";
+import { downloadHref, extensionOf, UPLOAD_ACCEPT } from "@/lib/upload-types";
 import { WorkInspections } from "@/components/work-inspections";
 
 type Checklist = { _id: string; title: string; done: boolean; completedAt?: string; createdAt?: string; updatedAt?: string };
 type Activity = { _id: string; detail: string; photos: string[]; authorName: string; createdAt: string };
-type Certificate = { number: string; period: string; percentage: number; amountCents: number; approved: boolean; invoiced: boolean };
+type CertificateFile = { path: string; name?: string };
+type Certificate = { _id?: string; number: string; period: string; percentage: number; amountCents: number; approved: boolean; invoiced: boolean; file?: string; files?: CertificateFile[] };
+
+/** Los archivos del certificado: los de ahora y, si lo tiene, el único que se subía antes. */
+function certificateFiles(item: Certificate): CertificateFile[] {
+  const files = [...(item.files || [])];
+  if (item.file && !files.some(file => file.path === item.file)) files.unshift({ path: item.file, name: `Certificado ${item.number}${extensionOf(item.file)}` });
+  return files;
+}
+
+/** Sube los archivos de a uno y devuelve dónde quedó cada uno, con su nombre original. */
+async function uploadFiles(files: File[]) {
+  const uploaded: CertificateFile[] = [];
+  for (const file of files) {
+    const upload = new FormData(); upload.set("file", file);
+    const response = await fetch("/api/uploads", { method: "POST", body: upload });
+    const result = await response.json();
+    if (!response.ok) throw new Error(`${file.name}: ${result.error || "no se pudo subir"}`);
+    uploaded.push({ path: result.path, name: result.name || file.name });
+  }
+  return uploaded;
+}
 type WorkExpense = { _id: string; number?: string; description: string; category: string; amountCents: number; issueDate: string; status: string };
 
 type Work = { _id: string; name: string; code: string; progress: number; budgetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
@@ -28,6 +50,8 @@ export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEd
   const [formKey, setFormKey] = useState(0);
   const photoInput = useRef<HTMLInputElement>(null);
   const [invoicing, setInvoicing] = useState(false);
+  // Qué certificado está subiendo archivos ("new" = el que se está cargando).
+  const [certificateBusy, setCertificateBusy] = useState("");
 
   const load = useCallback(async () => {
     const [response, expensesResponse] = await Promise.all([
@@ -104,14 +128,37 @@ export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEd
   }
 
   async function certificate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); let file = ""; const selected = data.get("file");
-    if (selected instanceof File && selected.size) {
-      const upload = new FormData(); upload.set("file", selected);
-      const response = await fetch("/api/uploads", { method: "POST", body: upload }); const result = await response.json();
-      if (!response.ok) return setError(result.error); file = result.path;
-    }
-    const response = await fetch(`/api/works/${id}/certificates`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ number: data.get("number"), period: data.get("period"), percentage: Number(data.get("percentage")), amountCents: Math.round(Number(data.get("amount")) * 100), approved: true, file }) });
-    if (!response.ok) setError((await response.json()).error); else { form.reset(); setFormKey(value => value + 1); void load(); }
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+    const selected = data.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
+    setCertificateBusy("new"); setError("");
+    try {
+      const files = await uploadFiles(selected);
+      const response = await fetch(`/api/works/${id}/certificates`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ number: data.get("number"), period: data.get("period"), percentage: Number(data.get("percentage")), amountCents: Math.round(Number(data.get("amount")) * 100), approved: true, files }) });
+      if (!response.ok) throw new Error((await response.json()).error || "No se pudo guardar el certificado");
+      form.reset(); setFormKey(value => value + 1); await load();
+    } catch (problem) { setError(problem instanceof Error ? problem.message : "No se pudo guardar el certificado"); }
+    finally { setCertificateBusy(""); }
+  }
+
+  /** Suma archivos a un certificado ya cargado. */
+  async function addCertificateFiles(item: Certificate, selected: File[]) {
+    if (!selected.length || !item._id) return;
+    setCertificateBusy(item._id); setError("");
+    try {
+      const files = await uploadFiles(selected);
+      const response = await fetch(`/api/works/${id}/certificates/${item._id}/files`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ files }) });
+      if (!response.ok) throw new Error((await response.json()).error || "No se pudieron agregar los archivos");
+      await load();
+    } catch (problem) { setError(problem instanceof Error ? problem.message : "No se pudieron agregar los archivos"); }
+    finally { setCertificateBusy(""); }
+  }
+
+  async function removeCertificateFile(item: Certificate, file: CertificateFile) {
+    if (!item._id || !confirm(`¿Sacar “${file.name || "el archivo"}” del certificado #${item.number}?`)) return;
+    setCertificateBusy(item._id);
+    const response = await fetch(`/api/works/${id}/certificates/${item._id}/files?path=${encodeURIComponent(file.path)}`, { method: "DELETE" });
+    if (!response.ok) setError((await response.json()).error || "No se pudo sacar el archivo"); else await load();
+    setCertificateBusy("");
   }
 
   if (!work) return <div className="loading-state">{error || "Cargando obra…"}</div>;
@@ -138,8 +185,26 @@ export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEd
 
     <div className="work-detail-grid">
       <WorkSection icon={<FileCheck2/>} title="Certificados">
-        {canEdit && <form className="mini-form" key={`certificate-${formKey}`} onSubmit={certificate}><input name="number" required placeholder="Número"/><input name="period" required placeholder="Período"/><input name="percentage" type="number" min="0" max="100" required placeholder="%"/><MoneyInput name="amount" required placeholder="Importe"/><FileDrop name="file" accept=".pdf,.jpg,.jpeg,.png"/><button className="primary-btn">Aprobar</button></form>}
-        <div className="detail-list">{work.certificates?.slice().reverse().map((item, index) => <div className="detail-row" key={index}><b>#{item.number}</b><span>{item.period} · {item.percentage}%</span><strong>{money(item.amountCents)}</strong><small>{item.invoiced ? "Facturado" : "Pendiente de facturar"}</small></div>)}</div>
+        {canEdit && <form className="mini-form" key={`certificate-${formKey}`} onSubmit={certificate}><input name="number" required placeholder="Número"/><input name="period" required placeholder="Período"/><input name="percentage" type="number" min="0" max="100" required placeholder="%"/><MoneyInput name="amount" required placeholder="Importe"/><FileDrop name="files" multiple/><button className="primary-btn" disabled={certificateBusy === "new"}>{certificateBusy === "new" ? "Subiendo…" : "Aprobar"}</button></form>}
+        <div className="detail-list">{work.certificates?.slice().reverse().map((item, index) => {
+          const files = certificateFiles(item);
+          return <div className="certificate-row" key={item._id || index}>
+            <div className="detail-row"><b>#{item.number}</b><span>{item.period} · {item.percentage}%</span><strong>{money(item.amountCents)}</strong><small>{item.invoiced ? "Facturado" : "Pendiente de facturar"}</small></div>
+            <div className="certificate-files">
+              {files.map(file => <span className="certificate-file" key={file.path}>
+                <Paperclip size={13}/>
+                <a href={file.path} target="_blank" rel="noreferrer" title="Abrir el archivo">{file.name || "Archivo"}</a>
+                <a className="certificate-file-download" href={downloadHref(file.path, file.name || `certificado-${item.number}${extensionOf(file.path)}`)} title="Descargar" aria-label={`Descargar ${file.name || "el archivo"}`}><Download size={14}/></a>
+                {canEdit && item._id && <button type="button" className="certificate-file-remove" disabled={certificateBusy === item._id} onClick={() => { void removeCertificateFile(item, file); }} aria-label={`Sacar ${file.name || "el archivo"}`} title="Sacar del certificado"><X size={13}/></button>}
+              </span>)}
+              {!files.length && <small className="certificate-no-files">Sin archivos adjuntos</small>}
+              {canEdit && item._id && <label className="certificate-add">
+                <Paperclip size={13}/> {certificateBusy === item._id ? "Subiendo…" : "Agregar archivos"}
+                <input type="file" multiple accept={UPLOAD_ACCEPT} hidden disabled={certificateBusy === item._id} onChange={event => { const selected = Array.from(event.target.files || []); event.target.value = ""; void addCertificateFiles(item, selected); }}/>
+              </label>}
+            </div>
+          </div>;
+        })}</div>
       </WorkSection>
       <WorkSection id="gastos" icon={<ReceiptText/>} title="Gastos de obra">
         <div className="work-expense-total"><span>Total asignado</span><strong>{money(expenses.reduce((total, item) => total + Number(item.amountCents || 0), 0))}</strong></div>

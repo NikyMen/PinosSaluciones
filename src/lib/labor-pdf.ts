@@ -1,5 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { date, dateTime, money } from "./format";
+import { drawFooter, drawLetterhead } from "./pdf-brand";
 
 /**
  * Liquidación de mano de obra de una obra, en PDF.
@@ -53,35 +54,11 @@ export function buildLaborPdf(doc: jsPDF, data: LaborPdfData, meta: { author: st
   const setFill = ([r, g, b]: [number, number, number]) => doc.setFillColor(r, g, b);
 
   function header() {
-    setFill(NAVY);
-    doc.rect(0, 0, WIDTH, 30, "F");
-    setFill(RED);
-    doc.rect(0, 30, WIDTH, 1.6, "F");
-    // El logo va sobre fondo blanco: sobre el azul de la barra se ensucia.
-    const textLeft = meta.logo ? MARGIN + 22 : MARGIN;
-    if (meta.logo) {
-      setFill([255, 255, 255]);
-      doc.roundedRect(MARGIN, 6, 18, 18, 2, 2, "F");
-      try { doc.addImage(meta.logo, "PNG", MARGIN + 1.5, 7.5, 15, 15); } catch { /* si el logo no carga, se sigue sin él */ }
-    }
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("PINO SOLUCIONES TECNICAS", textLeft, 13);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("Liquidacion de mano de obra", textLeft, 20);
-    doc.text(plain(`Periodo: ${date(data.from)} al ${date(data.to)}`), WIDTH - MARGIN, 13, { align: "right" });
-    doc.text(plain(`Emitido: ${dateTime(new Date())}`), WIDTH - MARGIN, 20, { align: "right" });
-    y = 42;
+    y = drawLetterhead(doc, { title: "Liquidación de mano de obra", logo: meta.logo, lines: [`Período: ${date(data.from)} al ${date(data.to)}`, `Emitido: ${dateTime(new Date())}`] });
   }
 
   function footer() {
-    setColor(MUTED);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.text(plain(`Generado por ${meta.author} - Documento interno, sin validez fiscal`), MARGIN, 288);
-    doc.text(`Pagina ${page}`, WIDTH - MARGIN, 288, { align: "right" });
+    drawFooter(doc, { page, author: meta.author, note: "Documento interno, sin validez fiscal" });
   }
 
   function ensure(space: number) {
@@ -163,7 +140,7 @@ export function buildLaborPdf(doc: jsPDF, data: LaborPdfData, meta: { author: st
   y += 28;
 
   /* ── Lo que cobra cada uno ───────────────────────────────────────────────── */
-  sectionTitle("A pagar por persona", "Liquidacion del periodo");
+  sectionTitle("A pagar por persona", "Liquidación del período");
   const columns = [
     { label: "Apellido y nombre", x: MARGIN },
     { label: "DNI", x: 66 },

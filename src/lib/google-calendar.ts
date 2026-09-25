@@ -357,3 +357,57 @@ export async function testConnection() {
 export async function disconnect() {
   await saveCalendarSettings({ enabled: false, refreshToken: null, accessToken: null, tokenExpiry: null, userEmail: null });
 }
+
+export type CalendarEvent = {
+  id: string; title: string; start: string; end: string; allDay: boolean;
+  source: "pino" | "google"; meetUrl?: string; link?: string; contactName?: string; bookingId?: string;
+};
+
+/**
+ * Lo que se ve en el calendario entre dos fechas: los turnos cargados en Pino y,
+ * si hay una cuenta de Google conectada, también los eventos de ese calendario.
+ * Un turno que ya está en Google no se muestra dos veces. Si Google no responde,
+ * se muestran igual los turnos de Pino y se avisa.
+ */
+export async function listCalendarEvents(from: Date, to: Date) {
+  await connectDB();
+  const bookings = await CalendarBooking.find({ status: { $ne: "cancelado" }, startAt: { $gte: from, $lt: to } }).sort({ startAt: 1 }).lean() as Array<{
+    _id: unknown; eventId?: string; summary?: string; contactName: string; startAt: Date; endAt: Date; meetUrl?: string;
+  }>;
+  const events: CalendarEvent[] = bookings.map(booking => ({
+    id: `pino-${String(booking._id)}`, bookingId: String(booking._id), title: booking.summary || `Reunión - ${booking.contactName}`,
+    start: new Date(booking.startAt).toISOString(), end: new Date(booking.endAt).toISOString(), allDay: false,
+    source: "pino", meetUrl: booking.meetUrl, contactName: booking.contactName,
+  }));
+
+  const settings = await getCalendarSettings();
+  let googleError = "";
+  if (settings.enabled && settings.refreshToken) {
+    try {
+      const token = await getValidAccessToken(settings);
+      const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(settings.calendarId)}/events`);
+      url.searchParams.set("timeMin", from.toISOString());
+      url.searchParams.set("timeMax", to.toISOString());
+      url.searchParams.set("singleEvents", "true");
+      url.searchParams.set("orderBy", "startTime");
+      url.searchParams.set("maxResults", "250");
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json() as { items?: Array<{ id: string; status?: string; summary?: string; htmlLink?: string; hangoutLink?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }> };
+      const fromPino = new Set(bookings.map(booking => booking.eventId).filter(Boolean));
+      for (const item of data.items || []) {
+        if (item.status === "cancelled" || fromPino.has(item.id)) continue;
+        const allDay = !item.start?.dateTime;
+        // Un evento de día entero trae "2026-09-25": se lo ubica al mediodía para que no se corra de día por el huso.
+        const start = item.start?.dateTime || `${item.start?.date}T12:00:00.000Z`;
+        const end = item.end?.dateTime || `${item.end?.date}T12:00:00.000Z`;
+        events.push({ id: `google-${item.id}`, title: item.summary || "(Sin título)", start: new Date(start).toISOString(), end: new Date(end).toISOString(), allDay, source: "google", meetUrl: item.hangoutLink, link: item.htmlLink });
+      }
+    } catch (error) {
+      console.warn("No se pudieron leer los eventos de Google Calendar:", error);
+      googleError = "No se pudieron leer los eventos de Google Calendar: se muestran sólo los turnos cargados en Pino.";
+    }
+  }
+  events.sort((a, b) => a.start.localeCompare(b.start));
+  return { events, google: { connected: Boolean(settings.enabled && settings.refreshToken), email: settings.userEmail || null, error: googleError } };
+}

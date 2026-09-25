@@ -6,7 +6,7 @@ import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/f
 import { date, isoPlusDays, money, qty, titleCase, todayIso } from "@/lib/format";
 import { computeLabor, dailyRateCents, hourlyRateCents, hoursPerDay, rateMode, type RateMode } from "@/lib/labor";
 import { buildLaborPdf } from "@/lib/labor-pdf";
-import { readBrandLogo } from "@/lib/invoice-pdf";
+import { readPdfLogo } from "@/lib/pdf-brand";
 import { QuickCreateModal, type RecordItem } from "@/components/record-form";
 
 export type AssignedWorker = {
@@ -183,7 +183,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
     try {
       const [{ jsPDF }, logo, session] = await Promise.all([
         import("jspdf"),
-        readBrandLogo(),
+        readPdfLogo(),
         fetch("/api/auth/me").then(response => response.ok ? response.json() : null).catch(() => null),
       ]);
       const doc = new jsPDF();

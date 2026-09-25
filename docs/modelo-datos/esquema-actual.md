@@ -154,6 +154,11 @@ Colección `works` · entidad `works`
 | `certificates.approved` | sí/no | — | — |
 | `certificates.invoiced` | sí/no | — | — |
 | `certificates.file` | texto | — | — |
+| `certificates.files` | lista de objetos | — | — |
+| `certificates.files.path` | texto | sí | — |
+| `certificates.files.name` | texto | — | — |
+| `certificates.files.uploadedAt` | fecha | — | — |
+| `certificates.files.uploadedByName` | texto | — | — |
 | `assignedWorkers` | lista de objetos | — | — |
 | `assignedWorkers.workerId` | referencia | — | apunta a **Worker** |
 | `assignedWorkers.name` | texto | — | — |
@@ -234,6 +239,10 @@ Colección `stockitems` · entidad `stock`
 | `unit` | texto | — | valores: `unidad` · `kg` · `litro` · `metro` · `m2` · `m3` · `bolsa` · `balde` · `rollo` · por defecto `"unidad"` |
 | `quantity` | número | — | por defecto `0` |
 | `minQuantity` | número | — | mínimo 0 · por defecto `0` |
+| `qty_central` | número | — | — |
+| `min_central` | número | — | mínimo 0 |
+| `qty_salon` | número | — | — |
+| `min_salon` | número | — | mínimo 0 |
 | `avgCostCents` | número | — | mínimo 0 · por defecto `0` |
 | `valueCents` | número | — | mínimo 0 · por defecto `0` |
 | `supplierId` | referencia | — | apunta a **Supplier** |
@@ -241,8 +250,13 @@ Colección `stockitems` · entidad `stock`
 | `notes` | texto | — | — |
 | `active` | sí/no | — | por defecto `true` |
 | `movements` | lista de objetos | — | — |
-| `movements.kind` | texto | sí | valores: `ingreso` · `egreso` · `ajuste` |
+| `movements.kind` | texto | sí | valores: `ingreso` · `egreso` · `transferencia` · `ajuste` |
 | `movements.quantity` | número | sí | — |
+| `movements.warehouse` | texto | — | valores: `central` · `salon` |
+| `movements.toWarehouse` | texto | — | valores: `central` · `salon` |
+| `movements.remito` | texto | — | — |
+| `movements.destinationLabel` | texto | — | — |
+| `movements.quoteNumber` | texto | — | — |
 | `movements.unitCostCents` | número | — | mínimo 0 · por defecto `0` |
 | `movements.totalCents` | número | — | mínimo 0 · por defecto `0` |
 | `movements.supplierId` | referencia | — | apunta a **Supplier** |
@@ -293,6 +307,11 @@ Colección `purchases` · entidad `purchases`
 | `priceListDate` | fecha | — | — |
 | `userId` | referencia | — | apunta a **User** |
 | `userName` | texto | — | — |
+| `deliverTo` | texto | — | valores: `central` · `salon` · `obra` · por defecto `"central"` |
+| `quoteNumber` | texto | — | — |
+| `stockedAt` | fecha | — | — |
+| `stockedWarehouse` | texto | — | valores: `central` · `salon` |
+| `stockedByName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 

@@ -1,5 +1,6 @@
 import type { jsPDF } from "jspdf";
-import { date, dateTime, money, todayIso } from "./format";
+import { date, money, todayIso } from "./format";
+import { COMPANY, drawFooter, drawLetterhead, PAGE } from "./pdf-brand";
 
 /**
  * Factura de avance de obra, en PDF.
@@ -33,19 +34,6 @@ const MARGIN = 14;
 const WIDTH = 210;
 const INNER = WIDTH - MARGIN * 2;
 
-/** El logo del sitio, en base64, que es como lo quiere jsPDF. Solo en el navegador. */
-export async function readBrandLogo() {
-  try {
-    const blob = await (await fetch("/brand/pino-logo.png")).blob();
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("logo"));
-      reader.readAsDataURL(blob);
-    });
-  } catch { return undefined; }
-}
-
 /** Las fuentes base del PDF dibujan raro el espacio duro del `Intl` y los ·. */
 function plain(text: string) {
   return text.replace(/ /g, " ").replace(/·/g, "-");
@@ -64,29 +52,10 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
     return `${cut}...`;
   }
 
-  /* ── Barra superior, la misma que el resto de los papeles de la empresa ──── */
-  setFill(NAVY);
-  doc.rect(0, 0, WIDTH, 30, "F");
-  setFill(RED);
-  doc.rect(0, 30, WIDTH, 1.6, "F");
-  // El logo va sobre fondo blanco: sobre el azul de la barra se ensucia.
-  const textLeft = meta.logo ? MARGIN + 22 : MARGIN;
-  if (meta.logo) {
-    setFill([255, 255, 255]);
-    doc.roundedRect(MARGIN, 6, 18, 18, 2, 2, "F");
-    try { doc.addImage(meta.logo, "PNG", MARGIN + 1.5, 7.5, 15, 15); } catch { /* si el logo no carga, se sigue sin él */ }
-  }
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("PINO SOLUCIONES TECNICAS", textLeft, 13);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text("Factura de avance de obra", textLeft, 20);
-  doc.text(plain(`Emitido: ${dateTime(new Date())}`), WIDTH - MARGIN, 20, { align: "right" });
+  drawLetterhead(doc, { title: "Factura de avance", number: `N° ${data.number}`, logo: meta.logo, lines: [`Emisión: ${date(todayIso())}`, `Período: ${data.period}`] });
 
   /* ── Encabezado del comprobante: emisor | letra | numeración ─────────────── */
-  const boxTop = 42;
+  const boxTop = PAGE.contentTop + 6;
   const boxHeight = 36;
   setStroke(LINE);
   doc.setLineWidth(0.4);
@@ -96,27 +65,28 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
   setColor(INK);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text("PINO SOLUCIONES TECNICAS", MARGIN + 5, boxTop + 9);
+  doc.text(plain(COMPANY.legalName), MARGIN + 5, boxTop + 9);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.6);
   setColor(MUTED);
-  doc.text("Servicios de construccion y mantenimiento", MARGIN + 5, boxTop + 15);
-  doc.text("CUIT: a completar", MARGIN + 5, boxTop + 20.5);
-  doc.text("Condicion frente al IVA: a completar", MARGIN + 5, boxTop + 26);
+  doc.text(plain(COMPANY.address), MARGIN + 5, boxTop + 15);
+  doc.text(plain(`CUIT: ${COMPANY.cuit}`), MARGIN + 5, boxTop + 20.5);
+  doc.text(plain(`Condición frente al IVA: ${COMPANY.vat}`), MARGIN + 5, boxTop + 26);
   doc.text("Documento interno - sin validez fiscal", MARGIN + 5, boxTop + 31.5);
 
-  const rightX = WIDTH / 2 + 7;
+  // Después del recuadro de la letra, que ocupa 10 mm a cada lado del medio.
+  const rightX = WIDTH / 2 + 14;
   setColor(INK);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text("FACTURACION DE AVANCE", rightX, boxTop + 9);
+  doc.text("FACTURACIÓN DE AVANCE", rightX, boxTop + 9);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.6);
   setColor(MUTED);
-  doc.text(plain(`Comprobante N: ${data.number}`), rightX, boxTop + 15);
-  doc.text(plain(`Fecha de emision: ${date(todayIso())}`), rightX, boxTop + 20.5);
-  doc.text(plain(`Periodo: ${data.period}`), rightX, boxTop + 26);
-  doc.text(plain(`Cotizacion de origen: ${data.quote.number || "-"}`), rightX, boxTop + 31.5);
+  doc.text(plain(`Comprobante N°: ${data.number}`), rightX, boxTop + 15);
+  doc.text(plain(`Fecha de emisión: ${date(todayIso())}`), rightX, boxTop + 20.5);
+  doc.text(plain(`Período: ${data.period}`), rightX, boxTop + 26);
+  doc.text(plain(`Cotización de origen: ${data.quote.number || "-"}`), rightX, boxTop + 31.5);
 
   // La letra en un recuadro al medio, como en los comprobantes de ARCA. Va
   // último para que tape la línea divisoria y no al revés.
@@ -144,7 +114,7 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
   doc.text("DOCUMENTO SIN VALIDEZ FISCAL", MARGIN + 5, y + 5.5);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.2);
-  doc.text("No reemplaza a la factura electronica: no tiene CAE ni punto de venta habilitado ante ARCA.", MARGIN + 5, y + 10);
+  doc.text("No reemplaza a la factura electrónica: no tiene CAE ni punto de venta habilitado ante ARCA.", MARGIN + 5, y + 10);
   y += 22;
 
   function sectionTitle(title: string, subtitle: string) {
@@ -194,7 +164,7 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
   setColor(MUTED);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
-  doc.text("DESCRIPCION", MARGIN + 3, y);
+  doc.text("DESCRIPCIÓN", MARGIN + 3, y);
   doc.text("AVANCE", 132, y, { align: "right" });
   doc.text("PRESUPUESTO", 165, y, { align: "right" });
   doc.text("IMPORTE", amountX, y, { align: "right" });
@@ -249,12 +219,7 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
   doc.text(plain(clip(`Cotizacion ${data.quote.number || "-"} aprobada y convertida en la obra ${data.work.code}.`, noteWidth)), MARGIN, y + 5.5);
   if (data.work.startDate) doc.text(plain(clip(`Inicio previsto de la obra: ${date(data.work.startDate)}.`, noteWidth)), MARGIN, y + 11);
 
-  /* ── Pie ─────────────────────────────────────────────────────────────────── */
-  setColor(MUTED);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.text(plain(`Generado por ${meta.author} - Documento interno, sin validez fiscal`), MARGIN, 288);
-  doc.text("Pagina 1", WIDTH - MARGIN, 288, { align: "right" });
+  drawFooter(doc, { page: 1, author: meta.author, note: "Documento interno, sin validez fiscal" });
 
   return `factura-avance-${data.number}.pdf`;
 }

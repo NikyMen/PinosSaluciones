@@ -1,5 +1,5 @@
 import type { Types } from "mongoose";
-import { nextPurchaseNumber, PriceList, PriceListItem, Purchase, Supplier, Work } from "./models";
+import { nextPurchaseNumber, PriceList, PriceListItem, Purchase, Quote, Supplier, Work } from "./models";
 import { discounted, normalize, VAT_RATE } from "./price-lists";
 import { purchaseOrderPdfData } from "./purchase-order-pdf";
 import { qty, todayIso } from "./format";
@@ -21,13 +21,16 @@ type StoredItem = {
 
 const productKey = (item: { code?: string; name: string; presentation?: string }) => `${normalize(item.code) || normalize(item.name)}|${normalize(item.presentation)}`;
 
-export async function createPurchaseOrder({ supplierId, lines, workId, expectedDate, notes, session }: {
-  supplierId: string; lines: Array<{ itemId: string; quantity: number }>; workId?: string; expectedDate?: Date; notes?: string; session: Session;
+export async function createPurchaseOrder({ supplierId, lines, workId, expectedDate, deliverTo = "central", notes, session }: {
+  supplierId: string; lines: Array<{ itemId: string; quantity: number }>; workId?: string; expectedDate?: Date; deliverTo?: string; notes?: string; session: Session;
 }) {
   const supplier = await Supplier.findById(supplierId).lean() as ({ _id: Types.ObjectId; name: string; discountPct?: number } & Record<string, unknown>) | null;
   if (!supplier) throw new PurchaseOrderError("Proveedor no encontrado");
-  const work = workId ? await Work.findById(workId).select("code name").lean() as ({ code?: string; name?: string } & Record<string, unknown>) | null : null;
+  const work = workId ? await Work.findById(workId).select("code name quoteId").lean() as ({ code?: string; name?: string; quoteId?: Types.ObjectId } & Record<string, unknown>) | null : null;
   if (workId && !work) throw new PurchaseOrderError("La obra elegida no existe");
+  if (deliverTo === "obra" && !work) throw new PurchaseOrderError("Para entregar en la obra, elegí cuál");
+  // La cotización de la obra va en la orden, como el "presupuesto asignado" de las órdenes de antes.
+  const quote = work?.quoteId ? await Quote.findById(work.quoteId).select("number").lean() as { number?: string } | null : null;
 
   // El mismo producto agregado dos veces es un solo renglón.
   const quantities = new Map<string, number>();
@@ -70,6 +73,7 @@ export async function createPurchaseOrder({ supplierId, lines, workId, expectedD
     supplierId, workId: work ? workId : undefined,
     description: `${items.length} ${items.length === 1 ? "producto" : "productos"} de ${supplier.name}: ${summary}${items.length > 3 ? ` y ${items.length - 3} más` : ""}`,
     amountCents: subtotalCents + vatCents, subtotalCents, vatCents, items, notes: notes || "",
+    deliverTo, quoteNumber: quote?.number || undefined,
     // Cerrada y con el PDF en la mano: falta mandársela al proveedor.
     stage: "orden", status: "aprobada",
     requestedDate: new Date(`${todayIso()}T00:00:00.000Z`), expectedDate,
@@ -77,5 +81,5 @@ export async function createPurchaseOrder({ supplierId, lines, workId, expectedD
     userId: session.userId, userName: session.name,
   });
   const saved = purchase.toObject();
-  return { purchase: saved, pdf: purchaseOrderPdfData(saved, supplier, work) };
+  return { purchase: saved, pdf: purchaseOrderPdfData(saved, supplier, work, quote?.number) };
 }

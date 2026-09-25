@@ -1,12 +1,15 @@
 import type { jsPDF } from "jspdf";
-import { date, dateTime, money, qty } from "./format";
+import { date, money, qty } from "./format";
 import { VAT_RATE } from "./price-lists";
+import { amountInWords, COMPANY, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
+import { deliveryLabel } from "./warehouses";
 
 /**
  * Orden de compra en PDF: el papel que se le pasa al proveedor para hacer el
- * pedido. Mismo armado que el resto de los papeles de la empresa (barra azul
- * con el logo y la línea roja), con el proveedor a la izquierda, los datos del
- * pedido a la derecha, un renglón por producto y el total con IVA.
+ * pedido. Sigue el modelo de las órdenes del sistema anterior: membrete con los
+ * datos de la empresa, el proveedor y los datos de la entrega, un renglón por
+ * producto, los totales con el importe en letras, a nombre de quién va la
+ * factura y la firma del responsable.
  */
 
 export type PurchaseOrderLine = {
@@ -19,39 +22,28 @@ export type PurchaseOrderPdfData = {
   requestedDate: string;
   expectedDate?: string;
   priceListDate?: string;
+  /** Dónde entrega el proveedor: "central", "salon" u "obra". */
+  deliverTo?: string;
   notes?: string;
   userName?: string;
   supplier: { name: string; contactName?: string; phone?: string; email?: string; address?: string };
-  work?: { code?: string; name?: string } | null;
+  work?: { code?: string; name?: string; quoteNumber?: string } | null;
   items: PurchaseOrderLine[];
   subtotalCents: number;
   vatCents: number;
   totalCents: number;
 };
 
-const NAVY: [number, number, number] = [0, 48, 91];
-const RED: [number, number, number] = [224, 0, 16];
-const INK: [number, number, number] = [23, 34, 53];
-const MUTED: [number, number, number] = [105, 115, 134];
-const LINE: [number, number, number] = [223, 229, 236];
-
-const MARGIN = 14;
-const WIDTH = 210;
+const { margin: MARGIN, width: WIDTH, bottom: BOTTOM } = PAGE;
 const INNER = WIDTH - MARGIN * 2;
-const BOTTOM = 272;
-
-/** Las fuentes base del PDF dibujan raro el espacio duro del `Intl` y los ·. */
-function plain(text: string) {
-  return text.replace(/[  ]/g, " ").replace(/·/g, "-").replace(/²/g, "2").replace(/³/g, "3");
-}
 
 /** Escribe la orden. Devuelve el nombre con el que conviene guardarla. */
 export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, meta: { author: string; logo?: string }) {
   let y = 0;
   let page = 1;
-  const setColor = ([r, g, b]: [number, number, number]) => doc.setTextColor(r, g, b);
-  const setFill = ([r, g, b]: [number, number, number]) => doc.setFillColor(r, g, b);
-  const setStroke = ([r, g, b]: [number, number, number]) => doc.setDrawColor(r, g, b);
+  const setColor = ([r, g, b]: Rgb) => doc.setTextColor(r, g, b);
+  const setFill = ([r, g, b]: Rgb) => doc.setFillColor(r, g, b);
+  const setStroke = ([r, g, b]: Rgb) => doc.setDrawColor(r, g, b);
 
   function clip(text: string, maxWidth: number) {
     const clean = plain(text);
@@ -62,40 +54,10 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   }
 
   function header() {
-    setFill(NAVY);
-    doc.rect(0, 0, WIDTH, 30, "F");
-    setFill(RED);
-    doc.rect(0, 30, WIDTH, 1.6, "F");
-    // El logo va sobre fondo blanco: sobre el azul de la barra se ensucia.
-    const textLeft = meta.logo ? MARGIN + 22 : MARGIN;
-    if (meta.logo) {
-      setFill([255, 255, 255]);
-      doc.roundedRect(MARGIN, 6, 18, 18, 2, 2, "F");
-      // Comprimido: sin eso el logo solo pesa más de 2 MB y el PDF no pasa bien por WhatsApp.
-      try { doc.addImage(meta.logo, "PNG", MARGIN + 1.5, 7.5, 15, 15, "pino-logo", "FAST"); } catch { /* si el logo no carga, se sigue sin él */ }
-    }
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("PINO SOLUCIONES TECNICAS", textLeft, 13);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("Orden de compra", textLeft, 20);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(15);
-    doc.text(plain(data.number), WIDTH - MARGIN, 14, { align: "right" });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.text(plain(`Fecha: ${date(data.requestedDate)}`), WIDTH - MARGIN, 21, { align: "right" });
-    y = 42;
-  }
-
-  function footer() {
-    setColor(MUTED);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.text(plain(`Generado por ${meta.author} el ${dateTime(new Date())}`), MARGIN, 288);
-    doc.text(`Pagina ${page}`, WIDTH - MARGIN, 288, { align: "right" });
+    y = drawLetterhead(doc, {
+      title: "Orden de compra", number: `N° ${data.number}`, logo: meta.logo,
+      lines: [`Fecha de emisión: ${date(data.requestedDate)}`, `Entrega: ${data.expectedDate ? date(data.expectedDate) : "a coordinar"}`],
+    });
   }
 
   // Columnas de la tabla: código y producto a la izquierda, números a la derecha.
@@ -107,19 +69,19 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
     setColor(MUTED);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
-    doc.text("CODIGO", col.code, y);
-    doc.text("PRODUCTO", col.product, y);
+    doc.text("CÓDIGO", col.code, y);
+    doc.text("DESCRIPCIÓN", col.product, y);
     doc.text("CANT.", col.qty, y, { align: "right" });
     doc.text("P. LISTA", col.list, y, { align: "right" });
     doc.text("BONIF.", col.discount, y, { align: "right" });
     doc.text("P. UNIT.", col.unit, y, { align: "right" });
-    doc.text("SUBTOTAL", col.total, y, { align: "right" });
+    doc.text("IMPORTE", col.total, y, { align: "right" });
     y += 8;
   }
 
   function ensure(space: number, withTableHead = false) {
     if (y + space <= BOTTOM) return;
-    footer();
+    drawFooter(doc, { page, author: meta.author });
     doc.addPage();
     page += 1;
     header();
@@ -128,9 +90,9 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
 
   header();
 
-  /* ── Proveedor | datos del pedido ────────────────────────────────────────── */
+  /* ── Proveedor | entrega ─────────────────────────────────────────────────── */
   const boxTop = y;
-  const boxHeight = 38;
+  const boxHeight = 40;
   setStroke(LINE);
   doc.setLineWidth(0.4);
   doc.roundedRect(MARGIN, boxTop, INNER, boxHeight, 2, 2);
@@ -142,34 +104,47 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
     doc.setFontSize(7);
     doc.text(title, x, boxTop + 7);
     setColor(NAVY);
-    doc.setFontSize(11);
-    doc.text(clip(heading, INNER / 2 - 12), x, boxTop + 13.5);
+    doc.setFontSize(10.5);
+    doc.text(clip(heading, INNER / 2 - 12), x, boxTop + 13);
     rows.forEach(([label, value], index) => {
-      const top = boxTop + 20 + index * 5;
+      const top = boxTop + 19.5 + index * 4.9;
       setColor(MUTED);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(6.6);
-      doc.text(label.toUpperCase(), x, top);
+      doc.setFontSize(6.5);
+      doc.text(plain(label.toUpperCase()), x, top);
       setColor(INK);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.text(clip(value || "-", INNER / 2 - 36), x + 24, top);
+      doc.setFontSize(7.8);
+      doc.text(clip(value || "-", INNER / 2 - 36), x + 25, top);
     });
   }
 
   block(MARGIN + 5, "PROVEEDOR", data.supplier.name, [
     ["Contacto", data.supplier.contactName || ""],
-    ["Telefono", data.supplier.phone || ""],
+    ["Teléfono", data.supplier.phone || ""],
     ["Correo", data.supplier.email || ""],
-    ["Direccion", data.supplier.address || ""],
+    ["Dirección", data.supplier.address || ""],
   ]);
-  block(WIDTH / 2 + 6, "DATOS DEL PEDIDO", data.work?.code ? `Obra ${data.work.code}` : "Para deposito", [
+  const deliverTo = data.deliverTo === "obra" && data.work?.code ? `En la obra ${data.work.code}` : deliveryLabel(data.deliverTo);
+  block(WIDTH / 2 + 6, "ENTREGA", deliverTo, [
     ["Obra", data.work?.code ? `${data.work.code} - ${data.work.name || ""}` : "Sin obra asignada"],
-    ["Entrega", data.expectedDate ? date(data.expectedDate) : "A coordinar"],
-    ["Pedido por", data.userName || meta.author],
-    ["Lista", data.priceListDate ? `Vigente desde ${date(data.priceListDate)}` : "-"],
+    ["Cotización", data.work?.quoteNumber || "-"],
+    ["Comprador", data.userName || meta.author],
+    ["Lista de precios", data.priceListDate ? `Vigente desde ${date(data.priceListDate)}` : "-"],
   ]);
-  y = boxTop + boxHeight + 12;
+  y = boxTop + boxHeight + 7;
+
+  // Quién retira el material: se completa a mano, como en las órdenes de antes.
+  setColor(MUTED);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.6);
+  doc.text("Responsable de retiro:", MARGIN, y);
+  doc.text("DNI:", 132, y);
+  setStroke([190, 199, 210]);
+  doc.setLineWidth(0.2);
+  doc.line(MARGIN + 31, y + 0.8, 126, y + 0.8);
+  doc.line(139, y + 0.8, WIDTH - MARGIN, y + 0.8);
+  y += 11;
 
   /* ── Los productos ───────────────────────────────────────────────────────── */
   setColor(RED);
@@ -177,9 +152,9 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   doc.setFontSize(7.5);
   doc.text("DETALLE DEL PEDIDO", MARGIN, y);
   setColor(NAVY);
-  doc.setFontSize(12);
-  doc.text(`${data.items.length} ${data.items.length === 1 ? "producto" : "productos"}`, MARGIN, y + 6.5);
-  y += 15;
+  doc.setFontSize(11.5);
+  doc.text(`${data.items.length} ${data.items.length === 1 ? "producto" : "productos"}`, MARGIN, y + 6);
+  y += 14;
   tableHead();
 
   data.items.forEach((item, index) => {
@@ -217,8 +192,8 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   doc.rect(MARGIN, y - 2, INNER, 0.4, "F");
   y += 8;
 
-  /* ── Totales ─────────────────────────────────────────────────────────────── */
-  ensure(36);
+  /* ── Condiciones | totales ───────────────────────────────────────────────── */
+  ensure(62);
   const totalWidth = 82;
   const totalX = WIDTH - MARGIN - totalWidth;
   setFill([248, 250, 252]);
@@ -236,22 +211,51 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   doc.text("TOTAL", totalX + 5, y + 17);
   doc.text(plain(money(data.totalCents)), WIDTH - MARGIN - 5, y + 17, { align: "right" });
 
-  // A la izquierda del total: de dónde salen los precios y las observaciones.
+  // A la izquierda: la condición de devolución y las observaciones.
   const noteWidth = totalX - MARGIN - 8;
+  const notes = [
+    "Los productos que no se entreguen en condiciones óptimas podrán ser devueltos y repuestos por el proveedor sin que esto genere mayores costos.",
+    "Precios sin IVA según la lista vigente del proveedor, con la bonificación acordada.",
+    ...(data.notes?.trim() ? [`Observaciones: ${data.notes.trim()}`] : []),
+  ];
+  setColor(MUTED);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.4);
+  let noteY = y;
+  for (const line of notes.flatMap(note => doc.splitTextToSize(plain(note), noteWidth) as string[]).slice(0, 8)) {
+    doc.text(line, MARGIN, noteY);
+    noteY += 4.2;
+  }
+  y = Math.max(y + 32, noteY + 4);
+
+  // Son pesos, y a nombre de quién va la factura.
+  setColor(INK);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text("Son:", MARGIN, y);
+  doc.setFont("helvetica", "normal");
+  for (const line of (doc.splitTextToSize(plain(amountInWords(data.totalCents)), INNER - 10) as string[]).slice(0, 2)) {
+    doc.text(line, MARGIN + 9, y);
+    y += 4.4;
+  }
+  y += 3;
+  setColor(NAVY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text(plain(`Enviar factura a favor de: ${COMPANY.legalName.toUpperCase()} (CUIT ${COMPANY.cuit})`), MARGIN, y);
+
+  // La firma, siempre al pie de la última hoja.
+  ensure(28);
+  const signY = Math.max(y + 22, 262);
+  setStroke([150, 160, 172]);
+  doc.setLineWidth(0.3);
+  doc.line(WIDTH - MARGIN - 70, signY, WIDTH - MARGIN, signY);
   setColor(MUTED);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.6);
-  const notes = [
-    "Precios sin IVA segun la lista vigente del proveedor, con la bonificacion acordada.",
-    ...(data.notes?.trim() ? [`Observaciones: ${data.notes.trim()}`] : []),
-  ];
-  let noteY = y;
-  for (const line of notes.flatMap(note => doc.splitTextToSize(plain(note), noteWidth) as string[]).slice(0, 7)) {
-    doc.text(line, MARGIN, noteY);
-    noteY += 4.4;
-  }
+  doc.text("Firma del responsable", WIDTH - MARGIN - 35, signY + 4.5, { align: "center" });
 
-  footer();
+  drawFooter(doc, { page, author: meta.author });
   return `orden-de-compra-${data.number}.pdf`;
 }
 
@@ -263,7 +267,7 @@ const isoOrUndefined = (value: unknown) => value ? new Date(String(value instanc
  * igual en el servidor (al cerrar la orden) que en el listado de órdenes (para
  * volver a bajarla): las fechas pueden venir como Date o como texto.
  */
-export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier: Loose, work: Loose): PurchaseOrderPdfData {
+export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier: Loose, work: Loose, quoteNumber?: string): PurchaseOrderPdfData {
   const items = (Array.isArray(purchase.items) ? purchase.items : []) as PurchaseOrderLine[];
   const subtotalCents = Number(purchase.subtotalCents ?? items.reduce((total, item) => total + Number(item.totalCents || 0), 0));
   return {
@@ -271,13 +275,14 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
     requestedDate: isoOrUndefined(purchase.requestedDate) || new Date().toISOString(),
     expectedDate: isoOrUndefined(purchase.expectedDate),
     priceListDate: isoOrUndefined(purchase.priceListDate),
+    deliverTo: String(purchase.deliverTo || "central"),
     notes: String(purchase.notes || ""),
     userName: String(purchase.userName || ""),
     supplier: {
       name: String(supplier?.name || "Proveedor"), contactName: String(supplier?.contactName || ""),
       phone: String(supplier?.phone || ""), email: String(supplier?.email || ""), address: String(supplier?.address || ""),
     },
-    work: work ? { code: String(work.code || ""), name: String(work.name || "") } : null,
+    work: work ? { code: String(work.code || ""), name: String(work.name || ""), quoteNumber: quoteNumber || String(purchase.quoteNumber || "") } : null,
     items: items.map(item => ({
       code: item.code || "", name: item.name, presentation: item.presentation || "", quantity: Number(item.quantity || 0),
       listPriceCents: Number(item.listPriceCents || 0), discountPct: Number(item.discountPct || 0), unitCents: Number(item.unitCents || 0), totalCents: Number(item.totalCents || 0),
@@ -290,12 +295,12 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
 
 /** Arma el PDF en el navegador y lo descarga. */
 export async function downloadPurchaseOrderPdf(data: PurchaseOrderPdfData) {
-  const [{ jsPDF }, { readBrandLogo }, session] = await Promise.all([
+  const [{ jsPDF }, logo, session] = await Promise.all([
     import("jspdf"),
-    import("./invoice-pdf"),
+    readPdfLogo(),
     fetch("/api/auth/me").then(response => response.ok ? response.json() : null).catch(() => null),
   ]);
   const doc = new jsPDF();
-  const filename = buildPurchaseOrderPdf(doc, data, { author: session?.name || data.userName || "el sistema", logo: await readBrandLogo() });
+  const filename = buildPurchaseOrderPdf(doc, data, { author: session?.name || data.userName || "el sistema", logo });
   doc.save(filename);
 }
