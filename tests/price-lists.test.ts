@@ -147,18 +147,21 @@ describe("precios y medidas", () => {
 const session = { userId: new Types.ObjectId().toHexString(), name: "Compras de prueba", email: "compras@test.local", role: "gerencia" as const, permissions: defaultPermissionsForRole("gerencia") };
 vi.mock("@/lib/auth", () => ({ requireSession: async () => session, getSession: async () => session }));
 
-const { Supplier, PriceList, PriceListItem } = await import("../src/lib/models");
+const { Client, Supplier, PriceList, PriceListItem, Purchase, Work } = await import("../src/lib/models");
 const service = await import("../src/lib/price-list-service");
 const discountRoute = await import("../src/app/api/suppliers/[id]/route");
 const searchRoute = await import("../src/app/api/prices/search/route");
 const historyRoute = await import("../src/app/api/prices/[id]/history/route");
+const ordersRoute = await import("../src/app/api/purchases/orders/route");
+const { buildPurchaseOrderPdf } = await import("../src/lib/purchase-order-pdf");
 
 let server: MongoMemoryServer;
 const params = <T extends Record<string, string>>(value: T) => ({ params: Promise.resolve(value) });
 const call = async (response: Response) => ({ status: response.status, body: await response.json() });
 
+let rowCounter = 0;
 function item(code: string, name: string, presentation: string, pesos: number, extra: Partial<ParsedPriceItem> = {}): ParsedPriceItem {
-  return { row: 0, code, name, description: "", presentation, minSale: "1 Unidad", category: "Impermeabilizantes", subcategory: "", kind: "A", listPriceCents: pesos * 100, ...extra };
+  return { row: ++rowCounter, code, name, description: "", presentation, minSale: "1 Unidad", category: "Impermeabilizantes", subcategory: "", kind: "A", listPriceCents: pesos * 100, ...extra };
 }
 
 async function importList(supplierId: string, validFrom: string, items: ParsedPriceItem[], pricesIncludeVat = false) {
@@ -216,8 +219,16 @@ describe("listas de precios (base)", () => {
     // Sin acentos ni mayúsculas, y el código exacto va primero.
     const byCode = await call(await searchRoute.GET(new Request("http://test/api/prices/search?q=5000pu5")));
     expect(byCode.body.rows[0]).toMatchObject({ code: "5000PU5" });
-    const empty = await call(await searchRoute.GET(new Request("http://test/api/prices/search?q=")));
-    expect(empty.body).toMatchObject({ rows: [], total: 0, lists: 2 });
+    // Sin nada escrito: la lista entera, proveedor por proveedor, sin "mejor precio".
+    const all = await call(await searchRoute.GET(new Request("http://test/api/prices/search?q=")));
+    expect(all.body).toMatchObject({ total: 4, lists: 2 });
+    expect(all.body.rows.map((row: { supplierName: string; code: string }) => `${row.supplierName}:${row.code}`)).toEqual(["Otro corralón:T5", "Protex:5000PU20", "Protex:5000PU5", "Protex:NEW"]);
+    expect(all.body.rows.some((row: { best: boolean }) => row.best)).toBe(false);
+    // Paginada y ordenada en el servidor: el más barato de todos, no de lo que ya se ve.
+    const cheapest = await call(await searchRoute.GET(new Request("http://test/api/prices/search?sort=price&limit=1&offset=0")));
+    expect(cheapest.body).toMatchObject({ total: 4, offset: 0, rows: [{ code: "5000PU5" }] });
+    const nextPage = await call(await searchRoute.GET(new Request("http://test/api/prices/search?sort=price&limit=1&offset=1")));
+    expect(nextPage.body.rows[0].code).toBe("NEW");
 
     // El descuento se cambia en un lugar y se ve en todos los precios.
     const patched = await call(await discountRoute.PATCH(new Request("http://test", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ discountPct: 10 }) }), params({ id: protexId })));
@@ -232,6 +243,62 @@ describe("listas de precios (base)", () => {
     // La historia del producto: el precio de cada lista, de la más vieja a la vigente.
     const history = await call(await historyRoute.GET(new Request("http://test"), params({ id: page!.items.find(row => row.code === "5000PU20")!._id })));
     expect(history.body.items.map((entry: { listCents: number; current: boolean }) => [entry.listCents, entry.current])).toEqual([[20_000_000, false], [23_455_600, true]]);
+  });
+
+  it("cierra el pedido de un proveedor: orden OC correlativa, precios de la lista vigente y datos para el PDF", async () => {
+    const sika = await Supplier.create({ name: "Sika", discountPct: 10, contactName: "Laura", phone: "379 400-0000" });
+    const sikaId = String(sika._id);
+    const client = await Client.create({ name: "Consorcio 9 de Julio", cuit: "30-12345678-9" });
+    const work = await Work.create({ code: "OB-99", name: "Fachada 9 de Julio", clientId: client._id, budgetCents: 1_000_000, status: "en_curso" });
+    // Ya había una OC cargada a mano con el número 7: la siguiente es la 8.
+    await Purchase.create({ number: "OC-7", description: "Cargada a mano", amountCents: 0, requestedDate: new Date() });
+
+    await importList(sikaId, "2026-08-01", [item("SK1", "SIKAFILL", "Balde 20 KG", 100_000), item("SK2", "SIKAFLEX", "Cartucho", 10_000)]);
+    const old = await PriceListItem.find({ supplierId: sika._id, current: true }).lean() as Array<{ _id: Types.ObjectId; code: string }>;
+    const idOf = (code: string) => String(old.find(row => row.code === code)!._id);
+
+    const order = (body: unknown) => ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+    // El mismo producto dos veces se junta en un renglón.
+    const first = await call(await order({ supplierId: sikaId, workId: String(work._id), expectedDate: "2026-09-30", notes: "Entregar de 8 a 12",
+      items: [{ itemId: idOf("SK1"), quantity: 2 }, { itemId: idOf("SK2"), quantity: 1.5 }, { itemId: idOf("SK1"), quantity: 1 }] }));
+    expect(first.status).toBe(201);
+    expect(first.body.purchase).toMatchObject({ number: "OC-8", stage: "orden", status: "aprobada", subtotalCents: 28_350_000, vatCents: 5_953_500, amountCents: 34_303_500, notes: "Entregar de 8 a 12" });
+    expect(first.body.purchase.items).toMatchObject([
+      { code: "SK1", quantity: 3, listPriceCents: 10_000_000, discountPct: 10, unitCents: 9_000_000, totalCents: 27_000_000 },
+      { code: "SK2", quantity: 1.5, listPriceCents: 1_000_000, discountPct: 10, unitCents: 900_000, totalCents: 1_350_000 },
+    ]);
+    expect(first.body.pdf).toMatchObject({ number: "OC-8", supplier: { name: "Sika", contactName: "Laura" }, work: { code: "OB-99" }, subtotalCents: 28_350_000, totalCents: 34_303_500 });
+    expect(first.body.pdf.priceListDate.slice(0, 10)).toBe("2026-08-01");
+
+    // Llega otra lista: lo que quedó en el carrito se cobra al precio nuevo;
+    // lo que el proveedor dejó de vender no se puede pedir.
+    await importList(sikaId, "2026-09-15", [item("SK1", "SIKAFILL", "Balde 20 KG", 120_000)]);
+    const repriced = await call(await order({ supplierId: sikaId, items: [{ itemId: idOf("SK1"), quantity: 1 }] }));
+    expect(repriced.body.purchase).toMatchObject({ number: "OC-9", items: [{ listPriceCents: 12_000_000, unitCents: 10_800_000 }] });
+    const gone = await call(await order({ supplierId: sikaId, items: [{ itemId: idOf("SK2"), quantity: 1 }] }));
+    expect(gone.status).toBe(409);
+    expect(gone.body.error).toContain("SIKAFLEX");
+    // Un producto de otro proveedor no entra en esta orden.
+    const foreign = await PriceListItem.findOne({ current: true, supplierId: { $ne: sika._id } }).lean() as { _id: Types.ObjectId };
+    expect((await call(await order({ supplierId: sikaId, items: [{ itemId: String(foreign._id), quantity: 1 }] }))).status).toBe(409);
+    expect((await call(await order({ supplierId: sikaId, items: [] }))).status).toBe(400);
+
+    // Las órdenes cargadas a mano sin número también siguen el correlativo.
+    const recordsRoute = await import("../src/app/api/records/[entity]/route");
+    const manual = await call(await recordsRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ description: "Flete", amountCents: 500, stage: "solicitud", status: "borrador", requestedDate: "2026-09-20" }) }), params({ entity: "purchases" })));
+    expect(manual.body.number).toBe("OC-10");
+  });
+
+  it("el PDF de la orden pasa de página cuando hay muchos productos", async () => {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF();
+    const items = Array.from({ length: 45 }, (_, index) => ({ code: `C${index}`, name: `Producto ${index}`, presentation: "Balde 20 KG", quantity: 2, listPriceCents: 1_000_000, discountPct: 15, unitCents: 850_000, totalCents: 1_700_000 }));
+    const filename = buildPurchaseOrderPdf(doc, {
+      number: "OC-12", requestedDate: "2026-09-25T00:00:00.000Z", supplier: { name: "Protex" }, work: null, items,
+      subtotalCents: 76_500_000, vatCents: 16_065_000, totalCents: 92_565_000, notes: "Entregar en depósito",
+    }, { author: "Compras" });
+    expect(filename).toBe("orden-de-compra-OC-12.pdf");
+    expect(doc.getNumberOfPages()).toBeGreaterThan(1);
   });
 
   it("un proveedor dado de baja no aparece en el buscador", async () => {

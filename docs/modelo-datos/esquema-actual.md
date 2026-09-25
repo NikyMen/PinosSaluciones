@@ -275,6 +275,24 @@ Colección `purchases` · entidad `purchases`
 | `expectedDate` | fecha | — | — |
 | `receivedDate` | fecha | — | — |
 | `receiptNotes` | texto | — | — |
+| `items` | lista de objetos | — | — |
+| `items.priceListItemId` | referencia | — | apunta a **PriceListItem** |
+| `items.code` | texto | — | — |
+| `items.name` | texto | sí | — |
+| `items.presentation` | texto | — | — |
+| `items.minSale` | texto | — | — |
+| `items.quantity` | número | sí | mínimo 0 |
+| `items.listPriceCents` | número | — | mínimo 0 · por defecto `0` |
+| `items.discountPct` | número | — | por defecto `0` |
+| `items.unitCents` | número | — | mínimo 0 · por defecto `0` |
+| `items.totalCents` | número | — | mínimo 0 · por defecto `0` |
+| `subtotalCents` | número | — | — |
+| `vatCents` | número | — | — |
+| `notes` | texto | — | — |
+| `priceListId` | referencia | — | apunta a **PriceList** |
+| `priceListDate` | fecha | — | — |
+| `userId` | referencia | — | apunta a **User** |
+| `userName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -418,9 +436,14 @@ Usuarios del sistema y sus permisos. Colección `users`.
 |---|---|:--:|---|
 | `name` | texto | sí | — |
 | `email` | texto | sí | único |
-| `passwordHash` | texto | sí | — |
+| `passwordHash` | texto | — | — |
 | `role` | texto | sí | valores: `gerencia` · `arquitecto` · `auxiliar` · `administracion` · `compras` · `ventas` · `contador` |
 | `active` | sí/no | — | por defecto `true` |
+| `inviteTokenHash` | texto | — | — |
+| `inviteExpiresAt` | fecha | — | — |
+| `inviteKind` | texto | — | valores: `invite` · `reset` |
+| `invitedAt` | fecha | — | — |
+| `passwordSetAt` | fecha | — | — |
 | `permissions` | objeto | — | — |
 | `permissions.view` | lista | — | — |
 | `permissions.edit` | lista | — | — |

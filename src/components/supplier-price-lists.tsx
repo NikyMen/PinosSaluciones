@@ -6,6 +6,7 @@ import { ArrowLeft, Columns3, Download, FileSpreadsheet, FileUp, Percent, Search
 import { date, dateTime, money, qty } from "@/lib/format";
 import { DateInput, FileDrop } from "@/components/fields";
 import { PriceTable, VatToggle } from "@/components/price-search";
+import { PurchaseCart } from "@/components/purchase-cart";
 import { discounted, priceFieldLabels, priceFields, searchTextOf, searchTokens, withVat as addVat, type ColumnMap, type PriceLayout, type PriceRow } from "@/lib/price-lists";
 
 type Summary = { total?: number; added: number; up: number; down: number; same: number; removed: number };
@@ -36,7 +37,7 @@ const columnLetter = (index: number) => String.fromCharCode(65 + index);
  * lista nueva (primero se revisa, después se guarda), los productos de la
  * vigente y todas las listas que se subieron antes.
  */
-export function SupplierPriceLists({ id, canEdit }: { id: string; canEdit: boolean }) {
+export function SupplierPriceLists({ id, canEdit, canOrder }: { id: string; canEdit: boolean; canOrder: boolean }) {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -156,7 +157,10 @@ export function SupplierPriceLists({ id, canEdit }: { id: string; canEdit: boole
       <h1>{supplier.name}</h1>
       <p>{current ? `Lista vigente desde el ${date(current.validFrom)} · ${current.itemCount} productos` : "Todavía no tiene listas de precios cargadas"}{supplier.contactName ? ` · Contacto: ${supplier.contactName}` : ""}</p>
     </div>
-      <Link className="secondary-btn" href="/app/precios"><Search size={17} /> Buscador de precios</Link>
+      <div className="price-heading-actions">
+        <Link className="secondary-btn" href="/app/precios"><Search size={17} /> Buscador de precios</Link>
+        {canOrder && <PurchaseCart />}
+      </div>
     </div>
     {error && <div className="notice error">{error}</div>}
     {notice && <div className="notice success">{notice}</div>}
@@ -262,7 +266,7 @@ export function SupplierPriceLists({ id, canEdit }: { id: string; canEdit: boole
         </select>}
       </div>}
       <div className="table-panel price-products-table">
-        {rows.length ? <PriceTable rows={rows} withVat={withVat} mode="supplier" />
+        {rows.length ? <PriceTable rows={rows} withVat={withVat} mode="supplier" canOrder={canOrder} />
           : <div className="empty-state compact">{data.items.length ? "Ningún producto coincide con el filtro." : "Todavía no hay una lista vigente."}</div>}
       </div>
     </section>

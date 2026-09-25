@@ -8,17 +8,16 @@ import { date, dateTime, money, titleCase } from "@/lib/format";
 import { FileDrop, MoneyInput } from "@/components/fields";
 import { WorkLabor, type AssignedWorker, type LaborEntry } from "@/components/work-labor";
 import { InvoiceWorkModal } from "@/components/work-invoice";
-import { WorkInspections, type LegacyAdvance } from "@/components/work-inspections";
-import { displayedProgress, progressModeHints, progressModeOf } from "@/lib/inspections";
+import { WorkInspections } from "@/components/work-inspections";
 
 type Checklist = { _id: string; title: string; done: boolean; completedAt?: string; createdAt?: string; updatedAt?: string };
 type Activity = { _id: string; detail: string; photos: string[]; authorName: string; createdAt: string };
 type Certificate = { number: string; period: string; percentage: number; amountCents: number; approved: boolean; invoiced: boolean };
 type WorkExpense = { _id: string; number?: string; description: string; category: string; amountCents: number; issueDate: string; status: string };
 
-type Work = { _id: string; name: string; code: string; progress: number; progressMode?: string; budgetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; advances: LegacyAdvance[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
+type Work = { _id: string; name: string; code: string; progress: number; budgetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
 
-export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
+export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEdit: boolean; canCreateWorker: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
   const [error, setError] = useState("");
   const [expenses, setExpenses] = useState<WorkExpense[]>([]);
@@ -118,27 +117,23 @@ export function WorkDetail({ id, canEdit }: { id: string; canEdit: boolean }) {
   if (!work) return <div className="loading-state">{error || "Cargando obra…"}</div>;
   const fallbackCreatedAt = work.createdAt;
   const fallbackUpdatedAt = work.updatedAt || work.createdAt;
-  // El avance físico sale de las inspecciones; sin base de avance no se muestra un número.
-  const progress = displayedProgress(work);
-  const progressMode = progressModeOf(work);
 
   return <>
     <Link href="/app/works" className="back-link"><ArrowLeft/> Volver a obras</Link>
     <div className="page-heading work-heading">
-      <div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>{progress === null ? "Sin base de avance" : `Avance físico: ${progress}%`} · Presupuesto {money(work.budgetCents || 0)}</p><p className="work-progress-source">{progressModeHints[progressMode]}</p></div>
+      <div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>Presupuesto {money(work.budgetCents || 0)}</p></div>
       <div className="work-heading-actions">
         {canEdit && <Link className="primary-btn" href={`/app/works/${id}/inspections/new`}><ClipboardCheck size={17} /> Nueva inspección</Link>}
         <a className="secondary-btn" href="#personal" onClick={event => { event.preventDefault(); document.getElementById("personal")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Users size={17} /> Personal asignado</a>
         <a className="secondary-btn" href="#gastos" onClick={event => { event.preventDefault(); document.getElementById("gastos")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><ReceiptText size={17} /> Gastos de obra</a>
         {canEdit && <button className="secondary-btn" onClick={() => setInvoicing(true)}><FileCheck2 size={17} /> Facturar</button>}
       </div>
-      <span className="work-progress-big" title={progressModeHints[progressMode]} style={{ background: `conic-gradient(var(--brand-red) 0 ${progress ?? 0}%, var(--brand-navy) ${progress ?? 0}% 100%)` }}>{progress === null ? "—" : `${progress}%`}</span>
     </div>
     {error && <div className="notice error">{error}</div>}
 
-    <WorkInspections workId={id} canEdit={canEdit} advances={work.advances || []} onProgressChanged={() => { void load(); }} />
+    <WorkInspections workId={id} canEdit={canEdit} />
 
-    <WorkLabor work={{ _id: id, code: work.code, name: work.name }} assigned={work.assignedWorkers || []} labor={work.labor || []} canEdit={canEdit}
+    <WorkLabor work={{ _id: id, code: work.code, name: work.name }} assigned={work.assignedWorkers || []} labor={work.labor || []} canEdit={canEdit} canCreateWorker={canCreateWorker}
       onChanged={updated => setWork(updated as Work)} />
 
     <div className="work-detail-grid">

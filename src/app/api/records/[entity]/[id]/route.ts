@@ -30,11 +30,16 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     const session = await requireSession(); const { entity, id } = await context.params;
     if (!validEntity(entity) || !canWrite(session, entity)) throw new Error("FORBIDDEN");
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
-    const parsed = schemas[entity].partial().safeParse(await request.json());
+    const body = await request.json();
+    const parsed = schemas[entity].partial().safeParse(body);
     if (!parsed.success) return Response.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
-    const changes = parsed.data as Record<string, unknown>;
+    // En un cambio parcial zod igual completa los valores por defecto de lo que
+    // no llegó (una descripción vacía, activo = sí). Sólo se guarda lo que se
+    // mandó: cambiar el estado de una tarea no puede borrarle la descripción.
+    const sent = new Set(body && typeof body === "object" ? Object.keys(body) : []);
+    const changes = Object.fromEntries(Object.entries(parsed.data as Record<string, unknown>).filter(([key]) => sent.has(key)));
     if (entity === "tasks") await resolveTaskAssignee(session, changes, false);
     if (entity === "workers" && (changes.firstName || changes.lastName)) {
       changes.name = composeWorkerName({ ...before as Record<string, unknown>, ...changes });

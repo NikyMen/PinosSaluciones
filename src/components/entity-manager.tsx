@@ -3,21 +3,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
 import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
-import { date, isoPlusDays, money, qty, titleCase } from "@/lib/format";
-import { DateInput, FileDrop, MoneyInput, PhoneList, SearchSelect, type Option } from "@/components/fields";
+import { date, money, qty, titleCase } from "@/lib/format";
+import { DateInput } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
+import { FormField, QuickCreateModal, fieldErrors, type FieldProps } from "@/components/record-form";
 import { StockMovementModal, type StockItem } from "@/components/stock-movement";
 import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
 import { buildInvoicePdf, readBrandLogo } from "@/lib/invoice-pdf";
+import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-order-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
-import { displayedProgress, progressModeHints, progressModeOf } from "@/lib/inspections";
 
 type Item = Record<string, unknown> & { _id: string };
 
-// Modulos donde la fila entera abre el formulario.
-const inlineEntities = new Set<Entity>(["works", "tasks", "quotes", "purchases"]);
+// Modulos donde la fila entera abre el formulario. En obras la fila lleva a la
+// pantalla de la obra (lo mismo que "Abrir obra"); el formulario queda en el lápiz.
+const inlineEntities = new Set<Entity>(["tasks", "quotes", "purchases"]);
 // Donde ademas el estado se cambia sin entrar. En cotizaciones no: ahi el
 // estado lo mueve el formulario y "aprobada" solo sale del boton Aprobar.
 const inlineStatusEntities = new Set<Entity>(["works", "tasks", "purchases"]);
@@ -38,6 +41,7 @@ type Person = { _id: string; name: string; role: Role };
 export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { entity: Entity; canEdit: boolean; canDeleteRecords: boolean; viewer: Viewer }) {
   const config = entityConfig[entity];
   const isAdmin = viewer.role === "gerencia";
+  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [relations, setRelations] = useState<Record<string, Item[]>>({});
@@ -118,9 +122,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     return row ? itemLabel(row) : value ? "…" : "—";
   }
 
-  function display(key: string, value: unknown, item?: Item) {
+  function display(key: string, value: unknown) {
     if (key.endsWith("Cents")) return money(Number(value || 0));
-    if (key === "progress") return item ? <ProgressCell item={item} /> : `${value || 0}%`;
     if (key === "phones") return Array.isArray(value) && value.length ? value.join(" · ") : "—";
     if (key === "minQuantity") return Number(value || 0) || "—";
     if (key === "discountPct") return Number(value || 0) ? `${qty(Number(value))} %` : "—";
@@ -218,7 +221,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const fieldProps = (field: Field) => ({
     field,
     // El avance se muestra, no se edita: sale de las inspecciones.
-    value: field.key === "progress" && editing ? (displayedProgress(editing) === null ? "Sin base de avance" : `${displayedProgress(editing)}%`) : editing?.[field.key],
+    value: editing?.[field.key],
     relationOptions: field.relation ? (relations[field.relation] || []).map(item => ({ value: item._id, label: itemLabel(item), hint: String(item.cuit || item.email || "") || undefined })) : [],
     relationValue: relationValues[field.key] ?? "",
     personOptions: field.type === "user" ? people.map(person => ({ value: person._id, label: person.name, hint: roleLabels[person.role] })) : [],
@@ -236,11 +239,12 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {error && <div className="notice error">{error}</div>}
     {entity === "stock" && <StockSummary items={items} />}
     <section className="table-panel"><div className="table-scroll"><table><thead><tr>{config.columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
-      const rowEditable = inlineEntities.has(entity) && canEdit;
-      // En obras la fila entera se pinta de rojo suave según el avance: 50% = media fila.
-      const rowProgress = entity === "works" ? displayedProgress(item) : null;
-      const rowClass = [rowEditable ? "clickable-row" : "", entity === "works" ? "progress-row" : ""].filter(Boolean).join(" ");
-      return <tr key={item._id} className={rowClass} style={rowProgress !== null ? { "--row-progress": `${rowProgress}%` } as React.CSSProperties : undefined} onClick={rowEditable ? () => open(item) : undefined} onKeyDown={rowEditable ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(item); } } : undefined} tabIndex={rowEditable ? 0 : undefined} title={rowEditable ? (entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar") : undefined}>
+      // En obras la fila lleva a la pantalla de la obra, aunque no se pueda editar.
+      const rowAction = entity === "works" ? () => router.push(`/app/works/${item._id}`) : inlineEntities.has(entity) && canEdit ? () => open(item) : null;
+      const rowTitle = entity === "works" ? "Abrir la obra" : entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar";
+      // Las tareas se pintan enteras según el estado: de un vistazo se ve qué falta.
+      const rowClass = [rowAction ? "clickable-row" : "", entity === "tasks" ? `task-row ${String(item.status || "pendiente")}` : ""].filter(Boolean).join(" ");
+      return <tr key={item._id} className={rowClass} onClick={rowAction || undefined} onKeyDown={rowAction ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rowAction(); } } : undefined} tabIndex={rowAction ? 0 : undefined} title={rowAction ? rowTitle : undefined}>
         {config.columns.map(column => <td key={column} data-label={columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
           const pending = pendingStatus?.id === item._id ? pendingStatus.status : "";
           return <div className="status-cell" onClick={event => event.stopPropagation()}>
@@ -254,12 +258,15 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
               <button type="button" className="status-confirm-no" onClick={() => setPendingStatus(null)} aria-label="Dejarlo como estaba"><X size={14} /></button>
             </span>}
           </div>;
-        })() : display(column, item[column], item)}</td>)}
+        })() : display(column, item[column])}</td>)}
         <td className="row-actions" onClick={event => event.stopPropagation()}>
           {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
           {entity === "suppliers" && <Link className="row-action-wide" title="Subir y ver las listas de precios del proveedor" href={`/app/suppliers/${item._id}`}><FileSpreadsheet size={15} /> Listas de precios</Link>}
+          {entity === "purchases" && Array.isArray(item.items) && item.items.length > 0 && <button className="row-action-wide" title="Descargar la orden de compra en PDF para mandársela al proveedor"
+            onClick={() => { void downloadPurchaseOrderPdf(purchaseOrderPdfData(item, relations.suppliers?.find(row => row._id === String(item.supplierId || "")), relations.works?.find(row => row._id === String(item.workId || "")))).catch(() => setError("No se pudo generar el PDF de la orden")); }}>
+            <Download size={15} /> PDF</button>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
           {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void approveQuote(item); }}><CheckCircle2 size={15} /> Aprobar</button>}
           {entity === "stock" && canEdit && <button title="Registrar una compra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
@@ -278,7 +285,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
         {/* En una obra manda el nombre: el título dice de qué obra se trata, no "editar registro". */}
         <p className="eyebrow">{entity === "works" && editing ? `OBRA ${String(editing.code || "")}` : editing ? "EDITAR REGISTRO" : "NUEVO REGISTRO"}</p>
         <h2 id="entity-modal-title">{entity === "works" && editing ? String(editing.name || "Obra") : editing ? `Editar ${config.singular}` : `Nuevo ${config.singular}`}</h2>
-        <small>{entity === "works" && editing ? `${displayedProgress(editing) === null ? "Sin base de avance" : `Avance ${displayedProgress(editing)}%`} · Presupuesto ${money(Number(editing.budgetCents || 0))}` : entity === "works" ? "Información general, planificación y control de la obra" : `Completá los datos del ${config.singular}`}</small>
+        <small>{entity === "works" && editing ? `Presupuesto ${money(Number(editing.budgetCents || 0))}` : entity === "works" ? "Información general, planificación y control de la obra" : `Completá los datos del ${config.singular}`}</small>
       </div></div>
       {entity === "works" && editing && <div className="modal-head-actions">
         <Link className="secondary-btn" href={`/app/works/${editing._id}#personal`}><Users size={16} /> Personal asignado</Link>
@@ -508,43 +515,9 @@ function StockSummary({ items }: { items: Item[] }) {
   </section>;
 }
 
-/**
- * Avance de una obra en el listado: el porcentaje escrito (para leerlo y para
- * los lectores de pantalla) y una barra. Sin base de avance no se muestra 0%:
- * se dice que falta la base.
- */
-function ProgressCell({ item }: { item: Item }) {
-  const value = displayedProgress(item);
-  const mode = progressModeOf(item);
-  if (value === null) return <span className="progress-cell empty" title={progressModeHints.sin_base}>Sin base de avance</span>;
-  return <span className="progress-cell" title={progressModeHints[mode]}>
-    <b>{value}%</b>
-    <span className="progress-cell-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-label={`Avance ${value}%`}><i style={{ width: `${value}%` }} /></span>
-    {mode === "manual" && <small>manual</small>}
-  </span>;
-}
-
-/** Traduce los errores por campo que devuelve zod a una frase legible. */
-function fieldErrors(result: { details?: { fieldErrors?: Record<string, string[]> } }) {
-  const byField = result.details?.fieldErrors;
-  if (!byField) return "";
-  const messages = Object.values(byField).flat().filter(Boolean);
-  return messages.length ? messages.join(". ") : "";
-}
-
-type FieldProps = {
-  field: Field;
-  value: unknown;
-  relationOptions: Option[];
-  personOptions: Option[];
-  relationValue: string;
-  onRelationChange: (value: string) => void;
-  onCreateRelation?: () => void;
-};
-
 const workGroups = [
   { title: "Identificación", description: "Datos principales de la obra", keys: ["code", "name", "clientId", "quoteId"] },
-  { title: "Planificación", description: "Fechas, estado y avance", keys: ["startDate", "endDate", "status", "progress"] },
+  { title: "Planificación", description: "Fechas y estado", keys: ["startDate", "endDate", "status"] },
   { title: "Control económico", description: "Presupuesto y centro de costo", keys: ["budgetCents", "costCenter"] },
 ];
 
@@ -563,73 +536,4 @@ function TaskModal({ task, config, fieldProps, error, saving, onClose, onSubmit 
     <form onSubmit={onSubmit}><div className="modal-form-body"><div className="task-form-heading"><div><p className="eyebrow">INFORMACIÓN</p><h3>Datos de la tarea</h3></div><span>Los cambios quedan registrados automáticamente.</span></div><div className="form-grid">{config.fields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} value={task?.[field.key]} autoFocus={index === 0} />)}</div></div>{error && <p className="form-error modal-error">{error}</p>}<footer><span>Usuario, fecha y hora se guardan en cada cambio.</span><button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></footer></form>
     {task && <div className="modal-form-body"><RecordHistory entity="tasks" recordId={task._id} embedded /></div>}
   </section></div>;
-}
-
-/** Alta rápida de un registro relacionado (típicamente un cliente) sin salir del formulario. */
-function QuickCreateModal({ entity, onClose, onCreated }: { entity: Entity; onClose: () => void; onCreated: (item: Item) => void }) {
-  const config = entityConfig[entity];
-  // El alta rápida sólo pide campos simples: nada de relaciones anidadas ni archivos.
-  const fields = config.fields.filter(field => field.type !== "relation" && field.type !== "file");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setError("");
-    const form = new FormData(event.currentTarget); const body: Record<string, unknown> = {};
-    for (const field of fields) {
-      const value = form.get(field.key);
-      body[field.key] = field.type === "money" ? Math.round(Number(value || 0) * 100) : field.type === "number" ? Number(value || 0) : value;
-    }
-    const response = await fetch(`/api/records/${entity}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const result = await response.json();
-    setSaving(false);
-    if (!response.ok) return setError(fieldErrors(result) || result.error || "No se pudo crear");
-    onCreated(result as Item);
-  }
-
-  return <div className="modal-layer quick-layer">
-    <button className="modal-backdrop" onClick={onClose} aria-label="Cerrar" />
-    <section className="modal quick-modal" role="dialog" aria-modal="true" aria-labelledby="quick-modal-title">
-      <header><div className="modal-title-wrap"><span className="modal-heading-icon"><Plus /></span><div><p className="eyebrow">ALTA RÁPIDA</p><h2 id="quick-modal-title">Nuevo {config.singular}</h2><small>Se crea acá mismo y queda elegido en el formulario</small></div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
-      <form onSubmit={submit}>
-        <div className="modal-form-body"><div className="form-grid">{fields.map((field, index) => <FormField key={field.key} field={field} value={undefined} relationOptions={[]} personOptions={[]} relationValue="" onRelationChange={() => {}} autoFocus={index === 0} />)}</div></div>
-        {error && <p className="form-error modal-error">{error}</p>}
-        <footer><span>Después lo podés completar desde su módulo.</span><button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Creando…" : `Crear ${config.singular}`}</button></footer>
-      </form>
-    </section>
-  </div>;
-}
-
-function FormField({ field, value, relationOptions, personOptions, relationValue, onRelationChange, onCreateRelation, autoFocus = false }: FieldProps & { autoFocus?: boolean }) {
-  const label = <span>{field.label}{field.required && " *"}{field.hint && <em className="field-hint">{field.hint}</em>}</span>;
-  const text = String(value ?? "");
-
-  if (field.readOnly) return <label className="readonly-field">{label}<output>{field.type === "money" ? money(Number(value || 0)) : text || "—"}</output></label>;
-  if (field.type === "money") return <label>{label}<MoneyInput name={field.key} defaultValue={Number(value || 0) / 100} required={field.required} autoFocus={autoFocus} /></label>;
-  if (field.type === "date") return <label>{label}<DateInput name={field.key} required={field.required} autoFocus={autoFocus} quickRanges={field.quickRanges} hideToday={field.hideToday}
-    defaultValue={value ? new Date(String(value)).toISOString().slice(0, 10) : field.defaultInDays ? isoPlusDays(field.defaultInDays) : ""} /></label>;
-  if (field.type === "phones") return <label className="wide">{label}<PhoneList name={field.key} defaultValue={Array.isArray(value) ? value.map(String) : text ? [text] : []} /></label>;
-  if (field.type === "file") return <label className="wide">{label}<FileDrop name={field.key} currentPath={text || undefined} /></label>;
-  if (field.type === "textarea") return <label className="wide">{label}<textarea name={field.key} required={field.required} defaultValue={text} autoFocus={autoFocus} placeholder={field.placeholder} /></label>;
-  // El estado que ya tiene el registro siempre se ofrece, aunque no sea de los
-  // que se eligen a mano: si no, editar una cotización aprobada lo borraría.
-  if (field.type === "select") {
-    const options = [...(field.options || [])];
-    if (text && !options.includes(text)) options.push(text);
-    return <label>{label}<SearchSelect name={field.key} defaultValue={text || field.defaultValue || ""} required={field.required} autoFocus={autoFocus}
-      options={options.map(option => ({ value: option, label: titleCase(option) }))} /></label>;
-  }
-  if (field.type === "user") return <label>{label}<SearchSelect name={field.key} options={personOptions} value={relationValue} onChange={onRelationChange}
-    placeholder="Sin persona asignada" required={field.required} autoFocus={autoFocus} /></label>;
-  if (field.type === "relation") return <label>{label}<SearchSelect name={field.key} options={relationOptions} value={relationValue} onChange={onRelationChange} required={field.required} autoFocus={autoFocus}
-    createLabel={`Crear ${entityConfig[field.relation!].singular} nuevo`} onCreate={onCreateRelation} /></label>;
-
-  return <label>{label}<input name={field.key} type={field.type === "number" ? "number" : field.type || "text"} required={field.required} defaultValue={text || field.defaultValue || ""} autoFocus={autoFocus}
-    step={field.step ?? (field.key === "progress" ? "1" : undefined)} min={field.type === "number" ? "0" : undefined} placeholder={field.placeholder} /></label>;
 }

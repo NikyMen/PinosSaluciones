@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3, CalendarDays, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat,
@@ -48,10 +48,12 @@ const groups: NavGroup[] = [
 const directItems: NavItem[] = [
   { href: "/app/calendario", label: "Agenda", icon: CalendarDays, permission: "calendario" },
   { href: "/app/reports", label: "iA y Reportes", icon: BarChart3, permission: "reports" },
-  { href: "/app/settings", label: "Usuarios", icon: Settings, managerOnly: true },
 ];
 
-const allItems = [dashboardItem, ...groups.flatMap(group => group.items), ...directItems];
+// La configuración no va en la barra: se entra desde el menú del usuario, arriba a la derecha.
+const settingsItem: NavItem = { href: "/app/settings", label: "Usuarios y permisos", icon: Settings, managerOnly: true };
+
+const allItems = [dashboardItem, ...groups.flatMap(group => group.items), ...directItems, settingsItem];
 
 function isActive(pathname: string, href: string) {
   return href === "/app" ? pathname === href : pathname.startsWith(href);
@@ -66,6 +68,17 @@ export function AppShell({ session, children }: { session: { name: string; email
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // El menú del usuario se cierra al tocar afuera o con Escape, igual que la campanita.
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onPointerDown = (event: MouseEvent) => { if (!profileRef.current?.contains(event.target as Node)) setProfileOpen(false); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setProfileOpen(false); };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("mousedown", onPointerDown); document.removeEventListener("keydown", onKeyDown); };
+  }, [profileOpen]);
   const [expanded, setExpanded] = useState<string | null>(() => groupForPath(pathname));
   const visibleGroups = groups.map(group => ({ ...group, items: group.items.filter(item => !item.permission || canViewSection(session, item.permission)) })).filter(group => group.items.length);
   const visibleDirectItems = directItems.filter(item => (!item.managerOnly || session.role === "gerencia") && (!item.permission || canViewSection(session, item.permission)));
@@ -137,13 +150,15 @@ export function AppShell({ session, children }: { session: { name: string; email
           <div className="top-spacer" />
           <TasksButton />
           <NotificationBell />
-          <div className="profile-wrap">
+          <div className="profile-wrap" ref={profileRef}>
             <button className="profile" onClick={() => setProfileOpen(value => !value)} aria-expanded={profileOpen}>
               <span className="avatar">{initials}</span>
               <span className="profile-name"><b>{session.name}</b><small>{roleLabels[session.role]}</small></span>
               <ChevronDown className={profileOpen ? "chevron open" : "chevron"} size={16} />
             </button>
-            {profileOpen && <div className="profile-menu"><p>{session.email}</p><button onClick={logout}><LogOut size={16} /> Cerrar sesión</button></div>}
+            {profileOpen && <div className="profile-menu"><p>{session.email}</p>
+              {session.role === "gerencia" && <Link href={settingsItem.href} className="profile-menu-link" onClick={() => setProfileOpen(false)}><Settings size={16} /> {settingsItem.label}</Link>}
+              <button onClick={logout}><LogOut size={16} /> Cerrar sesión</button></div>}
           </div>
         </header>
         <main className="content">{children}</main>

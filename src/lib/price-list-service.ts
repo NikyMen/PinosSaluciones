@@ -133,30 +133,39 @@ async function toRows(items: StoredItem[]): Promise<PriceRow[]> {
   });
 }
 
-/** Busca en las listas vigentes de todos los proveedores activos. */
-export async function searchPrices(query: string, limit = 80) {
+export type PriceSort = "relevance" | "price" | "unit";
+
+/**
+ * Busca en las listas vigentes de todos los proveedores activos. Sin nada
+ * escrito devuelve la lista completa, proveedor por proveedor y en el orden de
+ * su Excel. Se ordena y se pagina acá, así "menor precio" es el menor de todos
+ * y no sólo de lo que ya se ve en pantalla.
+ */
+export async function searchPrices(query: string, { offset = 0, limit = 100, sort = "relevance" as PriceSort } = {}) {
   const tokens = searchTokens(query);
-  if (!tokens.length) return { rows: [] as PriceRow[], total: 0 };
   const inactive = await Supplier.find({ active: false }).distinct("_id");
   const filter = {
     current: true,
     ...(inactive.length ? { supplierId: { $nin: inactive } } : {}),
-    $and: tokens.map(token => ({ searchText: { $regex: escapeRegex(token) } })),
+    ...(tokens.length ? { $and: tokens.map(token => ({ searchText: { $regex: escapeRegex(token) } })) } : {}),
   };
-  const [items, total] = await Promise.all([
-    PriceListItem.find(filter).limit(500).lean() as Promise<StoredItem[]>,
-    PriceListItem.countDocuments(filter),
-  ]);
-  const unitCost = (row: PriceRow) => row.measure ? row.ownCents / row.measure.qty : row.ownCents;
-  const scored = (await toRows(items))
-    .map(row => ({ row, score: relevance(row, tokens), name: normalize(row.name) }))
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "es") || unitCost(a.row) - unitCost(b.row))
-    .slice(0, limit);
-  // El "mejor precio" se elige entre los que tienen lo buscado en el nombre; si
-  // ninguno lo tiene (se buscó por descripción), entre todos.
+  const items = await PriceListItem.find(filter).sort({ row: 1 }).limit(5000).lean() as StoredItem[];
+  const unitCost = (row: PriceRow) => row.measure ? row.ownCents / row.measure.qty : Number.POSITIVE_INFINITY;
+  const scored = (await toRows(items)).map(row => ({ row, score: tokens.length ? relevance(row, tokens) : 0, name: normalize(row.name) }));
+  scored.sort((a, b) => {
+    if (sort === "price") return a.row.ownCents - b.row.ownCents;
+    // Lo que no se puede llevar a una medida va al final: no hay con qué compararlo.
+    if (sort === "unit") return unitCost(a.row) - unitCost(b.row) || a.row.ownCents - b.row.ownCents;
+    if (!tokens.length) return a.row.supplierName.localeCompare(b.row.supplierName, "es");
+    return b.score - a.score || a.name.localeCompare(b.name, "es") || unitCost(a.row) - unitCost(b.row);
+  });
+  // El "mejor precio" sólo tiene sentido si se buscó algo: entre toda la lista
+  // no hay un producto contra el cual comparar. Se elige entre los que tienen lo
+  // buscado en el nombre; si ninguno lo tiene (se buscó por descripción), entre todos.
+  const all = scored.map(entry => entry.row);
   const byName = new Set(scored.filter(entry => entry.score > 1).map(entry => entry.row));
-  const rows = scored.map(entry => entry.row);
-  return { rows: markBest(rows, row => !byName.size || byName.has(row)), total };
+  const marked = tokens.length ? markBest(all, row => !byName.size || byName.has(row)) : all;
+  return { rows: marked.slice(offset, offset + limit), total: marked.length };
 }
 
 /** La pantalla de un proveedor: sus datos, todas sus listas y los productos de la vigente. */

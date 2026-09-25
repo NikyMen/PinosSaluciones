@@ -13,6 +13,10 @@ export async function POST(request: Request) {
     if (!parsed.success) return Response.json({ error: "Datos de acceso inválidos" }, { status: 400 });
     await connectDB();
     const user = await User.findOne({ email: parsed.data.email, active: true }).select("+passwordHash").lean();
+    // Invitada pero sin contraseña todavía: la tiene que crear desde el link del correo.
+    if (user && !user.passwordHash) {
+      return Response.json({ error: "Tu cuenta todavía no tiene contraseña. Entrá al link que te llegó por correo para crearla, o pedile a gerencia que te lo reenvíe." }, { status: 403 });
+    }
     if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
       return Response.json({ error: "Correo o contraseña incorrectos" }, { status: 401 });
     }

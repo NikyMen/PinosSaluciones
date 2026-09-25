@@ -174,7 +174,9 @@ describe("validaciones de la API", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data).not.toHaveProperty("progress");
     expect(parsed.data).not.toHaveProperty("advances");
-    expect(entityConfig.works.fields.find(field => field.key === "progress")?.readOnly).toBe(true);
+    // El avance físico ya no se muestra en Obras: ni en la tabla ni en el formulario.
+    expect(entityConfig.works.fields.find(field => field.key === "progress")).toBeUndefined();
+    expect(entityConfig.works.columns).not.toContain("progress");
   });
   it("el alta de inspección pide día y rubro válidos", () => {
     expect(inspectionCreatePayload.safeParse({ date: "2026-09-18", rubro: "pintura" }).success).toBe(true);

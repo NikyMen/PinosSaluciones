@@ -177,7 +177,7 @@ svg { flex: none; }
 .table-scroll { overflow: auto; }
 table { width: 100%; min-width: 700px; border-collapse: collapse; }
 th { padding: 12px 16px; border-bottom: 1px solid var(--line); color: #748093; background: #f7f9fb; font-size: .58rem; font-weight: 850; letter-spacing: .075em; text-align: left; text-transform: uppercase; }
-td { padding: 14px 16px; border-bottom: 1px solid #e9edf2; color: #445064; font-size: .72rem; }
+td { padding: 17px 16px; border-bottom: 1px solid #e9edf2; color: #445064; font-size: .72rem; }
 tbody tr { transition: background-color .16s ease; }
 tbody tr:hover { background: #f9fbfd; }
 tbody tr:last-child td { border-bottom: 0; }
@@ -186,7 +186,7 @@ td b { color: #273449; }
 .clickable-row:hover { background: #f2f7fb; box-shadow: inset 3px 0 var(--brand-navy); }
 .clickable-row:focus-visible { position: relative; z-index: 1; outline-offset: -3px; }
 .row-actions { text-align: right; white-space: nowrap; }
-.row-actions button, .row-actions > a { width: 31px; height: 31px; padding: 0; display: inline-grid; place-items: center; vertical-align: middle; border: 0; border-radius: 8px; color: #728095; background: transparent; }
+.row-actions button, .row-actions > a { width: 34px; height: 34px; padding: 0; display: inline-grid; place-items: center; vertical-align: middle; border: 0; border-radius: 8px; color: #728095; background: transparent; }
 .row-actions button:hover, .row-actions > a:hover { color: var(--brand-navy); background: #eaf0f6; }
 .row-actions button:last-child:hover { color: var(--danger); background: var(--danger-soft); }
 .badge { display: inline-block; padding: 5px 8px; border-radius: 100px; color: #596579; background: #edf1f5; font-size: .58rem; font-weight: 800; text-transform: capitalize; white-space: nowrap; }
@@ -467,7 +467,6 @@ td b { color: #273449; }
 .no-access-panel p { margin: 0; color: var(--muted); }
 .back-link { margin-bottom: 17px; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .7rem; font-weight: 800; }
 .back-link svg { width: 16px; }
-.work-progress-big { width: 78px; height: 78px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: conic-gradient(var(--brand-red) 0 4%, var(--brand-navy) 4% 100%); box-shadow: 0 8px 22px rgba(0,48,91,.17); font-size: 1.16rem; font-weight: 800; }
 .work-timeline-section { margin-bottom: 17px; overflow: hidden; }
 .activity-count { padding: 6px 9px; border-radius: 100px; color: var(--brand-navy); background: #e8f0f6; font-size: .59rem; font-weight: 800; }
 .activity-composer { padding: 18px 20px; display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px solid var(--line); background: #fbfcfd; }
@@ -671,7 +670,6 @@ td b { color: #273449; }
   .panel-head > a { font-size: 0; }
   .panel-head > a svg { width: 18px; height: 18px; }
   .quick-links { grid-template-columns: 1fr; }
-  .work-progress-big { width: 66px; height: 66px; font-size: 1rem; }
   .modal-title-wrap { align-items: flex-start; }
   .modal-heading-icon { display: none; }
   .permission-row { grid-template-columns: 1fr 44px 54px; }
@@ -890,7 +888,10 @@ thead th:last-child { background: #f7f9fb; }
 tbody tr:hover .row-actions { background: #f9fbfd; }
 .clickable-row:hover .row-actions { background: #f2f7fb; }
 .row-actions > * { vertical-align: middle; }
-.row-action-wide { width: auto !important; min-width: max-content; padding: 0 11px !important; height: 31px; display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line-strong) !important; border-radius: 9px !important; font-size: .7rem; font-weight: 800; line-height: 1; white-space: nowrap; }
+/* El botón con texto de una fila ("Horarios", "Costear", "Aprobar"). Va con .row-actions
+   adelante para ganarle a la regla de los botones cuadrados de ícono solo: sin eso el
+   ícono quedaba arriba del texto y el texto se cortaba. */
+.row-actions .row-action-wide, .row-action-wide { width: auto; min-width: max-content; height: 34px; padding: 0 12px; display: inline-flex; flex: none; flex-direction: row; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 9px; font-size: .7rem; font-weight: 800; line-height: 1; white-space: nowrap; vertical-align: middle; }
 .row-action-wide + .row-action-wide, .row-action-wide + button, .row-action-wide + a { margin-left: 4px; }
 .row-action-wide.approve { color: var(--success); background: var(--success-soft) !important; border-color: #bfe3d4 !important; }
 .row-action-wide.approve:hover { color: #fff; background: var(--success) !important; border-color: var(--success) !important; }
@@ -904,8 +905,8 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 .convert-warning svg { flex: none; margin-top: 1px; color: var(--warning); }
 
 /* --- Trabajadores y liquidacion -------------------------------------------- */
-.worker-assign { display: flex; align-items: center; gap: 10px; }
-.worker-assign .select-field { flex: 1; min-width: 0; }
+.worker-assign { padding: 14px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+.worker-assign .select-field { min-width: 240px; flex: 1; }
 
 .worker-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 12px; }
 .worker-card { padding: 14px 15px; display: flex; flex-direction: column; gap: 7px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: var(--shadow-sm); }
@@ -1192,40 +1193,16 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
   .cascade-concept { padding-left: 0; }
 }
 
-/* --- Inspecciones de obra ---------------------------------------------------
-   El avance fisico sale de las inspecciones. En el listado, la fila de cada obra
-   se pinta de rojo suave de izquierda a derecha segun el avance (50% = media
-   fila) y al lado del porcentaje escrito va una barra. */
-tbody tr.progress-row, tbody tr.progress-row:hover { background-image: linear-gradient(90deg, rgba(224, 0, 16, .075) var(--row-progress, 0%), transparent var(--row-progress, 0%)); background-repeat: no-repeat; }
-.progress-cell { min-width: 140px; display: inline-flex; align-items: center; gap: 8px; }
-.progress-cell b { min-width: 40px; color: var(--brand-navy-deep); font-variant-numeric: tabular-nums; }
-.progress-cell-track { height: 6px; min-width: 60px; flex: 1; overflow: hidden; border-radius: 99px; background: #e3e9ef; }
-.progress-cell-track i { height: 100%; display: block; border-radius: inherit; background: var(--brand-red); }
-.progress-cell small { color: var(--muted-2); font-size: .55rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
-.progress-cell.empty { color: var(--muted-2); font-style: italic; }
+/* --- Inspecciones de obra --------------------------------------------------- */
 
 .insp-progress { min-width: 120px; display: grid; grid-template-columns: minmax(0, 1fr) 46px; align-items: center; gap: 8px; background: linear-gradient(#e3e9ef, #e3e9ef) left center / calc(100% - 54px) 7px no-repeat; }
 .insp-progress i { height: 7px; border-radius: 99px; background: var(--brand-red); }
 .insp-progress b { color: var(--brand-navy-deep); font-size: .72rem; font-variant-numeric: tabular-nums; text-align: right; }
 
-/* Pantalla de la obra: el avance y su origen */
-.work-progress-source { margin-top: 3px !important; color: var(--muted-2) !important; font-size: .66rem !important; }
+/* Pantalla de la obra: el historial de inspecciones */
 .work-inspections, .work-inspections ~ .work-detail-section, .work-detail-grid { margin-bottom: 17px; }
 .work-inspections { overflow: hidden; }
 .work-inspections .panel-head .primary-btn { min-height: 40px; }
-.work-inspections-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
-.progress-base { min-width: 0; padding: 18px 20px; border-right: 1px solid var(--line); }
-.progress-base-head { margin-bottom: 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.progress-base-head > div { display: flex; flex-direction: column; gap: 3px; }
-.progress-base-head span { color: var(--muted-2); font-size: .6rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
-.progress-base-head strong { color: var(--brand-navy-deep); font-size: 1.55rem; letter-spacing: -.02em; }
-.progress-base-head small { color: var(--muted); font-size: .66rem; }
-.progress-lines { display: grid; gap: 9px; }
-.progress-line { padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) 180px; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 11px; background: #fbfcfd; }
-.progress-line > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.progress-line > div b { color: var(--brand-navy-deep); font-size: .74rem; }
-.progress-line small { color: var(--muted); font-size: .63rem; }
-.progress-line em { color: var(--muted-2); font-size: .64rem; }
 .inspection-history { min-width: 0; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
 .inspection-history h3, .insp-summary-block h3 { margin: 0; display: flex; align-items: center; gap: 7px; color: var(--brand-navy-deep); font-size: .84rem; }
 .insp-history-row { cursor: pointer; }
@@ -1234,20 +1211,8 @@ tbody tr.progress-row, tbody tr.progress-row:hover { background-image: linear-gr
 .insp-history-row > svg { color: var(--muted-2); }
 .insp-alert-count { padding: 3px 8px; display: inline-flex; align-items: center; gap: 4px; border-radius: 99px; color: #9e2630; background: var(--danger-soft); font-size: .6rem; font-style: normal; font-weight: 800; white-space: nowrap; }
 .insp-alert-count.ok { color: #126245; background: var(--success-soft); }
-.legacy-advances { margin-top: 4px; border: 1px dashed var(--line-strong); border-radius: 11px; }
-.legacy-advances summary { padding: 10px 13px; color: var(--muted); font-size: .68rem; font-weight: 800; cursor: pointer; }
 
-/* Base de avance */
-.progress-base-modal { width: min(1120px, 100%); }
-.base-table { display: grid; gap: 8px; }
-.base-table-head, .base-table-row { display: grid; grid-template-columns: 170px minmax(160px, 1.6fr) 80px 110px 110px 170px 38px; align-items: center; gap: 8px; }
-.base-table-head span, .insp-table-head span { color: var(--muted-2); font-size: .58rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
-.base-table-row input, .base-table-row select { width: 100%; height: 40px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 9px; outline: 0; background: #fff; }
-.base-table-row .money-input { height: 40px; }
-.base-table-row .money-input input { border: 0; }
-.base-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
-.base-preview { margin-left: auto; color: var(--muted); font-size: .72rem; }
-.base-preview b { color: var(--brand-navy-deep); }
+.insp-table-head span { color: var(--muted-2); font-size: .58rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
 
 /* Alta de una inspeccion */
 .insp-new { padding: 20px 22px; display: grid; gap: 18px; }
@@ -1418,19 +1383,7 @@ tbody tr.progress-row, tbody tr.progress-row:hover { background-image: linear-gr
   .insp-steps button { flex: none; }
   .insp-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 900px) {
-  .work-inspections-grid { grid-template-columns: 1fr; }
-  .progress-base { border-right: 0; border-bottom: 1px solid var(--line); }
-  .base-table-head { display: none; }
-  .base-table-row { padding: 12px; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 12px; }
-  .base-table-row label { display: flex; flex-direction: column; gap: 4px; }
-  .base-table-row label::before { content: attr(data-label); color: var(--muted-2); font-size: .56rem; font-weight: 850; text-transform: uppercase; }
-  .base-table-row label:nth-child(2) { grid-column: 1 / -1; }
-  .base-table-row > span:last-child { grid-column: 1 / -1; justify-self: end; }
-  .base-preview { margin-left: 0; flex-basis: 100%; }
-}
 @media (max-width: 720px) {
-  .progress-cell { min-width: 0; max-width: 62%; flex: 1; justify-content: flex-end; }
   .insp-steps button span { display: none; }
   .insp-steps button.active span { display: inline; }
   .insp-form-grid, .insp-form-grid.three, .insp-new-grid { grid-template-columns: 1fr; }
@@ -1448,7 +1401,6 @@ tbody tr.progress-row, tbody tr.progress-row:hover { background-image: linear-gr
   .insp-card-foot button { flex: 1; }
   .insp-summary-row { grid-template-columns: 1fr; gap: 4px; }
   .insp-summary-row .insp-progress { width: 100%; }
-  .progress-line { grid-template-columns: 1fr; }
   .insp-heading-side { width: 100%; justify-content: space-between; }
   .insp-new { padding: 16px; }
 }
@@ -1486,15 +1438,63 @@ tbody tr.progress-row, tbody tr.progress-row:hover { background-image: linear-gr
 tbody tr.price-best { background: #f1faf6; box-shadow: inset 3px 0 var(--success); }
 tbody tr.price-best:hover { background: #e8f6ef; }
 .price-best-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 100px; color: #126245; background: var(--success-soft); font-size: .58rem; font-weight: 850; }
-/* El botón de historia es el último de la fila, pero no borra nada: sin el rojo de "eliminar". */
+/* Los botones de la fila no borran nada: sin el rojo de "eliminar" al pasar por encima. */
 .price-table .row-actions button:last-child:hover { color: var(--brand-navy); background: #eaf0f6; }
-tbody tr.price-history-row, tbody tr.price-history-row:hover { background: #f7f9fb; }
-.price-history-row td { padding: 12px 16px 16px; }
-.price-history { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; list-style: none; }
-.price-history li { padding: 8px 12px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: .68rem; }
-.price-history li.current { border-color: var(--brand-navy-light); }
-.price-history li span { color: var(--muted); }
-.price-history li em { margin-left: 6px; color: var(--brand-navy); font-size: .56rem; font-style: normal; font-weight: 850; text-transform: uppercase; }
+.price-table .row-actions .price-cart-btn { width: auto; min-width: 104px; padding: 0 11px; display: inline-flex; gap: 5px; border: 1px solid var(--line-strong); color: var(--brand-navy); background: #fff; font-size: .66rem; font-weight: 850; }
+.price-table .row-actions .price-cart-btn:hover { border-color: var(--brand-navy); color: #fff; background: var(--brand-navy); }
+.price-table .row-actions .price-cart-btn.added { border-color: #bfe3d3; color: #126245; background: var(--success-soft); }
+.price-table .row-actions .price-cart-btn.added:hover { border-color: var(--success); color: #126245; background: #d5efe3; }
+.price-more { padding: 14px 16px; display: flex; align-items: center; justify-content: center; gap: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: .7rem; }
+.price-heading-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.price-history-modal { width: min(620px, 100%); }
+.price-history-summary { margin-bottom: 14px; padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-radius: 11px; color: var(--muted); background: #f4f8fb; font-size: .72rem; }
+.price-history-summary b { color: var(--brand-navy-deep); font-size: .9rem; }
+.price-history-summary b.up { color: var(--danger); }
+.price-history-summary b.down { color: var(--success); }
+.price-history-table { min-width: 0; }
+.price-history-table th.num, .price-history-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.price-history-table tr.current td { background: #f4f8fb; }
+.price-history-table em { margin-left: 7px; padding: 2px 7px; border-radius: 100px; color: var(--brand-navy); background: #e7f0f7; font-size: .55rem; font-style: normal; font-weight: 850; text-transform: uppercase; }
+
+/* Pedido de compra: el botón con la cantidad y la ventana, un bloque por proveedor. */
+.cart-btn { position: relative; }
+.cart-btn.filled { border-color: var(--brand-navy); color: var(--brand-navy); }
+.cart-count { min-width: 20px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; border-radius: 100px; color: #fff; background: var(--brand-red); font-size: .62rem; font-weight: 850; }
+.cart-modal { width: min(880px, 100%); }
+.cart-body { display: grid; gap: 16px; }
+.cart-closed { margin: 0; display: flex; align-items: center; gap: 10px; line-height: 1.5; }
+.cart-closed > span { flex: 1; }
+.cart-closed a { color: #0c4f37; font-weight: 850; text-decoration: underline; }
+.cart-closed .secondary-btn { min-height: 34px; }
+.cart-group { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.cart-group-head { padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); background: #f7f9fb; }
+.cart-group-head b { display: block; color: var(--brand-navy-deep); font-size: .9rem; }
+.cart-group-head small { color: var(--muted); font-size: .66rem; }
+.cart-group-head strong { color: var(--brand-navy-deep); font-size: 1rem; text-align: right; }
+.cart-group-head strong small { display: block; font-weight: 700; }
+.cart-lines { padding: 4px 16px; }
+.cart-line { padding: 10px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto 128px 32px; align-items: center; gap: 12px; border-bottom: 1px solid #edf1f5; }
+.cart-line:last-child { border-bottom: 0; }
+.cart-line-product { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cart-line-product b { color: var(--ink); font-size: .76rem; }
+.cart-line-product small { color: var(--muted-2); font-size: .63rem; }
+.cart-qty { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; }
+.cart-qty button { width: 32px; height: 34px; display: grid; place-items: center; border: 0; color: var(--brand-navy); background: transparent; }
+.cart-qty button:disabled { color: #c3ccd6; }
+.cart-qty input { width: 56px; height: 34px; border: 0; border-inline: 1px solid var(--line); outline: 0; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cart-line-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-variant-numeric: tabular-nums; }
+.cart-line-price small { color: var(--muted-2); font-size: .62rem; }
+.cart-line-price b { color: var(--brand-navy-deep); font-size: .8rem; }
+.cart-remove { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; color: #8190a1; background: transparent; }
+.cart-remove:hover { color: var(--danger); background: var(--danger-soft); }
+.cart-totals { margin: 0; padding: 10px 16px 12px; display: grid; justify-content: end; gap: 4px; border-top: 1px solid var(--line); }
+.cart-totals div { min-width: 240px; display: flex; justify-content: space-between; gap: 24px; color: var(--muted); font-size: .72rem; }
+.cart-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.cart-totals .total { margin-top: 3px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--brand-navy-deep); font-size: .88rem; font-weight: 850; }
+.cart-form { padding: 14px 16px; border-top: 1px solid var(--line); }
+.cart-group .form-error { margin: 0 16px 10px; }
+.cart-group-foot { padding: 12px 16px; display: flex; align-items: center; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--line); background: #fbfcfe; }
+.cart-group-foot span { margin-right: auto; color: var(--muted); font-size: .66rem; }
 .price-history-state { margin: 0; color: var(--muted); font-size: .7rem; }
 
 /* Pantalla del proveedor */
@@ -1543,7 +1543,18 @@ tbody tr.price-history-row, tbody tr.price-history-row:hover { background: #f7f9
   .price-products-toolbar { padding: 12px 14px; }
   .price-category { width: 100%; }
   .table-panel .price-cell { align-items: flex-end; text-align: right; }
-  .table-panel tbody tr.price-history-row td { font-size: .72rem; font-weight: 400; }
+  .price-more { flex-direction: column; }
+  .price-heading-actions > * { flex: 1; }
+  .cart-line { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
+  .cart-line-product { grid-column: 1; grid-row: 1; }
+  .cart-remove { grid-column: 2; grid-row: 1; justify-self: end; }
+  .cart-qty { grid-column: 1; grid-row: 2; justify-self: start; }
+  .cart-line-price { grid-column: 2; grid-row: 2; }
+  .cart-totals div { min-width: 0; }
+  .cart-totals { justify-content: stretch; }
+  .cart-closed { flex-wrap: wrap; }
+  .cart-group-foot { flex-direction: column; align-items: stretch; }
+  .cart-group-foot span { margin-right: 0; }
   .price-discount-body .percent-input { flex: 1; width: auto; }
   .price-upload-body .primary-btn { align-self: stretch; }
   .price-mapper-grid { grid-template-columns: 1fr; }
@@ -1551,3 +1562,64 @@ tbody tr.price-history-row, tbody tr.price-history-row:hover { background: #f7f9
   .price-preview-foot > span { flex-basis: 100%; }
   .price-preview-foot button { flex: 1; }
 }
+
+/* --- Invitaciones de usuarios ------------------------------------------------
+   La cuenta nueva no lleva contraseña: le llega un link por correo. Si el
+   correo no sale, el link queda a mano para copiarlo. */
+.notice.warning { border-color: #f3d9a8; color: #6d4a0e; background: var(--warning-soft); font-size: .78rem; }
+.invite-notice { display: flex; align-items: flex-start; gap: 11px; }
+.invite-notice > svg { flex: none; margin-top: 2px; }
+.invite-notice > div { min-width: 0; flex: 1; }
+.invite-notice b { display: block; margin-bottom: 3px; }
+.invite-notice p { margin: 0 0 10px; line-height: 1.5; }
+.invite-notice .icon-btn { flex: none; }
+.invite-link { display: flex; gap: 8px; }
+.invite-link input { min-width: 0; height: 38px; flex: 1; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--ink); background: #fff; font-size: .7rem; }
+.invite-link .secondary-btn { min-height: 38px; }
+.user-invite-badge { margin-left: 8px; padding: 3px 8px; border-radius: 100px; color: #80590f; background: var(--warning-soft); font-size: .55rem; font-style: normal; font-weight: 850; vertical-align: 1px; }
+.user-invite-badge.expired { color: #9e2630; background: var(--danger-soft); }
+.user-edit-btn:disabled { cursor: wait; opacity: .6; }
+.user-invite-hint { margin: 16px 0 0; padding: 11px 13px; display: flex; align-items: flex-start; gap: 9px; border-radius: 11px; color: #1f4b72; background: #eef5fb; font-size: .72rem; line-height: 1.5; }
+.user-invite-hint svg { flex: none; margin-top: 1px; color: var(--brand-navy); }
+@media (max-width: 720px) {
+  .invite-link { flex-direction: column; }
+  .user-invite-badge { margin: 4px 0 0; display: inline-block; }
+}
+
+/* --- Tareas: la fila entera según el estado --------------------------------
+   Completada en verde, en curso en naranja clarito, pendiente en gris. La
+   franja de la izquierda repite el color para leerlo aun con la fila elegida. */
+tbody tr.task-row.completada, tbody tr.task-row.completada:hover { background: #e7f6ee; box-shadow: inset 4px 0 var(--success); }
+tbody tr.task-row.en_curso, tbody tr.task-row.en_curso:hover { background: #fff3dd; box-shadow: inset 4px 0 var(--warning); }
+tbody tr.task-row.pendiente, tbody tr.task-row.pendiente:hover { background: #f1f3f6; box-shadow: inset 4px 0 #a7b1bd; }
+tbody tr.task-row.completada:hover { background: #dcf1e5; }
+tbody tr.task-row.en_curso:hover { background: #ffecc8; }
+tbody tr.task-row.pendiente:hover { background: #e9ecf0; }
+@media (max-width: 720px) {
+  .worker-assign { padding: 12px 14px; }
+  .worker-assign .select-field { min-width: 100%; }
+  .worker-assign .primary-btn, .worker-assign .secondary-btn { flex: 1; }
+}
+
+/* --- Tareas sin terminar, al lado de la campanita ---------------------------
+   Mismo panel que los avisos. El número se pone rojo si hay alguna vencida. */
+.tasks-count { position: absolute; top: 3px; right: 1px; min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 100px; color: #fff; background: var(--brand-navy); font-size: .56rem; font-weight: 850; line-height: 1; }
+.tasks-count.overdue { background: var(--brand-red); }
+.tasks-panel > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.tasks-summary { margin: 0; color: var(--muted); font-size: .68rem; font-weight: 700; }
+.tasks-error { margin: 8px 12px 0; color: var(--danger); font-size: .7rem; }
+.task-item::before { background: #a7b1bd; }
+.task-item.en_curso::before { background: var(--warning); }
+.task-state { padding: 2px 8px; border-radius: 100px; color: #596579; background: #edf1f5; font-size: .58rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.task-state.en_curso { color: #80590f; background: var(--warning-soft); }
+.task-due { display: inline-flex; align-items: center; gap: 4px; color: var(--muted-2); font-size: .62rem; font-weight: 700; }
+.task-due.soon { color: #80590f; }
+.task-due.today, .task-due.overdue { color: var(--danger); font-weight: 850; }
+.task-owner { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: .64rem; }
+.tasks-panel-foot { padding: 11px 16px; border-top: 1px solid var(--line); text-align: center; }
+.tasks-panel-foot a { color: var(--brand-navy); font-size: .72rem; font-weight: 800; }
+.tasks-panel-foot a:hover { color: var(--brand-red); }
+
+/* El acceso a Usuarios y permisos vive en el menú del usuario, no en la barra. */
+.profile-menu-link { width: 100%; padding: 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; color: var(--brand-navy); font-size: .72rem; font-weight: 700; }
+.profile-menu-link:hover { background: #eef4f8; }

@@ -7,6 +7,7 @@ import { date, isoPlusDays, money, qty, titleCase, todayIso } from "@/lib/format
 import { computeLabor, dailyRateCents, hourlyRateCents, hoursPerDay, rateMode, type RateMode } from "@/lib/labor";
 import { buildLaborPdf } from "@/lib/labor-pdf";
 import { readBrandLogo } from "@/lib/invoice-pdf";
+import { QuickCreateModal, type RecordItem } from "@/components/record-form";
 
 export type AssignedWorker = {
   workerId: string; name: string; dni?: string; phone?: string; category?: string;
@@ -22,11 +23,14 @@ export type LaborEntry = {
 /** Una fila de la liquidación: lo que hay que pagarle a una persona en el período. */
 type Settlement = { workerId: string; name: string; dni: string; category: string; days: number; hours: number; totalCents: number };
 
-export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
-  work: { _id: string; code: string; name: string }; assigned: AssignedWorker[]; labor: LaborEntry[]; canEdit: boolean; onChanged: (work: unknown) => void;
+export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = false, onChanged }: {
+  work: { _id: string; code: string; name: string }; assigned: AssignedWorker[]; labor: LaborEntry[]; canEdit: boolean;
+  /** Si además puede cargar el legajo: habilita "Nuevo integrante". */ canCreateWorker?: boolean;
+  onChanged: (work: unknown) => void;
 }) {
   const workId = work._id;
   const [catalog, setCatalog] = useState<Option[]>([]);
+  const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [formKey, setFormKey] = useState(0);
@@ -72,6 +76,16 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
     if (await call(`/api/works/${workId}/workers`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workerId }) })) {
       setFormKey(value => value + 1);
     }
+  }
+
+  /** Alguien recién dado de alta en el legajo: entra al listado y queda asignado a esta obra. */
+  async function createdWorker(worker: RecordItem) {
+    setCreating(false);
+    setCatalog(current => [...current, {
+      value: worker._id, label: String(worker.name || `${worker.lastName}, ${worker.firstName}`),
+      hint: `DNI ${worker.dni} · ${titleCase(String(worker.category || ""))}`,
+    }]);
+    await call(`/api/works/${workId}/workers`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workerId: worker._id }) });
   }
 
   async function unassign(worker: AssignedWorker) {
@@ -192,15 +206,19 @@ export function WorkLabor({ work, assigned, labor, canEdit, onChanged }: {
 
   return <>
     {error && <div className="notice error">{error}</div>}
+    {creating && <QuickCreateModal entity="workers" hint={`Queda en el legajo y asignado a la obra ${work.code}`} submitLabel="Crear y asignar a la obra"
+      onClose={() => setCreating(false)} onCreated={worker => { void createdWorker(worker); }} />}
 
     <section className="panel work-detail-section" id="personal">
       <div className="panel-head"><div className="section-title"><Users /><div><h2>Personal asignado</h2><p>Quiénes están en la obra, con su DNI, su teléfono y lo que cobran.</p></div></div><span className="activity-count">{needle ? `${visibleWorkers.length} de ${assigned.length}` : `${assigned.length} asignados`}</span></div>
       {assigned.length > 0 && <div className="worker-filter"><Search size={16} /><input value={personFilter} placeholder="Filtrar por nombre, DNI o categoría…" onChange={event => setPersonFilter(event.target.value)} />{personFilter && <button type="button" onClick={() => setPersonFilter("")} aria-label="Limpiar filtro"><X size={15} /></button>}</div>}
-      {canEdit && <form className="inline-form worker-assign" key={`assign-${formKey}`} onSubmit={assign}>
-        <SearchSelect name="workerId" options={available} placeholder={available.length ? "Buscar en el legajo…" : "Ya están todos asignados"} />
+      {canEdit && <form className="worker-assign" key={`assign-${formKey}`} onSubmit={assign}>
+        <SearchSelect name="workerId" options={available} placeholder={available.length ? "Buscar en el legajo por nombre o DNI…" : catalog.length ? "Ya están todos asignados" : "El legajo está vacío"}
+          createLabel="Dar de alta a alguien nuevo" onCreate={canCreateWorker ? () => setCreating(true) : undefined} />
         <button className="primary-btn" disabled={busy || !available.length}><UserPlus size={16} /> Asignar a la obra</button>
+        {canCreateWorker && <button type="button" className="secondary-btn" disabled={busy} onClick={() => setCreating(true)}><Plus size={16} /> Nuevo integrante</button>}
       </form>}
-      {!catalog.length && <p className="task-history-state">Todavía no hay nadie cargado en el legajo. Cargalos primero desde Obras → Personal asignado.</p>}
+      {!catalog.length && <p className="task-history-state">Todavía no hay nadie cargado en el legajo.{canEdit && canCreateWorker ? " Tocá “Nuevo integrante” para dar de alta al primero y asignarlo a esta obra." : ""}</p>}
       <div className="worker-grid">
         {visibleWorkers.map(worker => <article className="worker-card" key={worker.workerId}>
           <div className="worker-card-head">

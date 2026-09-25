@@ -8,9 +8,18 @@ const money = { type: Number, min: 0, default: 0 };
 const UserSchema = new Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  passwordHash: { type: String, required: true, select: false },
+  // Vacío mientras la invitación está pendiente: la contraseña la elige la
+  // persona desde el link que le llega por correo, nunca quien crea la cuenta.
+  passwordHash: { type: String, select: false },
   role: { type: String, enum: ROLES, required: true },
   active: { type: Boolean, default: true },
+  // El link de invitación (o de cambio de contraseña). Se guarda sólo el hash:
+  // con la base en la mano no se puede armar un link válido.
+  inviteTokenHash: { type: String, select: false },
+  inviteExpiresAt: Date,
+  inviteKind: { type: String, enum: ["invite", "reset"] },
+  invitedAt: Date,
+  passwordSetAt: Date,
   permissions: {
     type: new Schema({
       view: [{ type: String, enum: viewSections }],
@@ -19,6 +28,7 @@ const UserSchema = new Schema({
     default: undefined,
   },
 }, options);
+UserSchema.index({ inviteTokenHash: 1 }, { sparse: true });
 
 const ClientSchema = new Schema({
   name: { type: String, required: true, trim: true },
@@ -359,12 +369,28 @@ const StockItemSchema = new Schema({
   movements: [StockMovementSchema],
 }, options);
 
+// Un renglón de una orden armada desde el buscador de precios. Los precios se
+// copian de la lista vigente al cerrar la orden y quedan congelados: si mañana
+// llega otra lista, la orden sigue diciendo lo que se le pidió al proveedor.
+const PurchaseLineSchema = new Schema({
+  priceListItemId: { type: Schema.Types.ObjectId, ref: "PriceListItem" },
+  code: String, name: { type: String, required: true }, presentation: String, minSale: String,
+  quantity: { type: Number, required: true, min: 0 },
+  // Sin IVA: precio de lista, descuento del proveedor y lo que queda por unidad.
+  listPriceCents: money, discountPct: { type: Number, default: 0 }, unitCents: money, totalCents: money,
+}, { _id: false });
+
 const PurchaseSchema = new Schema({
   number: { type: String, required: true, unique: true }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, workId: { type: Schema.Types.ObjectId, ref: "Work" },
   description: { type: String, required: true }, amountCents: money,
   stage: { type: String, enum: ["solicitud", "orden", "recepcion"], default: "solicitud" },
   status: { type: String, enum: ["borrador", "aprobada", "enviada", "recibida", "cancelada"], default: "borrador" },
   requestedDate: { type: Date, required: true }, expectedDate: Date, receivedDate: Date, receiptNotes: String,
+  // Lo que sigue lo llena la orden cerrada desde el buscador de precios.
+  items: { type: [PurchaseLineSchema], default: undefined },
+  subtotalCents: Number, vatCents: Number, notes: String,
+  priceListId: { type: Schema.Types.ObjectId, ref: "PriceList" }, priceListDate: Date,
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
 }, options);
 
 const ExpenseSchema = new Schema({
@@ -534,6 +560,20 @@ export async function nextQuoteNumber() {
   }
   const counter = await Counter.findByIdAndUpdate("quotes", { $inc: { seq: 1 } }, { new: true });
   return `COT-${counter.seq}`;
+}
+
+/** Numeración correlativa de las órdenes de compra, igual que la de cotizaciones: arranca después de la OC más alta ya cargada. */
+export async function nextPurchaseNumber() {
+  if (!await Counter.exists({ _id: "purchases" })) {
+    const [highest] = await Purchase.aggregate([
+      { $match: { number: /^OC-\d+$/ } },
+      { $project: { seq: { $toInt: { $substr: ["$number", 3, -1] } } } },
+      { $sort: { seq: -1 } }, { $limit: 1 },
+    ]);
+    await Counter.updateOne({ _id: "purchases" }, { $setOnInsert: { seq: highest?.seq || 0 } }, { upsert: true });
+  }
+  const counter = await Counter.findByIdAndUpdate("purchases", { $inc: { seq: 1 } }, { returnDocument: "after" });
+  return `OC-${counter.seq}`;
 }
 
 export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task } as const;
