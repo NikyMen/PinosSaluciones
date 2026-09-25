@@ -79,6 +79,9 @@ svg { flex: none; }
 .input-icon > svg { color: #7d8999; }
 .input-icon input { width: 100%; height: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); }
 .input-icon input::placeholder { color: #a0a9b7; }
+.input-icon.input-locked, .input-icon.input-locked:focus-within { border-color: var(--line); background: var(--surface-muted); box-shadow: none; cursor: not-allowed; }
+.input-icon.input-locked input { color: var(--muted); cursor: not-allowed; }
+.input-icon.input-locked > svg { color: #a0a9b7; flex: none; }
 .password-toggle { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); }
 .password-toggle:hover { background: var(--surface-muted); color: var(--brand-navy); }
 .login-message { min-height: 18px; margin-top: -5px; }
@@ -1576,6 +1579,7 @@ tbody tr.price-best:hover { background: #e8f6ef; }
 .invite-link { display: flex; gap: 8px; }
 .invite-link input { min-width: 0; height: 38px; flex: 1; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--ink); background: #fff; font-size: .7rem; }
 .invite-link .secondary-btn { min-height: 38px; }
+.invite-link .secondary-btn.copied { border-color: #bfe3d4; color: #126245; background: var(--success-soft); }
 .user-invite-badge { margin-left: 8px; padding: 3px 8px; border-radius: 100px; color: #80590f; background: var(--warning-soft); font-size: .55rem; font-style: normal; font-weight: 850; vertical-align: 1px; }
 .user-invite-badge.expired { color: #9e2630; background: var(--danger-soft); }
 .user-edit-btn:disabled { cursor: wait; opacity: .6; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, KeyRound, MailCheck, MailWarning, Pencil, Plus, Send, ShieldCheck, UserRoundCheck, X } from "lucide-react";
 import { entities, entityLabels, ROLES, roleLabels, viewSections, viewSectionLabels, type Entity, type Role, type ViewSection } from "@/lib/constants";
 import { defaultPermissionsForRole, type UserPermissions } from "@/lib/permissions";
@@ -87,7 +87,7 @@ export function UsersAdmin() {
       <button className="primary-btn" onClick={() => { setError(""); setSelected("new"); }}><Plus size={18}/> Nuevo usuario</button>
     </div>
     {error && !selected && <div className="notice error">{error}</div>}
-    {notice && <InviteNoticeBox notice={notice} onClose={() => setNotice(null)} />}
+    {notice && <InviteNoticeBox key={notice.invite.link} notice={notice} onClose={() => setNotice(null)} />}
     <section className="panel users-panel">
       <div className="panel-head"><div><h2>Equipo</h2><p>{users.filter(user => user.active).length} cuentas activas · {users.length} totales</p></div><ShieldCheck/></div>
       <div className="user-list">
@@ -95,7 +95,7 @@ export function UsersAdmin() {
           <span className="avatar">{initials(user.name)}</span>
           <div><b>{user.name}{user.pending && <em className={inviteExpired(user) ? "user-invite-badge expired" : "user-invite-badge"}>{inviteExpired(user) ? "Invitación vencida" : "Invitación pendiente"}</em>}</b><small>{user.email} · {roleLabels[user.role]}</small><span className="user-access-summary">{user.permissions.view.length} secciones · {user.permissions.edit.length} editables{user.pending && user.inviteExpiresAt && !inviteExpired(user) ? ` · el link vence el ${dateTime(user.inviteExpiresAt)}` : ""}</span></div>
           {user.active && <button className="user-edit-btn" disabled={sending === user._id} onClick={() => { void sendLink(user); }}
-            title={user.pending ? "Mandar de nuevo el correo para que cree su contraseña" : "Mandarle un link por correo para que elija una contraseña nueva"}>
+            title={user.pending ? "Generar un link nuevo para que cree su contraseña: sale por correo y queda para copiar" : "Generar un link para que elija una contraseña nueva: sale por correo y queda para copiar"}>
             {user.pending ? <><Send size={15}/> {sending === user._id ? "Enviando…" : "Reenviar invitación"}</> : <><KeyRound size={15}/> {sending === user._id ? "Enviando…" : "Cambiar contraseña"}</>}
           </button>}
           <button className="user-edit-btn" onClick={() => { setError(""); setSelected(user); }}><Pencil size={15}/> Editar acceso</button>
@@ -165,7 +165,7 @@ function UserModal({ user, error, onClose, onSave }: { user: User | null; error:
           <label>Rol<select value={role} onChange={event => changeRole(event.target.value as Role)}>{ROLES.map(value => <option value={value} key={value}>{roleLabels[value]}</option>)}</select></label>
           {user && <label className="account-state">Estado de la cuenta<button type="button" className={active ? "toggle active" : "toggle"} onClick={() => setActive(value => !value)}><i/>{active ? "Activo" : "Inactivo"}</button></label>}
         </div>
-        {!user && <p className="user-invite-hint"><MailCheck size={17}/><span>No hace falta poner contraseña: al crear la cuenta le llega un correo a esta dirección con un link para que la elija. El link vence en 7 días y se puede reenviar desde la lista.</span></p>}
+        {!user && <p className="user-invite-hint"><MailCheck size={17}/><span>No hace falta poner contraseña: al crear la cuenta le llega un correo a esta dirección con un link para que la elija. También vas a poder copiar el link para mandárselo vos. Vence en 7 días y se puede reenviar desde la lista.</span></p>}
         <div className="permission-heading"><div><h3>Acceso por sección</h3><p>“Editar” incluye crear y modificar datos. La eliminación completa sigue reservada a Gerencia.</p></div><button type="button" onClick={() => setPermissions(defaultPermissionsForRole(role))}>Restablecer según rol</button></div>
         <div className="permission-table" role="table" aria-label="Permisos por sección">
           <div className="permission-row permission-header" role="row"><span>Sección</span><span>Ver</span><span>Editar</span></div>
@@ -191,28 +191,43 @@ function inviteExpired(user: User) {
 }
 
 /**
- * Cómo salió el envío del link. Si el correo no salió, el link queda a mano
- * para copiarlo y mandarlo por WhatsApp.
+ * El link recién generado: si salió por correo y, siempre, el link para
+ * copiarlo y mandárselo por WhatsApp (o por donde sea) aunque el correo no
+ * haya llegado.
  */
 function InviteNoticeBox({ notice, onClose }: { notice: InviteNotice; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
   const { invite } = notice;
   const what = invite.kind === "invite" ? "crear su contraseña" : "elegir una contraseña nueva";
-  async function copy() {
-    try { await navigator.clipboard.writeText(invite.link); setCopied(true); }
-    catch { setCopied(false); }
-  }
-  return <div className={invite.sent ? "notice success invite-notice" : "notice invite-notice warning"} role="status">
+  // El aviso sale arriba de la lista: si la fila o el formulario quedaban más abajo, se trae a la vista.
+  useEffect(() => { box.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, []);
+  async function copy() { setCopied(await copyText(invite.link, field.current)); }
+  return <div ref={box} className={invite.sent ? "notice success invite-notice" : "notice invite-notice warning"} role="status">
     {invite.sent ? <MailCheck size={19}/> : <MailWarning size={19}/>}
     <div>
       <b>{invite.sent ? `Le mandamos el correo a ${notice.email}` : `No se pudo mandar el correo a ${notice.email}`}</b>
       <p>{invite.sent
-        ? `${notice.name} va a recibir un link para ${what}. Vence el ${dateTime(invite.expiresAt)}. Si no le llega, revisá la carpeta de spam o copiale el link.`
+        ? `${notice.name} va a recibir un link para ${what}. Si no le llega (o preferís mandárselo vos), copiá el link y pasáselo por WhatsApp. Vence el ${dateTime(invite.expiresAt)}.`
         : `${invite.error} Copiá el link y mandáselo a ${notice.name} por WhatsApp: con él va a poder ${what}. Vence el ${dateTime(invite.expiresAt)}.`}</p>
-      <div className="invite-link"><input readOnly value={invite.link} aria-label="Link para crear la contraseña" onFocus={event => event.currentTarget.select()}/><button type="button" className="secondary-btn" onClick={() => { void copy(); }}><Copy size={15}/> {copied ? "Copiado" : "Copiar link"}</button></div>
+      <div className="invite-link"><input ref={field} readOnly value={invite.link} aria-label={`Link para que ${notice.name} elija su contraseña`} onFocus={event => event.currentTarget.select()}/><button type="button" className={copied ? "secondary-btn copied" : "secondary-btn"} onClick={() => { void copy(); }}>{copied ? <><Check size={15}/> Copiado</> : <><Copy size={15}/> Copiar link</>}</button></div>
     </div>
     <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar aviso"><X size={17}/></button>
   </div>;
+}
+
+/** Copia al portapapeles. Sin HTTPS el navegador no da `navigator.clipboard`: ahí se copia seleccionando el campo. */
+async function copyText(text: string, fallback: HTMLInputElement | null) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    if (!fallback) return false;
+    fallback.focus();
+    fallback.select();
+    try { return document.execCommand("copy"); } catch { return false; }
+  }
 }
 
 function initials(name: string) { return name.split(" ").filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase(); }

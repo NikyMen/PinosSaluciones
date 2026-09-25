@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Eye, EyeOff, KeyRound, LockKeyhole } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, KeyRound, Lock, LockKeyhole, Mail } from "lucide-react";
 
-/** Elegir la contraseña desde el link de invitación. Al guardarla, la sesión queda iniciada. */
+/**
+ * Elegir la contraseña desde el link de invitación. El correo ya viene de la
+ * cuenta: se muestra bloqueado y sólo se completan las dos contraseñas. Al
+ * guardarla, la sesión queda iniciada.
+ */
 export function ActivateForm({ token, name, email, role, kind }: { token: string; name: string; email: string; role: string; kind: "invite" | "reset" }) {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -42,8 +46,18 @@ export function ActivateForm({ token, name, email, role, kind }: { token: string
       <div className="login-form-heading">
         <span className="security-pill"><KeyRound size={14} /> {kind === "invite" ? "Activá tu cuenta" : "Cambio de contraseña"}</span>
         <h1>{kind === "invite" ? `Hola, ${first}` : "Contraseña nueva"}</h1>
-        <p>{kind === "invite" ? <>Creá tu contraseña para entrar a Pino Gestión como <b>{role}</b>.</> : "Elegí una contraseña nueva para tu cuenta."} Vas a ingresar con <b>{email}</b>.</p>
+        <p>{kind === "invite" ? <>Creá tu contraseña para entrar a Pino Gestión como <b>{role}</b>.</> : "Elegí una contraseña nueva para tu cuenta."}</p>
       </div>
+
+      <label>
+        <span>Correo</span>
+        {/* readOnly y no disabled: así el navegador lo toma como usuario al ofrecer guardar la contraseña. */}
+        <div className="input-icon input-locked" title="El correo de la cuenta no se puede cambiar">
+          <Mail size={19} aria-hidden="true" />
+          <input name="email" type="email" value={email} readOnly tabIndex={-1} autoComplete="username" aria-readonly="true" />
+          <Lock size={16} aria-hidden="true" />
+        </div>
+      </label>
 
       <label>
         <span>Contraseña</span>
