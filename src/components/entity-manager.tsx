@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { ArrowDownToLine, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
 import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
-import { date, isoPlusDays, money, titleCase } from "@/lib/format";
+import { date, isoPlusDays, money, qty, titleCase } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput, PhoneList, SearchSelect, type Option } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
 import { StockMovementModal, type StockItem } from "@/components/stock-movement";
@@ -123,6 +123,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     if (key === "progress") return item ? <ProgressCell item={item} /> : `${value || 0}%`;
     if (key === "phones") return Array.isArray(value) && value.length ? value.join(" · ") : "—";
     if (key === "minQuantity") return Number(value || 0) || "—";
+    if (key === "discountPct") return Number(value || 0) ? `${qty(Number(value))} %` : "—";
     if (key.toLowerCase().includes("date") || key === "validUntil") return date(value as string);
     if (key.endsWith("Id")) return relationLabel(key, value);
     if (key === "status" || key === "type" || key === "method" || key === "direction" || key === "assigneeRole") return <span className={`badge ${value}`}>{titleCase(String(value || ""))}</span>;
@@ -258,6 +259,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
+          {entity === "suppliers" && <Link className="row-action-wide" title="Subir y ver las listas de precios del proveedor" href={`/app/suppliers/${item._id}`}><FileSpreadsheet size={15} /> Listas de precios</Link>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
           {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void approveQuote(item); }}><CheckCircle2 size={15} /> Aprobar</button>}
           {entity === "stock" && canEdit && <button title="Registrar una compra" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
@@ -629,5 +631,5 @@ function FormField({ field, value, relationOptions, personOptions, relationValue
     createLabel={`Crear ${entityConfig[field.relation!].singular} nuevo`} onCreate={onCreateRelation} /></label>;
 
   return <label>{label}<input name={field.key} type={field.type === "number" ? "number" : field.type || "text"} required={field.required} defaultValue={text || field.defaultValue || ""} autoFocus={autoFocus}
-    step={field.key === "progress" ? "1" : undefined} min={field.type === "number" ? "0" : undefined} placeholder={field.placeholder} /></label>;
+    step={field.step ?? (field.key === "progress" ? "1" : undefined)} min={field.type === "number" ? "0" : undefined} placeholder={field.placeholder} /></label>;
 }

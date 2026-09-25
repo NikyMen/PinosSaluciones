@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import type { Schema } from "mongoose";
 import { entityLabels, entities } from "../src/lib/constants";
-import { modelByEntity, User, AuditLog, Counter, WorkInspection } from "../src/lib/models";
+import { modelByEntity, User, AuditLog, Counter, WorkInspection, PriceList, PriceListItem } from "../src/lib/models";
 
 const OUT = "docs/modelo-datos/esquema-actual.md";
 
@@ -68,6 +68,8 @@ const extras = [
   ["AuditLog", AuditLog, "Registro de auditoría: quién cambió qué y cuándo."],
   ["Counter", Counter, "Contadores para numeración correlativa (hoy: cotizaciones)."],
   ["WorkInspection", WorkInspection, "Inspecciones diarias de obra, una por obra, rubro y día. De acá sale el avance físico."],
+  ["PriceList", PriceList, "Listas de precios de proveedores: el Excel que mandó cada uno y desde cuándo vale. La vigente es una por proveedor; las anteriores quedan como historia."],
+  ["PriceListItem", PriceListItem, "Cada producto de una lista de precios, sin IVA. El buscador de precios recorre los de las listas vigentes."],
 ] as const;
 
 const parts: string[] = [

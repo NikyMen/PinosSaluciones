@@ -284,7 +284,48 @@ const WorkerSchema = new Schema<WorkerDoc>({
 const SupplierSchema = new Schema({
   name: { type: String, required: true }, contactName: String, email: String, phone: String,
   address: String, notes: String, active: { type: Boolean, default: true },
+  // El descuento que nos hace sobre su lista. No cambia cuando llega una lista
+  // nueva: se guarda acá y se aplica a todas.
+  discountPct: { type: Number, min: 0, max: 100, default: 0 },
+  // Las columnas que alguien marcó a mano la vez que su Excel no se reconoció solo.
+  priceFormat: Schema.Types.Mixed,
 }, options);
+
+// Una lista de precios es el Excel que mandó el proveedor, vigente desde una
+// fecha. Cuando llega la siguiente, esta no se borra: queda como historia.
+const PriceListSchema = new Schema({
+  supplierId: { type: Schema.Types.ObjectId, ref: "Supplier", required: true },
+  validFrom: { type: Date, required: true },
+  fileName: String, file: String, sheet: String,
+  pricesIncludeVat: { type: Boolean, default: false },
+  current: { type: Boolean, default: false },
+  itemCount: { type: Number, default: 0 },
+  summary: { added: Number, up: Number, down: Number, same: Number, removed: Number },
+  // Qué significa cada letra de la columna "tipo" (Protex: A = de stock, B = a pedido).
+  legend: Schema.Types.Mixed,
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+}, options);
+PriceListSchema.index({ supplierId: 1, validFrom: -1 });
+
+// Cada producto de una lista. Van en su propia colección para que el buscador
+// recorra los de todas las listas vigentes de una sola vez.
+const PriceListItemSchema = new Schema({
+  supplierId: { type: Schema.Types.ObjectId, ref: "Supplier", required: true },
+  priceListId: { type: Schema.Types.ObjectId, ref: "PriceList", required: true },
+  current: { type: Boolean, default: false },
+  row: Number,
+  code: String, name: { type: String, required: true }, description: String,
+  presentation: String, minSale: String, category: String, subcategory: String, kind: String,
+  // Tal como figura en la lista (con o sin IVA según la lista).
+  listPriceCents: money,
+  // El precio que tenía en la lista anterior, para ver cuánto subió.
+  previousPriceCents: Number,
+  measureQty: Number, measureUnit: String,
+  searchText: String,
+});
+PriceListItemSchema.index({ current: 1, supplierId: 1 });
+PriceListItemSchema.index({ supplierId: 1, code: 1 });
+PriceListItemSchema.index({ priceListId: 1 });
 
 // Cada entrada y salida de un material queda guardada: el stock actual es la
 // consecuencia de los movimientos, no un numero que alguien escribe a mano.
@@ -443,6 +484,8 @@ export const StockItem = mongoose.models.StockItem || mongoose.model("StockItem"
 export const WorkInspection = mongoose.models.WorkInspection || mongoose.model("WorkInspection", WorkInspectionSchema);
 export const Worker = mongoose.models.Worker || mongoose.model("Worker", WorkerSchema);
 export const Supplier = mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
+export const PriceList = mongoose.models.PriceList || mongoose.model("PriceList", PriceListSchema);
+export const PriceListItem = mongoose.models.PriceListItem || mongoose.model("PriceListItem", PriceListItemSchema);
 export const Purchase = mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
 export const Expense = mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
 export const Invoice = mongoose.models.Invoice || mongoose.model("Invoice", InvoiceSchema);

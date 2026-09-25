@@ -42,6 +42,7 @@ function changes(entity: Entity, entry: AuditEntry) {
 
 function headline(entity: Entity, entry: AuditEntry) {
   if (entry.action === "convert_to_work") return "Convirtió la cotización en obra";
+  if (entry.action === "price_list_import") return `Subió la lista de precios vigente desde el ${date(String(entry.after?.validFrom || ""))} · ${Number(entry.after?.itemCount || 0)} productos`;
   if (entry.action === "edit_cascada" || entry.action === "edit_cascada_forzado") {
     const prefix = entry.action === "edit_cascada_forzado" ? "Destrabó y guardó el costeo" : "Guardó el costeo";
     const price = readable(entity, "amountCents", entry.after?.amountCents);

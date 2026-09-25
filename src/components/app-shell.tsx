@@ -8,7 +8,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3, CalendarDays, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat,
   Landmark, LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart,
-  Truck, Users, WalletCards, X, PackageSearch,
+  Tags, Truck, Users, WalletCards, X, PackageSearch,
 } from "lucide-react";
 import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
 import { canViewSection, type UserPermissions } from "@/lib/permissions";
@@ -32,6 +32,7 @@ const groups: NavGroup[] = [
   { id: "purchases", label: "Compras y stock", icon: ShoppingCart, items: [
     { href: "/app/stock", label: "Stock", icon: PackageSearch, permission: "stock" },
     { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
+    { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
     { href: "/app/purchases", label: "Órdenes de compra", icon: ShoppingCart, permission: "purchases" },
     { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText, permission: "expenses" },
   ] },

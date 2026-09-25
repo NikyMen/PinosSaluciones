@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-09-18 · 18 colecciones.
+Generado el 2026-09-25 · 20 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -217,6 +217,8 @@ Colección `suppliers` · entidad `suppliers`
 | `address` | texto | — | — |
 | `notes` | texto | — | — |
 | `active` | sí/no | — | por defecto `true` |
+| `discountPct` | número | — | mínimo 0 · máximo 100 · por defecto `0` |
+| `priceFormat` | libre | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -554,3 +556,52 @@ Inspecciones diarias de obra, una por obra, rubro y día. De acá sale el avance
 | `closedByName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
+
+### PriceList
+
+Listas de precios de proveedores: el Excel que mandó cada uno y desde cuándo vale. La vigente es una por proveedor; las anteriores quedan como historia. Colección `pricelists`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `supplierId` | referencia | sí | apunta a **Supplier** |
+| `validFrom` | fecha | sí | — |
+| `fileName` | texto | — | — |
+| `file` | texto | — | — |
+| `sheet` | texto | — | — |
+| `pricesIncludeVat` | sí/no | — | por defecto `false` |
+| `current` | sí/no | — | por defecto `false` |
+| `itemCount` | número | — | por defecto `0` |
+| `summary.added` | número | — | — |
+| `summary.up` | número | — | — |
+| `summary.down` | número | — | — |
+| `summary.same` | número | — | — |
+| `summary.removed` | número | — | — |
+| `legend` | libre | — | — |
+| `userId` | referencia | — | apunta a **User** |
+| `userName` | texto | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### PriceListItem
+
+Cada producto de una lista de precios, sin IVA. El buscador de precios recorre los de las listas vigentes. Colección `pricelistitems`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `supplierId` | referencia | sí | apunta a **Supplier** |
+| `priceListId` | referencia | sí | apunta a **PriceList** |
+| `current` | sí/no | — | por defecto `false` |
+| `row` | número | — | — |
+| `code` | texto | — | — |
+| `name` | texto | sí | — |
+| `description` | texto | — | — |
+| `presentation` | texto | — | — |
+| `minSale` | texto | — | — |
+| `category` | texto | — | — |
+| `subcategory` | texto | — | — |
+| `kind` | texto | — | — |
+| `listPriceCents` | número | — | mínimo 0 · por defecto `0` |
+| `previousPriceCents` | número | — | — |
+| `measureQty` | número | — | — |
+| `measureUnit` | texto | — | — |
+| `searchText` | texto | — | — |

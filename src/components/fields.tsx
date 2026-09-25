@@ -160,7 +160,7 @@ export function PhoneList({ name, defaultValue = [] }: { name: string; defaultVa
 }
 
 /** Zona para soltar o elegir un archivo, en vez del "Choose file…" del navegador. */
-export function FileDrop({ name, currentPath, accept = ".pdf,.jpg,.jpeg,.png,.webp,.xlsx" }: { name: string; currentPath?: string; accept?: string }) {
+export function FileDrop({ name, currentPath, accept = ".pdf,.jpg,.jpeg,.png,.webp,.xlsx", formats = "PDF, JPG, PNG o XLSX" }: { name: string; currentPath?: string; accept?: string; /** Lo que dice la ayuda: qué archivos se aceptan. */ formats?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -184,7 +184,7 @@ export function FileDrop({ name, currentPath, accept = ".pdf,.jpg,.jpeg,.png,.we
     <input ref={inputRef} name={name} type="file" accept={accept} hidden onChange={event => setFileName(event.target.files?.[0]?.name || "")} />
     <span className="file-drop-icon"><FileUp size={20} /></span>
     {fileName ? <div className="file-drop-copy"><b>{fileName}</b><small>Listo para subir · hacé clic para cambiarlo</small></div>
-      : <div className="file-drop-copy"><b>Arrastrá el archivo acá</b><small>o hacé clic para buscarlo · PDF, JPG, PNG o XLSX</small></div>}
+      : <div className="file-drop-copy"><b>Arrastrá el archivo acá</b><small>o hacé clic para buscarlo · {formats}</small></div>}
     {fileName && <button type="button" className="file-drop-clear" aria-label="Quitar archivo" onClick={event => { event.stopPropagation(); if (inputRef.current) inputRef.current.value = ""; setFileName(""); }}><X size={15} /></button>}
     {currentPath && !fileName && <a className="file-drop-current" href={currentPath} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}><Paperclip size={13} /> Ver el archivo actual</a>}
   </div>;
