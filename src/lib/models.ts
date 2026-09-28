@@ -282,7 +282,7 @@ const WorkerSchema = new Schema<WorkerDoc>({
   name: { type: String, trim: true },
   firstName: { type: String, required: true, trim: true },
   lastName: { type: String, required: true, trim: true },
-  dni: { type: String, required: true, trim: true },
+  dni: { type: String, trim: true },
   phone: { type: String, trim: true },
   category: { type: String, enum: ["capataz", "oficial", "medio_oficial", "ayudante", "especialista"], default: "oficial" },
   // El valor del jornal es el dato que maneja la empresa; el valor hora sale de
