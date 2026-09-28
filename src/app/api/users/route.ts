@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireSession } from "@/lib/auth";
+import { isOwnerEmail, requireSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models";
 import { entities, ROLES, viewSections, type Role } from "@/lib/constants";
@@ -32,7 +32,7 @@ function publicUser(user: LeanUser) {
   return {
     _id: String(user._id), name: user.name, email: user.email, role: user.role, active: user.active, createdAt: user.createdAt,
     permissions: normalizePermissions(user.role, user.permissions),
-    pending: !user.passwordHash, inviteExpiresAt: user.passwordHash ? null : user.inviteExpiresAt ?? null,
+    owner: isOwnerEmail(user.email), pending: !user.passwordHash, inviteExpiresAt: user.passwordHash ? null : user.inviteExpiresAt ?? null,
   };
 }
 
@@ -43,7 +43,7 @@ export async function GET() {
     await connectDB();
     // El hash se lee sólo para saber si ya tiene contraseña; no sale de acá.
     const users = await User.find().select("name email role active permissions createdAt inviteExpiresAt +passwordHash").sort({ name: 1 }).lean();
-    return Response.json({ items: users.map(user => publicUser(user as unknown as LeanUser)) });
+    return Response.json({ items: users.map(user => publicUser(user as unknown as LeanUser)), canDelete: isOwnerEmail(session.email), currentUserId: session.userId });
   } catch (error) { return apiError(error); }
 }
 

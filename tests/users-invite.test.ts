@@ -15,6 +15,7 @@ vi.mock("@/lib/auth", () => ({
   requireSession: async () => session,
   getSession: async () => session,
   createSession: async (value: { email: string }) => { created.push(value); },
+  isOwnerEmail: (email?: string | null) => Boolean(process.env.ADMIN_EMAIL) && email?.toLowerCase() === process.env.ADMIN_EMAIL?.toLowerCase(),
 }));
 
 const mail = { configured: true, fail: false, sent: [] as Array<{ to: string; subject: string; text: string; html: string }> };
@@ -28,6 +29,7 @@ vi.mock("@/lib/mailer", () => ({
 
 const { User } = await import("../src/lib/models");
 const usersRoute = await import("../src/app/api/users/route");
+const userRoute = await import("../src/app/api/users/[id]/route");
 const inviteRoute = await import("../src/app/api/users/[id]/invite/route");
 const activateRoute = await import("../src/app/api/auth/activate/route");
 const loginRoute = await import("../src/app/api/auth/login/route");
@@ -134,5 +136,33 @@ describe("alta de usuarios por invitación", () => {
     await User.updateOne({ email: "vencido@pino.com" }, { $set: { active: false } });
     const inactive = await call(await inviteRoute.POST(new Request("http://test", { method: "POST" }), params({ id: response.body._id })));
     expect(inactive.status).toBe(409);
+  });
+});
+
+describe("baja de usuarios", () => {
+  const remove = async (id: string) => call(await userRoute.DELETE(new Request("http://test", { method: "DELETE" }), params({ id })));
+  const target = async (email: string) => String((await User.create({ name: "Prueba", email, role: "compras", active: true }))._id);
+
+  it("sólo el dueño (ADMIN_EMAIL) elimina, y a su propia cuenta no la puede eliminar", async () => {
+    process.env.ADMIN_EMAIL = "otro@test.local";
+    const id = await target("baja1@test.local");
+    expect(await remove(id)).toMatchObject({ status: 403 });
+    expect(await User.exists({ _id: id })).toBeTruthy();
+
+    process.env.ADMIN_EMAIL = session.email;
+    expect(await remove(id)).toMatchObject({ status: 200 });
+    expect(await User.exists({ _id: id })).toBeNull();
+    expect(await remove(session.userId)).toMatchObject({ status: 400 });
+    delete process.env.ADMIN_EMAIL;
+  });
+
+  it("otro gerente no puede modificar ni eliminar la cuenta del dueño", async () => {
+    process.env.ADMIN_EMAIL = "dueno@test.local";
+    const owner = await target("dueno@test.local");
+    const patch = await call(await userRoute.PATCH(new Request("http://test", { ...json({ active: false }), method: "PATCH" }), params({ id: owner })));
+    expect(patch.status).toBe(403);
+    expect(await remove(owner)).toMatchObject({ status: 403 });
+    expect(await User.findById(owner).lean()).toMatchObject({ active: true });
+    delete process.env.ADMIN_EMAIL;
   });
 });

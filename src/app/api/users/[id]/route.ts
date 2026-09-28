@@ -1,6 +1,6 @@
 import { isValidObjectId } from "mongoose";
 import { z } from "zod";
-import { requireSession } from "@/lib/auth";
+import { isOwnerEmail, requireSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models";
 import { entities, ROLES, viewSections, type Role } from "@/lib/constants";
@@ -39,6 +39,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/users/
     await connectDB();
     const before = await User.findById(id).select("name email role active permissions").lean() as unknown as LeanUser | null;
     if (!before) return Response.json({ error: "Usuario no encontrado" }, { status: 404 });
+    // La cuenta del dueño sólo la toca el dueño: otro gerente no puede bajarla ni desactivarla.
+    if (isOwnerEmail(before.email) && !isOwnerEmail(session.email)) return Response.json({ error: "La cuenta del dueño sólo la puede modificar el dueño" }, { status: 403 });
     const role = parsed.data.role ?? before.role;
     const update = { ...parsed.data } as typeof parsed.data & { permissions?: UserPermissions };
     if (parsed.data.permissions) update.permissions = normalizePermissions(role, parsed.data.permissions);
@@ -48,5 +50,23 @@ export async function PATCH(request: Request, context: RouteContext<"/api/users/
     const result = { ...user, _id: String(user._id), permissions: normalizePermissions(user.role, user.permissions) };
     await audit(session, "update", "users", id, before, result);
     return Response.json(result);
+  } catch (error) { return apiError(error); }
+}
+
+/** Eliminación definitiva: sólo el dueño (ADMIN_EMAIL). Los registros guardan el nombre, así que el historial queda legible. */
+export async function DELETE(_request: Request, context: RouteContext<"/api/users/[id]">) {
+  try {
+    const session = await requireSession();
+    if (!isOwnerEmail(session.email)) return Response.json({ error: "Sólo el dueño de la cuenta puede eliminar usuarios" }, { status: 403 });
+    const { id } = await context.params;
+    if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
+    if (id === session.userId) return Response.json({ error: "No podés eliminar tu propia cuenta" }, { status: 400 });
+    await connectDB();
+    const before = await User.findById(id).select("name email role active permissions").lean() as unknown as LeanUser | null;
+    if (!before) return Response.json({ error: "Usuario no encontrado" }, { status: 404 });
+    if (isOwnerEmail(before.email)) return Response.json({ error: "La cuenta del dueño no se puede eliminar" }, { status: 400 });
+    await User.deleteOne({ _id: id });
+    await audit(session, "delete", "users", id, { ...before, _id: String(before._id) }, null);
+    return Response.json({ ok: true });
   } catch (error) { return apiError(error); }
 }

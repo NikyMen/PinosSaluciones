@@ -13,6 +13,15 @@ const secret = new TextEncoder().encode(process.env.SESSION_SECRET || "dev-secre
 export type Session = { userId: string; name: string; email: string; role: Role };
 export type AuthorizedSession = Session & { permissions: UserPermissions };
 
+/**
+ * El dueño es la cuenta de ADMIN_EMAIL (la que sincroniza scripts/sync-admin.mjs).
+ * Es la única que puede eliminar usuarios, y nadie puede eliminarla a ella.
+ */
+export function isOwnerEmail(email: string | undefined | null) {
+  const owner = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  return Boolean(owner) && email?.trim().toLowerCase() === owner;
+}
+
 export async function createSession(session: Session) {
   const token = await new SignJWT(session).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("8h").sign(secret);
   const jar = await cookies();

@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, KeyRound, MailCheck, MailWarning, Pencil, Plus, Send, ShieldCheck, UserRoundCheck, X } from "lucide-react";
+import { Check, Copy, KeyRound, MailCheck, MailWarning, Pencil, Plus, Send, ShieldCheck, Trash2, UserRoundCheck, X } from "lucide-react";
 import { entities, entityLabels, ROLES, roleLabels, viewSections, viewSectionLabels, type Entity, type Role, type ViewSection } from "@/lib/constants";
 import { defaultPermissionsForRole, type UserPermissions } from "@/lib/permissions";
 import { dateTime } from "@/lib/format";
 
 /** `pending`: la invitación está mandada pero todavía no eligió su contraseña. */
-type User = { _id: string; name: string; email: string; role: Role; active: boolean; permissions: UserPermissions; pending?: boolean; inviteExpiresAt?: string | null };
+type User = { _id: string; name: string; email: string; role: Role; active: boolean; permissions: UserPermissions; owner?: boolean; pending?: boolean; inviteExpiresAt?: string | null };
 type UserPayload = { name: string; email: string; role: Role; active: boolean; permissions: UserPermissions };
 type Invite = { link: string; sent: boolean; error: string; expiresAt: string; kind: "invite" | "reset" };
 type InviteNotice = { name: string; email: string; invite: Invite };
@@ -23,11 +23,13 @@ export function UsersAdmin() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<InviteNotice | null>(null);
   const [sending, setSending] = useState("");
+  const [canDelete, setCanDelete] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState("");
 
   const load = useCallback(async () => {
     const response = await fetch("/api/users");
     const result = await response.json();
-    if (response.ok) setUsers(result.items || []);
+    if (response.ok) { setUsers(result.items || []); setCanDelete(result.canDelete === true); setCurrentUserId(result.currentUserId || ""); }
     else setError(result.error || "No se pudo cargar el equipo");
   }, []);
 
@@ -81,6 +83,15 @@ export function UsersAdmin() {
     else load();
   }
 
+  /** Borrado definitivo, sólo para el dueño. Para cortar el acceso sin borrar alcanza con desactivarla. */
+  async function remove(user: User) {
+    if (!window.confirm(`¿Eliminar definitivamente la cuenta de ${user.name} (${user.email})? No va a poder volver a entrar y no se puede deshacer.`)) return;
+    setError(""); setNotice(null);
+    const response = await fetch(`/api/users/${user._id}`, { method: "DELETE" });
+    if (!response.ok) setError((await response.json()).error || "No se pudo eliminar el usuario");
+    else await load();
+  }
+
   return <>
     <div className="page-heading">
       <div><p className="eyebrow">CONFIGURACIÓN</p><h1>Usuarios y permisos</h1><p>Definí exactamente qué secciones puede ver y editar cada integrante.</p></div>
@@ -93,13 +104,14 @@ export function UsersAdmin() {
       <div className="user-list">
         {users.map(user => <div key={user._id}>
           <span className="avatar">{initials(user.name)}</span>
-          <div><b>{user.name}{user.pending && <em className={inviteExpired(user) ? "user-invite-badge expired" : "user-invite-badge"}>{inviteExpired(user) ? "Invitación vencida" : "Invitación pendiente"}</em>}</b><small>{user.email} · {roleLabels[user.role]}</small><span className="user-access-summary">{user.permissions.view.length} secciones · {user.permissions.edit.length} editables{user.pending && user.inviteExpiresAt && !inviteExpired(user) ? ` · el link vence el ${dateTime(user.inviteExpiresAt)}` : ""}</span></div>
+          <div><b>{user.name}{user.owner && <em className="user-invite-badge">Dueño</em>}{user.pending && <em className={inviteExpired(user) ? "user-invite-badge expired" : "user-invite-badge"}>{inviteExpired(user) ? "Invitación vencida" : "Invitación pendiente"}</em>}</b><small>{user.email} · {roleLabels[user.role]}</small><span className="user-access-summary">{user.permissions.view.length} secciones · {user.permissions.edit.length} editables{user.pending && user.inviteExpiresAt && !inviteExpired(user) ? ` · el link vence el ${dateTime(user.inviteExpiresAt)}` : ""}</span></div>
           {user.active && <button className="user-edit-btn" disabled={sending === user._id} onClick={() => { void sendLink(user); }}
             title={user.pending ? "Generar un link nuevo para que cree su contraseña: sale por correo y queda para copiar" : "Generar un link para que elija una contraseña nueva: sale por correo y queda para copiar"}>
             {user.pending ? <><Send size={15}/> {sending === user._id ? "Enviando…" : "Reenviar invitación"}</> : <><KeyRound size={15}/> {sending === user._id ? "Enviando…" : "Cambiar contraseña"}</>}
           </button>}
           <button className="user-edit-btn" onClick={() => { setError(""); setSelected(user); }}><Pencil size={15}/> Editar acceso</button>
           <button className={user.active ? "toggle active" : "toggle"} onClick={() => toggle(user)}><i/>{user.active ? "Activo" : "Inactivo"}</button>
+          {canDelete && !user.owner && user._id !== currentUserId && <button className="user-edit-btn danger-text" onClick={() => { void remove(user); }} title="Eliminar la cuenta definitivamente"><Trash2 size={15}/> Eliminar</button>}
         </div>)}
       </div>
     </section>
