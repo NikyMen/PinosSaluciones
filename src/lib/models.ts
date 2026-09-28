@@ -514,6 +514,13 @@ const AuditSchema = new Schema({
   before: Schema.Types.Mixed, after: Schema.Types.Mixed, ip: String,
 }, { timestamps: { createdAt: true, updatedAt: false } });
 
+// Papelera del stock: el material borrado entero, con quién y cuándo, para poder devolverlo.
+const StockTrashSchema = new Schema({
+  item: { type: Schema.Types.Mixed, required: true }, name: String,
+  deletedAt: { type: Date, default: Date.now, index: true },
+  deletedById: { type: Schema.Types.ObjectId, ref: "User" }, deletedByName: String,
+});
+
 const NotificationSchema = new Schema({
   title: { type: String, required: true, trim: true },
   body: { type: String, default: "" },
@@ -546,6 +553,7 @@ export const Check = mongoose.models.Check || mongoose.model("Check", CheckSchem
 export const CashMovement = mongoose.models.CashMovement || mongoose.model("CashMovement", CashSchema);
 export const Task = mongoose.models.Task || mongoose.model("Task", TaskSchema);
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditSchema);
+export const StockTrash = mongoose.models.StockTrash || mongoose.model("StockTrash", StockTrashSchema);
 export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);
 export const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
 export const CalendarSettings = mongoose.models.CalendarSettings || mongoose.model("CalendarSettings", CalendarSettingsSchema);

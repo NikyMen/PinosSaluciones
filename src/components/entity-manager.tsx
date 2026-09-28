@@ -1,18 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, ArrowRightLeft, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HardHat, History, ListTodo, Percent, Plus, Search, Timer, TriangleAlert, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { ArrowDownToLine, ArrowRightLeft, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HardHat, History, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
 import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
-import { date, money, qty, titleCase } from "@/lib/format";
+import { date, dateTime, money, qty, titleCase } from "@/lib/format";
 import { DateInput } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
 import { FormField, QuickCreateModal, fieldErrors, type FieldProps } from "@/components/record-form";
 import { StockMovementModal, type StockItem, type StockMovement } from "@/components/stock-movement";
 import { ReceivePurchaseModal } from "@/components/receive-purchase";
-import { levelsOf, lowWarehouses } from "@/lib/stock-levels";
+import { levelsOf } from "@/lib/stock-levels";
 import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
 import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
 import { buildInvoicePdf } from "@/lib/invoice-pdf";
@@ -70,6 +70,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   // Filtros de Tareas: el atajo elegido y, para gerencia, área y persona.
   // Qué depósito se mira en el stock; por defecto los dos.
   const [warehouseView, setWarehouseView] = useState<"" | WarehouseKey>("");
+  const [trashOpen, setTrashOpen] = useState(false);
   const [taskScope, setTaskScope] = useState<"" | "mine" | "area">("");
   const [taskRole, setTaskRole] = useState("");
   const [taskPerson, setTaskPerson] = useState("");
@@ -153,7 +154,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   }
 
   async function remove(item: Item) {
-    if (!confirm(`¿Eliminar este ${config.singular}? Esta acción quedará auditada.`)) return;
+    if (!confirm(entity === "stock" ? `¿Mandar "${itemLabel(item)}" a la papelera? Se puede restaurar desde ahí.` : `¿Eliminar este ${config.singular}? Esta acción quedará auditada.`)) return;
     const response = await fetch(`/api/records/${entity}/${item._id}`, { method: "DELETE" });
     if (response.ok) void load(); else setError((await response.json()).error);
   }
@@ -245,7 +246,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
 
   return <>
     <div className="page-heading"><div><p className="eyebrow">GESTIÓN</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && entity !== "stock" && <button className="primary-btn" onClick={() => open()}><Plus size={18} /> Nuevo {config.singular}</button>}</div>
-    <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
+    <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}{entity === "stock" && <button className="secondary-btn" onClick={() => setTrashOpen(true)}><Trash2 size={17} /> Papelera</button>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
     {entity === "tasks" && <TaskFilters viewer={viewer} people={people} scope={taskScope} role={taskRole} person={taskPerson}
       onScope={value => { setTaskScope(value); setTaskRole(""); setTaskPerson(""); }}
       onRole={value => { setTaskRole(value); setTaskScope(""); }}
@@ -254,7 +255,6 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {entity === "stock" && <div className="warehouse-filter" role="group" aria-label="Depósito">
       {[{ key: "" as const, label: "Ambos depósitos" }, ...WAREHOUSES].map(warehouse => <button key={warehouse.key} type="button" className={warehouseView === warehouse.key ? "active" : ""} aria-pressed={warehouseView === warehouse.key} onClick={() => setWarehouseView(warehouse.key)}>{warehouse.label}</button>)}
     </div>}
-    {entity === "stock" && <StockSummary items={items} />}
     <section className="table-panel"><div className="table-scroll"><table><thead><tr>{columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
       // En obras la fila lleva a la pantalla de la obra, aunque no se pueda editar.
       const rowAction = entity === "works" ? () => router.push(`/app/works/${item._id}`) : inlineEntities.has(entity) && canEdit ? () => open(item) : null;
@@ -323,6 +323,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       </form>
       {editing && <div className="modal-form-body"><RecordHistory entity={entity} recordId={editing._id} embedded /></div>}
     </section></div>}
+
+    {trashOpen && <StockTrashModal canRestore={canEdit} onClose={() => setTrashOpen(false)} onRestored={() => { void load(); }} />}
 
     {quickCreate && <QuickCreateModal entity={quickCreate.entity} onClose={() => setQuickCreate(null)} onCreated={item => {
       setRelations(current => ({ ...current, [quickCreate.entity]: [item, ...(current[quickCreate.entity] || [])] }));
@@ -522,20 +524,55 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
   </div>;
 }
 
-/** Cabecera del stock: cuánto hay guardado y qué está por debajo del mínimo. */
-function StockSummary({ items }: { items: Item[] }) {
-  const valued = items.reduce((total, item) => total + Number(item.valueCents || 0), 0);
-  // Bajo el mínimo en algún depósito: "Látex (Salón)".
-  const low = items.flatMap(item => lowWarehouses(item).map(warehouse => `${String(item.name)} (${warehouse.short})`));
-  return <section className="stock-overview">
-    <div className="stock-kpi"><span>Materiales en catálogo</span><strong>{items.length}</strong><small>Central y Salón de Ventas</small></div>
-    <div className="stock-kpi"><span>Valorización entre depósitos</span><strong>{money(valued)}</strong></div>
-    <div className={low.length ? "stock-kpi alert" : "stock-kpi"}>
-      <span>{low.length ? <><TriangleAlert size={13} /> Bajo el mínimo</> : "Bajo el mínimo"}</span>
-      <strong>{low.length}</strong>
-      {low.length > 0 && <small>{low.slice(0, 3).join(", ")}{low.length > 3 ? ` y ${low.length - 3} más` : ""}</small>}
-    </div>
-  </section>;
+type TrashRow = { _id: string; name: string; category: string; quantity: number; deletedAt: string; deletedByName: string };
+
+/** Papelera del stock: qué se borró, quién y a qué hora, con la opción de devolverlo. */
+function StockTrashModal({ canRestore, onClose, onRestored }: { canRestore: boolean; onClose: () => void; onRestored: () => void }) {
+  const [rows, setRows] = useState<TrashRow[] | null>(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void fetch("/api/stock/trash").then(response => response.json()).then(result => setRows(result.items || [])).catch(() => { setRows([]); setError("No se pudo leer la papelera"); });
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  async function restore(row: TrashRow) {
+    setBusy(row._id); setError("");
+    const response = await fetch(`/api/stock/trash/${row._id}`, { method: "POST" });
+    if (response.ok) { setRows(current => (current || []).filter(candidate => candidate._id !== row._id)); onRestored(); }
+    else setError((await response.json()).error || "No se pudo restaurar");
+    setBusy("");
+  }
+
+  return <div className="modal-layer">
+    <button className="modal-backdrop" onClick={onClose} aria-label="Cerrar" />
+    <section className="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="trash-modal-title">
+      <header>
+        <div className="modal-title-wrap"><span className="modal-heading-icon"><Trash2 /></span><div>
+          <p className="eyebrow">STOCK</p>
+          <h2 id="trash-modal-title">Papelera</h2>
+          <small>Materiales eliminados, con quién los borró y a qué hora</small>
+        </div></div>
+        <button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button>
+      </header>
+      <div className="modal-form-body">
+        {error && <p className="form-error">{error}</p>}
+        {rows === null ? <div className="loading-state">Cargando…</div> : !rows.length ? <div className="empty-state compact"><p>La papelera está vacía.</p></div>
+          : <div className="table-scroll"><table><thead><tr><th>Material</th><th>Rubro</th><th>Cantidad</th><th>Eliminado por</th><th>Fecha y hora</th><th /></tr></thead><tbody>{rows.map(row => <tr key={row._id}>
+            <td data-label="Material">{row.name || "—"}</td>
+            <td data-label="Rubro">{row.category || "—"}</td>
+            <td data-label="Cantidad">{row.quantity ? qty(row.quantity) : "—"}</td>
+            <td data-label="Eliminado por">{row.deletedByName || "—"}</td>
+            <td data-label="Fecha y hora">{dateTime(row.deletedAt)} hs</td>
+            <td className="row-actions">{canRestore && <button className="row-action-wide approve" disabled={busy === row._id} onClick={() => { void restore(row); }}><History size={15} /> Restaurar</button>}</td>
+          </tr>)}</tbody></table></div>}
+      </div>
+      <footer><span>Restaurar devuelve el material al stock con sus cantidades.</span><button type="button" className="secondary-btn" onClick={onClose}>Cerrar</button></footer>
+    </section>
+  </div>;
 }
 
 const workGroups = [

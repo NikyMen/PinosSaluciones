@@ -72,6 +72,11 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
+    // Un material no se pierde: va a la papelera con quién lo borró y a qué hora.
+    if (entity === "stock") {
+      const { StockTrash } = await import("@/lib/models");
+      await StockTrash.create({ item: before, name: (before as Record<string, unknown>).name, deletedById: session.userId, deletedByName: session.name });
+    }
     await model.findByIdAndDelete(id);
     if (entity === "collections") await applyInvoiceCollection((before as Record<string, unknown>).invoiceId, -Number((before as Record<string, unknown>).amountCents || 0));
     if (entity === "payments") await applyExpensePayment((before as Record<string, unknown>).expenseId, -Number((before as Record<string, unknown>).amountCents || 0));
