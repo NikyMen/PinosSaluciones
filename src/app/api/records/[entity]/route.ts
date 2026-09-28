@@ -1,6 +1,6 @@
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
-import { composeWorkerName, modelByEntity, nextPurchaseNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
+import { Notification, Task, Work, composeWorkerName, modelByEntity, nextPurchaseNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
@@ -10,6 +10,16 @@ import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
 import { applyExpensePayment, applyInvoiceCollection } from "@/lib/balances";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
+
+/** Facturado el certificado: lo marca en la obra y cierra la tarea y el aviso de "listo para facturar". */
+async function closeCertificate(workId: string, number: string) {
+  const escaped = number.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await Promise.all([
+    Work.updateOne({ _id: workId, "certificates.number": number }, { $set: { "certificates.$.invoiced": true } }),
+    Task.updateMany({ type: "facturar_certificado", relatedId: workId, status: { $ne: "completada" }, title: { $regex: `^Facturar certificado ${escaped} —` } }, { $set: { status: "completada" } }),
+    Notification.updateMany({ dedupeKey: `certificate-${workId}-${number}` }, { $set: { status: "hecha" } }),
+  ]);
+}
 
 /*
  * Lo que un listado no necesita. Una obra arrastra todas sus horas cargadas,
@@ -67,6 +77,7 @@ export async function POST(request: Request, context: RouteContext<"/api/records
 
     if (entity === "collections") await applyInvoiceCollection(item.invoiceId, item.amountCents);
     if (entity === "payments") await applyExpensePayment(item.expenseId, item.amountCents);
+    if (entity === "invoices" && item.workId && item.certificateNumber) await closeCertificate(String(item.workId), String(item.certificateNumber));
     await audit(session, "create", entity, item._id, null, item.toObject(), request.headers.get("x-forwarded-for") || undefined);
     return Response.json(item, { status: 201 });
   } catch (error) { return apiError(error); }

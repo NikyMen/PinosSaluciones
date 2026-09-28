@@ -52,6 +52,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
+  // Con qué viene cargado un registro nuevo (la factura: su número y, desde un certificado, sus datos).
+  const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusBusy, setStatusBusy] = useState("");
@@ -145,13 +147,35 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     return value ? String(value) : "—";
   }
 
-  function open(item?: Item) {
+  function open(item?: Item, defaults: Record<string, unknown> = {}) {
     if (!canEdit) return;
     setEditing(item || null);
-    setRelationValues(Object.fromEntries(config.fields.filter(field => field.relation || field.type === "user").map(field => [field.key, String(item?.[field.key] ?? "")])));
+    setDraft(item ? {} : defaults);
+    setRelationValues(Object.fromEntries(config.fields.filter(field => field.relation || field.type === "user").map(field => [field.key, String(item?.[field.key] ?? defaults[field.key] ?? "")])));
     setModal(true);
     setError("");
   }
+
+  /** Alta nueva. La factura se abre con el número que sigue al último. */
+  async function openCreate() {
+    if (entity !== "invoices") return open();
+    const response = await fetch("/api/invoices/draft").catch(() => null);
+    open(undefined, response?.ok ? await response.json() as Record<string, unknown> : {});
+  }
+
+  // El aviso "Certificado listo para facturar" llega con ?obra=&certificado=: se abre la factura ya cargada.
+  useEffect(() => {
+    if (entity !== "invoices" || !canEdit) return;
+    const params = new URLSearchParams(window.location.search);
+    const obra = params.get("obra"); const certificado = params.get("certificado");
+    if (!obra || !certificado) return;
+    router.replace("/app/invoices");
+    void fetch(`/api/invoices/draft?${new URLSearchParams({ obra, certificado }).toString()}`)
+      .then(response => response.ok ? response.json() as Promise<Record<string, unknown>> : {})
+      .then(defaults => open(undefined, defaults), () => open());
+    // Solo al entrar: después la dirección ya quedó limpia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity, canEdit]);
 
   async function remove(item: Item) {
     if (!confirm(entity === "stock" ? `¿Mandar "${itemLabel(item)}" a la papelera? Se puede restaurar desde ahí.` : `¿Eliminar este ${config.singular}? Esta acción quedará auditada.`)) return;
@@ -233,7 +257,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const fieldProps = (field: Field) => ({
     field,
     // El avance se muestra, no se edita: sale de las inspecciones.
-    value: editing?.[field.key],
+    value: editing ? editing[field.key] : draft[field.key],
     relationOptions: field.relation ? (relations[field.relation] || []).map(item => ({ value: item._id, label: itemLabel(item), hint: String(item.cuit || item.email || "") || undefined })) : [],
     relationValue: relationValues[field.key] ?? "",
     personOptions: field.type === "user" ? people.map(person => ({ value: person._id, label: person.name, hint: roleLabels[person.role] })) : [],
@@ -245,7 +269,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const columns = entity === "stock" && warehouseView ? config.columns.filter(column => column === `qty_${warehouseView}` || !(column.startsWith("qty_") || column === "quantity")) : config.columns;
 
   return <>
-    <div className="page-heading"><div><p className="eyebrow">GESTIÓN</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && entity !== "stock" && <button className="primary-btn" onClick={() => open()}><Plus size={18} /> Nuevo {config.singular}</button>}</div>
+    <div className="page-heading"><div><p className="eyebrow">GESTIÓN</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && entity !== "stock" && <button className="primary-btn" onClick={() => { void openCreate(); }}><Plus size={18} /> Nuevo {config.singular}</button>}</div>
     <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}{entity === "stock" && <button className="secondary-btn" onClick={() => setTrashOpen(true)}><Trash2 size={17} /> Papelera</button>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
     {entity === "tasks" && <TaskFilters viewer={viewer} people={people} scope={taskScope} role={taskRole} person={taskPerson}
       onScope={value => { setTaskScope(value); setTaskRole(""); setTaskPerson(""); }}
@@ -298,7 +322,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {canDeleteRecords && <button title="Eliminar" onClick={() => { void remove(item); }}><Trash2 size={16} /></button>}
         </td>
       </tr>;
-    })}</tbody></table></div>{loading ? <div className="loading-state">Cargando…</div> : !items.length && <div className="empty-state compact"><p>No hay registros para mostrar.</p>{canEdit && <button onClick={() => open()}>Crear {config.singular}</button>}</div>}</section>
+    })}</tbody></table></div>{loading ? <div className="loading-state">Cargando…</div> : !items.length && <div className="empty-state compact"><p>No hay registros para mostrar.</p>{canEdit && <button onClick={() => { void openCreate(); }}>Crear {config.singular}</button>}</div>}</section>
 
     {modal && entity === "tasks" && <TaskModal task={editing} config={config} fieldProps={fieldProps} error={error} saving={saving} onClose={() => setModal(false)} onSubmit={submit} />}
     {modal && entity !== "tasks" && <div className="modal-layer"><button className="modal-backdrop" onClick={() => setModal(false)} aria-label="Cerrar" /><section className={`modal entity-modal ${entity === "works" ? "work-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="entity-modal-title">
@@ -531,9 +555,10 @@ function StockTrashModal({ canRestore, onClose, onRestored }: { canRestore: bool
   const [rows, setRows] = useState<TrashRow[] | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [canPurge, setCanPurge] = useState(false);
 
   useEffect(() => {
-    void fetch("/api/stock/trash").then(response => response.json()).then(result => setRows(result.items || [])).catch(() => { setRows([]); setError("No se pudo leer la papelera"); });
+    void fetch("/api/stock/trash").then(response => response.json()).then(result => { setRows(result.items || []); setCanPurge(Boolean(result.canPurge)); }).catch(() => { setRows([]); setError("No se pudo leer la papelera"); });
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -544,6 +569,15 @@ function StockTrashModal({ canRestore, onClose, onRestored }: { canRestore: bool
     const response = await fetch(`/api/stock/trash/${row._id}`, { method: "POST" });
     if (response.ok) { setRows(current => (current || []).filter(candidate => candidate._id !== row._id)); onRestored(); }
     else setError((await response.json()).error || "No se pudo restaurar");
+    setBusy("");
+  }
+
+  async function purge(row: TrashRow) {
+    if (!confirm(`¿Eliminar "${row.name || "este material"}" para siempre? No se va a poder restaurar.`)) return;
+    setBusy(row._id); setError("");
+    const response = await fetch(`/api/stock/trash/${row._id}`, { method: "DELETE" });
+    if (response.ok) setRows(current => (current || []).filter(candidate => candidate._id !== row._id));
+    else setError((await response.json()).error || "No se pudo eliminar");
     setBusy("");
   }
 
@@ -567,7 +601,8 @@ function StockTrashModal({ canRestore, onClose, onRestored }: { canRestore: bool
             <td data-label="Cantidad">{row.quantity ? qty(row.quantity) : "—"}</td>
             <td data-label="Eliminado por">{row.deletedByName || "—"}</td>
             <td data-label="Fecha y hora">{dateTime(row.deletedAt)} hs</td>
-            <td className="row-actions">{canRestore && <button className="row-action-wide approve" disabled={busy === row._id} onClick={() => { void restore(row); }}><History size={15} /> Restaurar</button>}</td>
+            <td className="row-actions">{canRestore && <button className="row-action-wide approve" disabled={busy === row._id} onClick={() => { void restore(row); }}><History size={15} /> Restaurar</button>}
+              {canPurge && <button title="Eliminar para siempre" aria-label={`Eliminar ${row.name || "material"} para siempre`} disabled={busy === row._id} onClick={() => { void purge(row); }}><Trash2 size={16} /></button>}</td>
           </tr>)}</tbody></table></div>}
       </div>
       <footer><span>Restaurar devuelve el material al stock con sus cantidades.</span><button type="button" className="secondary-btn" onClick={onClose}>Cerrar</button></footer>

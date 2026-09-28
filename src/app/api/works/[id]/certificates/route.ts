@@ -26,7 +26,7 @@ export async function POST(request: Request, context: RouteContext<"/api/works/[
     if (parsed.data.approved) await notify({
       title: `Certificado ${parsed.data.number} listo para facturar`,
       body: `Obra ${work.code} — ${work.name}. Avance ${parsed.data.percentage}% · ${money(parsed.data.amountCents)}. Lo emitió ${session.name}.`,
-      kind: "certificado", href: `/app/works/${work._id}`, roles: ["administracion"], dedupeKey: `certificate-${work._id}-${parsed.data.number}`,
+      kind: "certificado", href: `/app/invoices?obra=${work._id}&certificado=${encodeURIComponent(parsed.data.number)}`, roles: ["administracion"], dedupeKey: `certificate-${work._id}-${parsed.data.number}`,
     });
     if (parsed.data.approved) await Task.create({ title: `Facturar certificado ${parsed.data.number} — ${work.name}`, type: "facturar_certificado", status: "pendiente", assigneeRole: "administracion", relatedType: "works", relatedId: work._id });
     await audit(session, "add_certificate", "works", id, before, work.toObject());
