@@ -160,11 +160,11 @@ export function PriceTable({ rows, withVat, mode, canOrder = false }: { rows: Pr
 }
 
 type Sort = "relevance" | "price" | "unit";
-type SearchPage = { rows: PriceRow[]; total: number; lists: number; offset: number };
+type SearchPage = { rows: PriceRow[]; total: number; lists: number; offset: number; suppliers: Array<{ _id: string; name: string }> };
 const PAGE = 100;
 
-function fetchSearchPage(query: string, sort: Sort, offset: number, signal?: AbortSignal) {
-  return fetch(`/api/prices/search?q=${encodeURIComponent(query)}&sort=${sort}&offset=${offset}&limit=${PAGE}`, { signal })
+function fetchSearchPage(query: string, sort: Sort, supplier: string, offset: number, signal?: AbortSignal) {
+  return fetch(`/api/prices/search?q=${encodeURIComponent(query)}&sort=${sort}&supplier=${supplier}&offset=${offset}&limit=${PAGE}`, { signal })
     .then(async response => {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo buscar");
@@ -176,31 +176,33 @@ export function PriceSearch({ canOrder }: { canOrder: boolean }) {
   const [query, setQuery] = useState("");
   const [withVat, setWithVat] = useState(false);
   const [sort, setSort] = useState<Sort>("relevance");
+  const [supplier, setSupplier] = useState("");
+  const [suppliers, setSuppliers] = useState<SearchPage["suppliers"]>([]);
   // `key` dice a qué búsqueda pertenecen las filas: una página que llega tarde no se mezcla con otra búsqueda.
   const [result, setResult] = useState<(SearchPage & { key: string }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const trimmed = query.trim();
-  const key = `${trimmed}|${sort}`;
+  const key = `${trimmed}|${sort}|${supplier}`;
 
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true);
-      fetchSearchPage(trimmed, sort, 0, controller.signal)
-        .then(page => { setResult({ ...page, key: `${trimmed}|${sort}` }); setError(""); })
+      fetchSearchPage(trimmed, sort, supplier, 0, controller.signal)
+        .then(page => { setResult({ ...page, key: `${trimmed}|${sort}|${supplier}` }); setSuppliers(page.suppliers || []); setError(""); })
         .catch(problem => { if (!controller.signal.aborted) setError(problem instanceof Error ? problem.message : "No se pudo buscar"); })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, trimmed ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [trimmed, sort]);
+  }, [trimmed, sort, supplier]);
 
   async function loadMore() {
     if (!result) return;
     setLoadingMore(true);
     try {
-      const page = await fetchSearchPage(trimmed, sort, result.rows.length);
+      const page = await fetchSearchPage(trimmed, sort, supplier, result.rows.length);
       setResult(current => current && current.key === key ? { ...current, rows: [...current.rows, ...page.rows], total: page.total } : current);
     } catch (problem) { setError(problem instanceof Error ? problem.message : "No se pudieron traer más productos"); }
     finally { setLoadingMore(false); }
@@ -220,6 +222,10 @@ export function PriceSearch({ canOrder }: { canOrder: boolean }) {
     <div className="toolbar price-toolbar">
       <div className="search"><Search size={18} /><input value={query} onChange={event => setQuery(event.target.value)} autoFocus
         placeholder="Producto o código: techos 5000, membrana, JUE91…" aria-label="Buscar producto o código" /></div>
+      <label className="price-sort"><span>Proveedor</span><select value={supplier} onChange={event => setSupplier(event.target.value)}>
+        <option value="">Todos</option>
+        {suppliers.map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
+      </select></label>
       <VatToggle withVat={withVat} onChange={setWithVat} />
       <label className="price-sort"><span>Ordenar</span><select value={sort} onChange={event => setSort(event.target.value as Sort)}>
         <option value="relevance">{searching ? "Por nombre" : "Por proveedor"}</option>

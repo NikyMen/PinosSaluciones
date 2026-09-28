@@ -200,7 +200,10 @@ describe("listas de precios (base)", () => {
     expect(await PriceList.countDocuments({ supplierId: protex._id })).toBe(2);
     expect(await PriceList.countDocuments({ supplierId: protex._id, current: true })).toBe(1);
     expect(await PriceListItem.countDocuments({ supplierId: protex._id })).toBe(6);
-    expect(await PriceListItem.countDocuments({ supplierId: protex._id, current: true })).toBe(3);
+    // El que la lista nueva no trae sigue vigente con su último precio y la fecha de su lista.
+    expect(await PriceListItem.countDocuments({ supplierId: protex._id, current: true })).toBe(4);
+    const kept = (await service.supplierPrices(protexId))?.items.find(row => row.code === "OLD");
+    expect(kept).toMatchObject({ listCents: 100_000, validFrom: "2026-07-01T00:00:00.000Z" });
 
     // Una lista más vieja que la vigente no entra.
     await expect(importList(protexId, "2026-08-01", [item("X", "X", "", 1)])).rejects.toBeInstanceOf(service.PriceListConflict);
@@ -221,14 +224,18 @@ describe("listas de precios (base)", () => {
     expect(byCode.body.rows[0]).toMatchObject({ code: "5000PU5" });
     // Sin nada escrito: la lista entera, proveedor por proveedor, sin "mejor precio".
     const all = await call(await searchRoute.GET(new Request("http://test/api/prices/search?q=")));
-    expect(all.body).toMatchObject({ total: 4, lists: 2 });
-    expect(all.body.rows.map((row: { supplierName: string; code: string }) => `${row.supplierName}:${row.code}`)).toEqual(["Otro corralón:T5", "Protex:5000PU20", "Protex:5000PU5", "Protex:NEW"]);
+    expect(all.body).toMatchObject({ total: 5, lists: 2 });
+    expect(all.body.rows.map((row: { supplierName: string; code: string }) => `${row.supplierName}:${row.code}`).sort()).toEqual(["Otro corralón:T5", "Protex:5000PU20", "Protex:5000PU5", "Protex:NEW", "Protex:OLD"]);
+    // Filtrado por proveedor: solo lo suyo.
+    const onlyOther = await call(await searchRoute.GET(new Request(`http://test/api/prices/search?q=&supplier=${String(other._id)}`)));
+    expect(onlyOther.body.rows.map((row: { code: string }) => row.code)).toEqual(["T5"]);
+    expect(onlyOther.body.suppliers.map((row: { name: string }) => row.name)).toEqual(["Otro corralón", "Protex"]);
     expect(all.body.rows.some((row: { best: boolean }) => row.best)).toBe(false);
     // Paginada y ordenada en el servidor: el más barato de todos, no de lo que ya se ve.
     const cheapest = await call(await searchRoute.GET(new Request("http://test/api/prices/search?sort=price&limit=1&offset=0")));
-    expect(cheapest.body).toMatchObject({ total: 4, offset: 0, rows: [{ code: "5000PU5" }] });
+    expect(cheapest.body).toMatchObject({ total: 5, offset: 0, rows: [{ code: "OLD" }] });
     const nextPage = await call(await searchRoute.GET(new Request("http://test/api/prices/search?sort=price&limit=1&offset=1")));
-    expect(nextPage.body.rows[0].code).toBe("NEW");
+    expect(nextPage.body.rows[0].code).toBe("5000PU5");
 
     // El descuento se cambia en un lugar y se ve en todos los precios.
     const patched = await call(await discountRoute.PATCH(new Request("http://test", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ discountPct: 10 }) }), params({ id: protexId })));
@@ -254,10 +261,13 @@ describe("listas de precios (base)", () => {
     await Purchase.create({ number: "OC-7", description: "Cargada a mano", amountCents: 0, requestedDate: new Date() });
 
     await importList(sikaId, "2026-08-01", [item("SK1", "SIKAFILL", "Balde 20 KG", 100_000), item("SK2", "SIKAFLEX", "Cartucho", 10_000)]);
+    // La fecha de la orden es obligatoria.
+    const withoutDate = await call(await ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ supplierId: sikaId, items: [{ itemId: String((await PriceListItem.findOne({ supplierId: sika._id, current: true }).lean() as { _id: Types.ObjectId })._id), quantity: 1 }] }) })));
+    expect(withoutDate.status).toBe(400);
     const old = await PriceListItem.find({ supplierId: sika._id, current: true }).lean() as Array<{ _id: Types.ObjectId; code: string }>;
     const idOf = (code: string) => String(old.find(row => row.code === code)!._id);
 
-    const order = (body: unknown) => ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+    const order = (body: unknown) => ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestedDate: "2026-09-20", ...body as object }) }));
     // El mismo producto dos veces se junta en un renglón.
     const first = await call(await order({ supplierId: sikaId, workId: String(work._id), expectedDate: "2026-09-30", notes: "Entregar de 8 a 12",
       items: [{ itemId: idOf("SK1"), quantity: 2 }, { itemId: idOf("SK2"), quantity: 1.5 }, { itemId: idOf("SK1"), quantity: 1 }] }));
@@ -271,13 +281,12 @@ describe("listas de precios (base)", () => {
     expect(first.body.pdf.priceListDate.slice(0, 10)).toBe("2026-08-01");
 
     // Llega otra lista: lo que quedó en el carrito se cobra al precio nuevo;
-    // lo que el proveedor dejó de vender no se puede pedir.
+    // lo que la lista nueva no trae se sigue pidiendo a su último precio.
     await importList(sikaId, "2026-09-15", [item("SK1", "SIKAFILL", "Balde 20 KG", 120_000)]);
     const repriced = await call(await order({ supplierId: sikaId, items: [{ itemId: idOf("SK1"), quantity: 1 }] }));
     expect(repriced.body.purchase).toMatchObject({ number: "OC-9", items: [{ listPriceCents: 12_000_000, unitCents: 10_800_000 }] });
-    const gone = await call(await order({ supplierId: sikaId, items: [{ itemId: idOf("SK2"), quantity: 1 }] }));
-    expect(gone.status).toBe(409);
-    expect(gone.body.error).toContain("SIKAFLEX");
+    const kept = await call(await order({ supplierId: sikaId, items: [{ itemId: idOf("SK2"), quantity: 1 }] }));
+    expect(kept.body.purchase).toMatchObject({ number: "OC-10", requestedDate: "2026-09-20T00:00:00.000Z", items: [{ code: "SK2", listPriceCents: 1_000_000 }] });
     // Un producto de otro proveedor no entra en esta orden.
     const foreign = await PriceListItem.findOne({ current: true, supplierId: { $ne: sika._id } }).lean() as { _id: Types.ObjectId };
     expect((await call(await order({ supplierId: sikaId, items: [{ itemId: String(foreign._id), quantity: 1 }] }))).status).toBe(409);
@@ -286,7 +295,7 @@ describe("listas de precios (base)", () => {
     // Las órdenes cargadas a mano sin número también siguen el correlativo.
     const recordsRoute = await import("../src/app/api/records/[entity]/route");
     const manual = await call(await recordsRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ description: "Flete", amountCents: 500, stage: "solicitud", status: "borrador", requestedDate: "2026-09-20" }) }), params({ entity: "purchases" })));
-    expect(manual.body.number).toBe("OC-10");
+    expect(manual.body.number).toBe("OC-11");
   });
 
   it("el PDF de la orden pasa de página cuando hay muchos productos", async () => {
@@ -299,6 +308,26 @@ describe("listas de precios (base)", () => {
     }, { author: "Compras" });
     expect(filename).toBe("orden-de-compra-OC-12.pdf");
     expect(doc.getNumberOfPages()).toBeGreaterThan(1);
+  });
+
+  it("el stock muestra el último precio de la lista que incluyó el material, aunque la siguiente no lo traiga", async () => {
+    const { withLastPrices } = await import("../src/lib/stock-prices");
+    const acme = await Supplier.create({ name: "Acme", discountPct: 10 });
+    const acmeId = String(acme._id);
+    await importList(acmeId, "2026-06-01", [item("AC1", "PINTURA", "Lata 4 L", 1_000), item("AC2", "RODILLO", "", 500)]);
+    await importList(acmeId, "2026-07-01", [item("AC1", "PINTURA", "Lata 4 L", 1_200)]);
+    const rows = await withLastPrices([
+      { name: "Pintura", sku: "AC1", supplierId: acme._id },
+      { name: "Rodillo", sku: "AC2", supplierId: acme._id },
+      { name: "Clavos", movements: [{ kind: "ingreso", unitCostCents: 3_000, date: new Date("2026-05-10T00:00:00.000Z") }] },
+      { name: "Sin datos" },
+    ]);
+    expect(rows.map(row => [row.lastPriceCents, row.lastPriceDate?.slice(0, 10) ?? null, row.lastPriceSource])).toEqual([
+      [108_000, "2026-07-01", "lista"],
+      [45_000, "2026-06-01", "lista"],
+      [3_000, "2026-05-10", "compra"],
+      [0, null, null],
+    ]);
   });
 
   it("un proveedor dado de baja no aparece en el buscador", async () => {

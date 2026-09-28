@@ -34,8 +34,9 @@ export function MoneyInput({ name, defaultValue = 0, required, autoFocus, disabl
 }
 
 /** Fecha siempre en dd/mm/aaaa, con calendario nativo al costado. */
-export function DateInput({ name, defaultValue = "", required, autoFocus, quickRanges, hideToday, onValueChange }: {
+export function DateInput({ name, defaultValue = "", required, autoFocus, quickRanges, hideToday, recent, onValueChange }: {
   name: string; defaultValue?: string; required?: boolean; autoFocus?: boolean; quickRanges?: number[];
+  /** Atajos "Hoy" y "Ayer", para lo que ya pasó (un movimiento, una orden). */ recent?: boolean;
   /** En un vencimiento el atajo "Hoy" no tiene sentido: se puede sacar. */ hideToday?: boolean;
   onValueChange?: (iso: string) => void;
 }) {
@@ -64,6 +65,10 @@ export function DateInput({ name, defaultValue = "", required, autoFocus, quickR
       </button>
       <input ref={pickerRef} type="date" className="native-picker" tabIndex={-1} aria-hidden value={iso} onChange={event => apply(event.target.value)} />
     </div>
+    {recent && <div className="date-quick">
+      <button type="button" className={iso === todayIso() ? "active" : ""} onClick={() => apply(todayIso())}>Hoy</button>
+      <button type="button" className={iso === isoPlusDays(-1) ? "active" : ""} onClick={() => apply(isoPlusDays(-1))}>Ayer</button>
+    </div>}
     {quickRanges?.length ? <div className="date-quick">
       {quickRanges.map(days => <button type="button" key={days} className={iso === isoPlusDays(days) ? "active" : ""} onClick={() => apply(isoPlusDays(days))}>{days} días</button>)}
       {!hideToday && <button type="button" className={iso === todayIso() ? "active" : ""} onClick={() => apply(todayIso())}>Hoy</button>}

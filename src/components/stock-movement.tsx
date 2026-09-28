@@ -178,7 +178,7 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
             {kind === "ingreso" && <label><span>Costo unitario *</span><MoneyInput name="unitCostCents" required onValueChange={setUnitCost} /></label>}
             {kind === "ingreso" && <label><span>Proveedor</span><SearchSelect name="supplierId" options={suppliers} defaultValue={item.supplierId || ""} placeholder="Elegí el proveedor…" /></label>}
             {kind === "ingreso" && <label><span>Factura o remito del proveedor</span><input name="reference" placeholder="Número del comprobante" /></label>}
-            {kind !== "ajuste" && <label><span>Fecha</span><DateInput name="date" /></label>}
+            {kind !== "ajuste" && <label><span>Fecha *</span><DateInput name="date" required recent /></label>}
             <label className="wide"><span>Observaciones</span><textarea name="note" placeholder={kind === "egreso" ? "Quién retiró, en qué vehículo…" : "Detalle del movimiento"} /></label>
           </div>
 

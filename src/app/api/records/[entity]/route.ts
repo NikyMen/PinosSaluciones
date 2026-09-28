@@ -8,6 +8,7 @@ import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
 import { applyExpensePayment, applyInvoiceCollection } from "@/lib/balances";
+import { withLastPrices } from "@/lib/stock-prices";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -53,7 +54,8 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
       model.find(filter, listProjection[entity] || {}).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
       model.countDocuments(filter),
     ]);
-    return Response.json({ items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+    // El stock muestra el último precio de cada material, con su fecha.
+    return Response.json({ items: entity === "stock" ? await withLastPrices(items as Record<string, unknown>[]) : items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) { return apiError(error); }
 }
 

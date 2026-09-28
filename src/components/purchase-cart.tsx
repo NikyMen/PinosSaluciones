@@ -110,6 +110,7 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
   const [workId, setWorkId] = useState("");
   const [deliverTo, setDeliverTo] = useState("central");
   const [expectedDate, setExpectedDate] = useState("");
+  const [orderDate, setOrderDate] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -118,10 +119,11 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
   const vat = Math.round(subtotal * VAT_RATE);
 
   async function close() {
+    if (!orderDate) return setError("Poné la fecha de la orden");
     setBusy(true); setError("");
     const response = await fetch("/api/purchases/orders", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ supplierId, items: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })), workId, expectedDate, deliverTo, notes }),
+      body: JSON.stringify({ supplierId, items: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })), workId, requestedDate: orderDate, expectedDate, deliverTo, notes }),
     });
     const result = await response.json();
     if (!response.ok) { setBusy(false); return setError(result.error || "No se pudo cerrar la orden"); }
@@ -149,6 +151,8 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
       <div className="total"><dt>Total</dt><dd>{money(subtotal + vat)}</dd></div>
     </dl>
     <div className="form-grid cart-form">
+      <label><span>Fecha de la orden *</span>
+        <DateInput name={`date-${supplierId}`} required recent onValueChange={setOrderDate} /></label>
       <label><span>Entregar en<em className="field-hint">Dónde recibe la mercadería</em></span>
         <SearchSelect name={`deliver-${supplierId}`} options={DELIVERY_OPTIONS} value={deliverTo} onChange={setDeliverTo} /></label>
       <label><span>Obra<em className="field-hint">{deliverTo === "obra" ? "Obligatoria: a qué obra se entrega" : "Opcional: a qué obra va el material"}</em></span>

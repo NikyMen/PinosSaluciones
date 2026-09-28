@@ -1,7 +1,7 @@
 import { Types } from "mongoose";
 import { PriceList, PriceListItem, Supplier } from "./models";
 import {
-  compareLists, discounted, escapeRegex, markBest, measureOf, normalize, relevance, searchTextOf, searchTokens, STALE_AFTER_DAYS, withoutVat,
+  compareLists, discounted, escapeRegex, markBest, matchLists, measureOf, normalize, relevance, searchTextOf, searchTokens, STALE_AFTER_DAYS, withoutVat,
   type Measure, type MeasureUnit, type ParsedPriceItem, type PriceLayout, type PriceRow,
 } from "./price-lists";
 import type { Session } from "./auth";
@@ -57,10 +57,12 @@ export async function assertNewest(supplierId: string, validFrom: Date) {
 }
 
 /**
- * Guarda la lista y la deja como vigente. La lista anterior y sus productos no
- * se borran: pasan a ser historia. El cambio de vigente se hace recién cuando
- * la lista nueva quedó guardada entera, así un corte a mitad de camino no deja
- * al proveedor sin precios.
+ * Guarda la lista y la deja como vigente. Los productos que trae reemplazan a
+ * los mismos de antes (que pasan a ser historia, sin duplicarse); los que no
+ * trae siguen vigentes con su último precio y la fecha de la lista que los
+ * incluyó por última vez. El cambio de vigente se hace recién cuando la lista
+ * nueva quedó guardada entera, así un corte a mitad de camino no deja al
+ * proveedor sin precios.
  */
 export async function saveImport({ supplierId, items, layout, legend, validFrom, pricesIncludeVat, fileName, file, session, rememberLayout }: {
   supplierId: string; items: ParsedPriceItem[]; layout: PriceLayout; legend: Record<string, string>;
@@ -70,6 +72,7 @@ export async function saveImport({ supplierId, items, layout, legend, validFrom,
   const next = netItems(items, pricesIncludeVat);
   const previous = await PriceListItem.find({ supplierId, current: true }).select("code name presentation listPriceCents").lean() as StoredItem[];
   const { previous: prices, summary } = compareLists(previous, next);
+  const replaced = matchLists(previous, next).flatMap(index => index === undefined ? [] : [previous[index]._id]);
 
   const list = await PriceList.create({
     supplierId, validFrom, fileName, file, sheet: layout.sheet, pricesIncludeVat, current: false,
@@ -91,7 +94,7 @@ export async function saveImport({ supplierId, items, layout, legend, validFrom,
     throw error;
   }
 
-  await PriceListItem.updateMany({ supplierId, current: true }, { $set: { current: false } });
+  await PriceListItem.updateMany({ _id: { $in: replaced } }, { $set: { current: false } });
   await PriceList.updateMany({ supplierId, current: true }, { $set: { current: false } });
   await PriceListItem.updateMany({ priceListId: list._id }, { $set: { current: true } });
   list.current = true;
@@ -141,12 +144,13 @@ export type PriceSort = "relevance" | "price" | "unit";
  * su Excel. Se ordena y se pagina acá, así "menor precio" es el menor de todos
  * y no sólo de lo que ya se ve en pantalla.
  */
-export async function searchPrices(query: string, { offset = 0, limit = 100, sort = "relevance" as PriceSort } = {}) {
+export async function searchPrices(query: string, { offset = 0, limit = 100, sort = "relevance" as PriceSort, supplierId = "" } = {}) {
   const tokens = searchTokens(query);
   const inactive = await Supplier.find({ active: false }).distinct("_id");
   const filter = {
     current: true,
-    ...(inactive.length ? { supplierId: { $nin: inactive } } : {}),
+    // Con un proveedor elegido se busca solo en lo suyo.
+    ...(supplierId ? { supplierId: new Types.ObjectId(supplierId) } : inactive.length ? { supplierId: { $nin: inactive } } : {}),
     ...(tokens.length ? { $and: tokens.map(token => ({ searchText: { $regex: escapeRegex(token) } })) } : {}),
   };
   const items = await PriceListItem.find(filter).sort({ row: 1 }).limit(5000).lean() as StoredItem[];

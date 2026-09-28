@@ -399,26 +399,38 @@ export type ListComparison = {
   summary: { total: number; added: number; up: number; down: number; same: number; removed: number };
 };
 
+/** Para cada producto de la lista nueva, cuál de los de antes es el mismo (su posición), o undefined si es nuevo. */
+export function matchLists(previous: Comparable[], next: Comparable[]): Array<number | undefined> {
+  const byKey = new Map<string, number[]>();
+  const byCode = new Map<string, number[]>();
+  previous.forEach((item, index) => {
+    byKey.set(keyOf(item), [...(byKey.get(keyOf(item)) || []), index]);
+    const code = normalize(item.code);
+    if (code) byCode.set(code, [...(byCode.get(code) || []), index]);
+  });
+  const used = new Set<number>();
+  return next.map(item => {
+    const sameCode = byCode.get(normalize(item.code));
+    // Cada producto de antes se usa una sola vez, aunque dos filas se escriban igual.
+    const match = byKey.get(keyOf(item))?.find(candidate => !used.has(candidate))
+      ?? (sameCode?.length === 1 && !used.has(sameCode[0]) ? sameCode[0] : undefined);
+    if (match !== undefined) used.add(match);
+    return match;
+  });
+}
+
 /**
  * Qué cambió respecto de la lista vigente. Un producto se reconoce por su
  * código y su presentación; si el código es único, alcanza con el código
  * (a veces el proveedor corrige cómo escribe el envase).
  */
 export function compareLists(previous: Comparable[], next: Comparable[]): ListComparison {
-  const byKey = new Map<string, Comparable[]>();
-  const byCode = new Map<string, Comparable[]>();
-  for (const item of previous) {
-    byKey.set(keyOf(item), [...(byKey.get(keyOf(item)) || []), item]);
-    const code = normalize(item.code);
-    if (code) byCode.set(code, [...(byCode.get(code) || []), item]);
-  }
+  const matches = matchLists(previous, next);
   const matched = new Set<Comparable>();
   const summary = { total: next.length, added: 0, up: 0, down: 0, same: 0, removed: 0 };
-  const prices = next.map(item => {
-    const sameCode = byCode.get(normalize(item.code));
-    // Cada producto de antes se usa una sola vez, aunque dos filas se escriban igual.
-    const match = byKey.get(keyOf(item))?.find(candidate => !matched.has(candidate))
-      ?? (sameCode?.length === 1 && !matched.has(sameCode[0]) ? sameCode[0] : undefined);
+  const prices = next.map((item, index) => {
+    const position = matches[index];
+    const match = position === undefined ? undefined : previous[position];
     if (!match) { summary.added++; return undefined; }
     matched.add(match);
     if (item.listPriceCents > match.listPriceCents) summary.up++;

@@ -6,6 +6,7 @@ import { entityConfig } from "@/lib/entity-config";
 import { apiError } from "@/lib/api";
 import { canRead } from "@/lib/permissions";
 import { taskScope } from "@/lib/tasks";
+import { withLastPrices } from "@/lib/stock-prices";
 import { date, titleCase, todayIso } from "@/lib/format";
 
 /**
@@ -39,7 +40,8 @@ export async function GET(request: Request) {
     // La exportación respeta el mismo recorte que el listado: nadie se lleva en
     // un Excel las tareas de otra área.
     const scope = entity === "tasks" ? taskScope(session, new URL(request.url).searchParams) : {};
-    const rows = await modelByEntity[entity].find(scope).sort({ createdAt: -1 }).limit(10000).lean();
+    const found = await modelByEntity[entity].find(scope).sort({ createdAt: -1 }).limit(10000).lean() as Record<string, unknown>[];
+    const rows = entity === "stock" ? await withLastPrices(found) : found;
 
     // Las relaciones salen con el nombre del cliente/proveedor/obra, no con su ObjectId.
     const relationNames = new Map<string, Map<string, string>>();

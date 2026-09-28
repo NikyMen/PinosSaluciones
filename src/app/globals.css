@@ -1754,3 +1754,7 @@ tbody tr.task-row.pendiente:hover { background: #e9ecf0; }
 .warehouse-filter button { padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; }
 .warehouse-filter button:hover { color: var(--brand-navy-deep); }
 .warehouse-filter button.active { background: var(--brand-navy-deep); color: #fff; }
+
+/* Precio con la fecha de donde sale, en una celda */
+.cell-stack { display: inline-flex; flex-direction: column; gap: 2px; }
+.cell-stack small { color: var(--muted); font-size: 11px; font-weight: 600; }

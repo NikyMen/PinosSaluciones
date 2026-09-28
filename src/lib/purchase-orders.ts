@@ -21,8 +21,8 @@ type StoredItem = {
 
 const productKey = (item: { code?: string; name: string; presentation?: string }) => `${normalize(item.code) || normalize(item.name)}|${normalize(item.presentation)}`;
 
-export async function createPurchaseOrder({ supplierId, lines, workId, expectedDate, deliverTo = "central", notes, session }: {
-  supplierId: string; lines: Array<{ itemId: string; quantity: number }>; workId?: string; expectedDate?: Date; deliverTo?: string; notes?: string; session: Session;
+export async function createPurchaseOrder({ supplierId, lines, workId, requestedDate, expectedDate, deliverTo = "central", notes, session }: {
+  supplierId: string; lines: Array<{ itemId: string; quantity: number }>; workId?: string; requestedDate?: Date; expectedDate?: Date; deliverTo?: string; notes?: string; session: Session;
 }) {
   const supplier = await Supplier.findById(supplierId).lean() as ({ _id: Types.ObjectId; name: string; discountPct?: number } & Record<string, unknown>) | null;
   if (!supplier) throw new PurchaseOrderError("Proveedor no encontrado");
@@ -76,7 +76,7 @@ export async function createPurchaseOrder({ supplierId, lines, workId, expectedD
     deliverTo, quoteNumber: quote?.number || undefined,
     // Cerrada y con el PDF en la mano: falta mandársela al proveedor.
     stage: "orden", status: "aprobada",
-    requestedDate: new Date(`${todayIso()}T00:00:00.000Z`), expectedDate,
+    requestedDate: requestedDate ?? new Date(`${todayIso()}T00:00:00.000Z`), expectedDate,
     priceListId: list?._id, priceListDate: list?.validFrom,
     userId: session.userId, userName: session.name,
   });

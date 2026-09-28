@@ -137,6 +137,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
 
   function display(key: string, value: unknown, item: Item) {
     // Lo que hay en cada depósito: un material viejo no tiene el campo y todo lo suyo está en el Central.
+    // El último precio va con la fecha de la lista (o de la compra) de donde sale.
+    if (key === "lastPriceCents") return item.lastPriceDate ? <span className="cell-stack">{money(Number(value || 0))}<small>{item.lastPriceSource === "compra" ? "Compra" : "Lista"} del {date(String(item.lastPriceDate))}</small></span> : "—";
     if (key.startsWith("qty_")) { const amount = levelsOf(item)[key.slice(4) as WarehouseKey] ?? 0; return amount ? qty(amount) : "—"; }
     if (key === "quantity" && entity === "stock") return qty(Number(value || 0));
     if (key.endsWith("Cents")) return money(Number(value || 0));
