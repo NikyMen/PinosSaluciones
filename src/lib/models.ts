@@ -514,11 +514,16 @@ const AuditSchema = new Schema({
   before: Schema.Types.Mixed, after: Schema.Types.Mixed, ip: String,
 }, { timestamps: { createdAt: true, updatedAt: false } });
 
-// Papelera del stock: el material borrado entero, con quién y cuándo, para poder devolverlo.
+// Papelera (stock, obras y clientes): el registro borrado entero, con quién y cuándo, para poder devolverlo.
+// Lo que está acá no cuenta en los números. Eliminarlo para siempre lo saca de la lista (purgedAt)
+// pero deja la marca, así lo que generó (gastos, facturas, ventas) tampoco vuelve a contar.
+// Los registros viejos no tienen `entity`: son del stock.
 const StockTrashSchema = new Schema({
+  entity: { type: String, enum: ["stock", "works", "clients"], default: "stock", index: true },
   item: { type: Schema.Types.Mixed, required: true }, name: String,
   deletedAt: { type: Date, default: Date.now, index: true },
   deletedById: { type: Schema.Types.ObjectId, ref: "User" }, deletedByName: String,
+  purgedAt: Date, purgedByName: String,
 });
 
 const NotificationSchema = new Schema({

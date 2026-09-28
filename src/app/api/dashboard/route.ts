@@ -5,6 +5,7 @@ import { apiError } from "@/lib/api";
 import { comparisonPercent, marginPercent, monthKeys, monthsBetween, parseDashboardDate, parseDashboardRange, rangeMonths, type DashboardPeriod } from "@/lib/dashboard";
 import { canViewSection } from "@/lib/permissions";
 import { taskScope } from "@/lib/tasks";
+import { excludedFromTotals } from "@/lib/trash";
 import { displayedProgress } from "@/lib/inspections";
 
 type TotalRow = { total?: number };
@@ -61,6 +62,13 @@ export async function GET(request: Request) {
     const dueSoonLimit = new Date(today.getTime() + 30 * 86400000);
     const timezone = "America/Argentina/Buenos_Aires";
 
+    // Lo que está en la papelera (obras, clientes, materiales) no suma en ningún número.
+    const excluded = await excludedFromTotals();
+    const notTrashed = {
+      expense: { _id: { $nin: excluded.expenses } }, invoice: { _id: { $nin: excluded.invoices } }, quote: { _id: { $nin: excluded.quotes } },
+      collection: { invoiceId: { $nin: excluded.invoices }, clientId: { $nin: excluded.clients } }, payment: { expenseId: { $nin: excluded.expenses } },
+    };
+
     const [
       activeClients, openQuotes, activeWorks, workCosts,
       salesRows, previousSalesRows, billedRows, previousBilledRows,
@@ -70,45 +78,45 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       Client.countDocuments({ active: true }),
       Quote.countDocuments({ status: { $in: ["enviada", "seguimiento"] } }),
-      Work.find({ status: "en_curso" }).select("name code progress progressMode budgetCents status endDate updatedAt").sort({ updatedAt: -1 }).limit(4).lean(),
+      Work.find({ status: "en_curso", _id: { $nin: excluded.works } }).select("name code progress progressMode budgetCents status endDate updatedAt").sort({ updatedAt: -1 }).limit(4).lean(),
       Expense.aggregate([
-        { $match: { workId: { $ne: null }, status: { $ne: "anulado" } } },
+        { $match: { ...notTrashed.expense, workId: { $ne: null }, status: { $ne: "anulado" } } },
         { $group: { _id: "$workId", total: { $sum: "$amountCents" } } },
       ]),
       Quote.aggregate([
-        { $match: { status: "aprobada", updatedAt: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.quote, status: "aprobada", updatedAt: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Quote.aggregate([
-        { $match: { status: "aprobada", updatedAt: { $gte: previousFrom, $lte: previousTo } } },
+        { $match: { ...notTrashed.quote, status: "aprobada", updatedAt: { $gte: previousFrom, $lte: previousTo } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Invoice.aggregate([
-        { $match: { status: { $ne: "anulada" }, issueDate: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.invoice, status: { $ne: "anulada" }, issueDate: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Invoice.aggregate([
-        { $match: { status: { $ne: "anulada" }, issueDate: { $gte: previousFrom, $lte: previousTo } } },
+        { $match: { ...notTrashed.invoice, status: { $ne: "anulada" }, issueDate: { $gte: previousFrom, $lte: previousTo } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Expense.aggregate([
-        { $match: { status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.expense, status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Expense.aggregate([
-        { $match: { status: { $ne: "anulado" }, issueDate: { $gte: previousFrom, $lte: previousTo } } },
+        { $match: { ...notTrashed.expense, status: { $ne: "anulado" }, issueDate: { $gte: previousFrom, $lte: previousTo } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Collection.aggregate([
-        { $match: { date: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.collection, date: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Payment.aggregate([
-        { $match: { date: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.payment, date: { $gte: from, $lte: to } } },
         { $group: { _id: null, total: { $sum: "$amountCents" } } },
       ]),
       Invoice.aggregate([
-        { $match: { status: { $ne: "anulada" } } },
+        { $match: { ...notTrashed.invoice, status: { $ne: "anulada" } } },
         { $project: { dueDate: 1, balance: { $max: [{ $subtract: ["$amountCents", "$collectedCents"] }, 0] } } },
         { $match: { balance: { $gt: 0 } } },
         { $group: {
@@ -123,19 +131,19 @@ export async function GET(request: Request) {
       // Las tareas pendientes del tablero son las que esa persona puede ver.
       Task.countDocuments({ $and: [{ status: { $ne: "completada" } }, taskScope(session, new URLSearchParams())] }),
       Quote.aggregate([
-        { $match: { status: "aprobada", updatedAt: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.quote, status: "aprobada", updatedAt: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$updatedAt", timezone } }, value: { $sum: "$amountCents" } } },
       ]),
       Invoice.aggregate([
-        { $match: { status: { $ne: "anulada" }, issueDate: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.invoice, status: { $ne: "anulada" }, issueDate: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate", timezone } }, value: { $sum: "$amountCents" } } },
       ]),
       Collection.aggregate([
-        { $match: { date: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.collection, date: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date", timezone } }, value: { $sum: "$amountCents" } } },
       ]),
       Expense.aggregate([
-        { $match: { status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
+        { $match: { ...notTrashed.expense, status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
         { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate", timezone } }, value: { $sum: "$amountCents" } } },
       ]),
     ]);

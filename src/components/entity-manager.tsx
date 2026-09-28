@@ -44,6 +44,8 @@ type Person = { _id: string; name: string; role: Role };
 
 export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { entity: Entity; canEdit: boolean; canDeleteRecords: boolean; viewer: Viewer }) {
   const config = entityConfig[entity];
+  // Stock, obras y clientes no se borran de una: van a la papelera y dejan de contar en los números.
+  const hasTrash = entity === "stock" || entity === "works" || entity === "clients";
   const isAdmin = viewer.role === "gerencia";
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -178,7 +180,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   }, [entity, canEdit]);
 
   async function remove(item: Item) {
-    if (!confirm(entity === "stock" ? `¿Mandar "${itemLabel(item)}" a la papelera? Se puede restaurar desde ahí.` : `¿Eliminar este ${config.singular}? Esta acción quedará auditada.`)) return;
+    if (!confirm(hasTrash ? `¿Mandar "${itemLabel(item)}" a la papelera? Deja de contar en los números y se puede restaurar desde ahí.` : `¿Eliminar este ${config.singular}? Esta acción quedará auditada.`)) return;
     const response = await fetch(`/api/records/${entity}/${item._id}`, { method: "DELETE" });
     if (response.ok) void load(); else setError((await response.json()).error);
   }
@@ -270,7 +272,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
 
   return <>
     <div className="page-heading"><div><p className="eyebrow">GESTIÓN</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && entity !== "stock" && <button className="primary-btn" onClick={() => { void openCreate(); }}><Plus size={18} /> Nuevo {config.singular}</button>}</div>
-    <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}{entity === "stock" && <button className="secondary-btn" onClick={() => setTrashOpen(true)}><Trash2 size={17} /> Papelera</button>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
+    <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}{hasTrash && <button className="secondary-btn" onClick={() => setTrashOpen(true)}><Trash2 size={17} /> Papelera</button>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
     {entity === "tasks" && <TaskFilters viewer={viewer} people={people} scope={taskScope} role={taskRole} person={taskPerson}
       onScope={value => { setTaskScope(value); setTaskRole(""); setTaskPerson(""); }}
       onRole={value => { setTaskRole(value); setTaskScope(""); }}
@@ -348,7 +350,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       {editing && <div className="modal-form-body"><RecordHistory entity={entity} recordId={editing._id} embedded /></div>}
     </section></div>}
 
-    {trashOpen && <StockTrashModal canRestore={canEdit} onClose={() => setTrashOpen(false)} onRestored={() => { void load(); }} />}
+    {trashOpen && hasTrash && <TrashModal entity={entity} canRestore={canEdit} onClose={() => setTrashOpen(false)} onRestored={() => { void load(); }} />}
 
     {quickCreate && <QuickCreateModal entity={quickCreate.entity} onClose={() => setQuickCreate(null)} onCreated={item => {
       setRelations(current => ({ ...current, [quickCreate.entity]: [item, ...(current[quickCreate.entity] || [])] }));
@@ -550,32 +552,39 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
 
 type TrashRow = { _id: string; name: string; category: string; quantity: number; deletedAt: string; deletedByName: string };
 
-/** Papelera del stock: qué se borró, quién y a qué hora, con la opción de devolverlo. */
-function StockTrashModal({ canRestore, onClose, onRestored }: { canRestore: boolean; onClose: () => void; onRestored: () => void }) {
+const trashTexts = {
+  stock: { eyebrow: "STOCK", noun: "Material", subtitle: "Materiales eliminados, con quién los borró y a qué hora", footer: "Restaurar devuelve el material al stock con sus cantidades." },
+  works: { eyebrow: "OBRAS", noun: "Obra", subtitle: "Obras eliminadas, con quién las borró y a qué hora. No cuentan en los números.", footer: "Restaurar devuelve la obra con todo lo que tenía y vuelve a contar en los números." },
+  clients: { eyebrow: "CLIENTES", noun: "Cliente", subtitle: "Clientes eliminados, con quién los borró y a qué hora. Ni ellos ni sus obras cuentan en los números.", footer: "Restaurar devuelve el cliente y vuelve a contar en los números." },
+};
+
+/** Papelera de stock, obras o clientes: qué se borró, quién y a qué hora, con la opción de devolverlo. */
+function TrashModal({ entity, canRestore, onClose, onRestored }: { entity: "stock" | "works" | "clients"; canRestore: boolean; onClose: () => void; onRestored: () => void }) {
+  const texts = trashTexts[entity];
   const [rows, setRows] = useState<TrashRow[] | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [canPurge, setCanPurge] = useState(false);
 
   useEffect(() => {
-    void fetch("/api/stock/trash").then(response => response.json()).then(result => { setRows(result.items || []); setCanPurge(Boolean(result.canPurge)); }).catch(() => { setRows([]); setError("No se pudo leer la papelera"); });
+    void fetch(`/api/trash?entity=${entity}`).then(response => response.json()).then(result => { setRows(result.items || []); setCanPurge(Boolean(result.canPurge)); }).catch(() => { setRows([]); setError("No se pudo leer la papelera"); });
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [entity, onClose]);
 
   async function restore(row: TrashRow) {
     setBusy(row._id); setError("");
-    const response = await fetch(`/api/stock/trash/${row._id}`, { method: "POST" });
+    const response = await fetch(`/api/trash/${row._id}`, { method: "POST" });
     if (response.ok) { setRows(current => (current || []).filter(candidate => candidate._id !== row._id)); onRestored(); }
     else setError((await response.json()).error || "No se pudo restaurar");
     setBusy("");
   }
 
   async function purge(row: TrashRow) {
-    if (!confirm(`¿Eliminar "${row.name || "este material"}" para siempre? No se va a poder restaurar.`)) return;
+    if (!confirm(`¿Eliminar "${row.name || texts.noun.toLowerCase()}" para siempre? No se va a poder restaurar y lo que generó sigue sin contar en los números.`)) return;
     setBusy(row._id); setError("");
-    const response = await fetch(`/api/stock/trash/${row._id}`, { method: "DELETE" });
+    const response = await fetch(`/api/trash/${row._id}`, { method: "DELETE" });
     if (response.ok) setRows(current => (current || []).filter(candidate => candidate._id !== row._id));
     else setError((await response.json()).error || "No se pudo eliminar");
     setBusy("");
@@ -586,26 +595,26 @@ function StockTrashModal({ canRestore, onClose, onRestored }: { canRestore: bool
     <section className="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="trash-modal-title">
       <header>
         <div className="modal-title-wrap"><span className="modal-heading-icon"><Trash2 /></span><div>
-          <p className="eyebrow">STOCK</p>
+          <p className="eyebrow">{texts.eyebrow}</p>
           <h2 id="trash-modal-title">Papelera</h2>
-          <small>Materiales eliminados, con quién los borró y a qué hora</small>
+          <small>{texts.subtitle}</small>
         </div></div>
         <button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button>
       </header>
       <div className="modal-form-body">
         {error && <p className="form-error">{error}</p>}
         {rows === null ? <div className="loading-state">Cargando…</div> : !rows.length ? <div className="empty-state compact"><p>La papelera está vacía.</p></div>
-          : <div className="table-scroll"><table><thead><tr><th>Material</th><th>Rubro</th><th>Cantidad</th><th>Eliminado por</th><th>Fecha y hora</th><th /></tr></thead><tbody>{rows.map(row => <tr key={row._id}>
-            <td data-label="Material">{row.name || "—"}</td>
-            <td data-label="Rubro">{row.category || "—"}</td>
-            <td data-label="Cantidad">{row.quantity ? qty(row.quantity) : "—"}</td>
+          : <div className="table-scroll"><table><thead><tr><th>{texts.noun}</th>{entity === "stock" && <><th>Rubro</th><th>Cantidad</th></>}<th>Eliminado por</th><th>Fecha y hora</th><th /></tr></thead><tbody>{rows.map(row => <tr key={row._id}>
+            <td data-label={texts.noun}>{row.name || "—"}</td>
+            {entity === "stock" && <><td data-label="Rubro">{row.category || "—"}</td>
+            <td data-label="Cantidad">{row.quantity ? qty(row.quantity) : "—"}</td></>}
             <td data-label="Eliminado por">{row.deletedByName || "—"}</td>
             <td data-label="Fecha y hora">{dateTime(row.deletedAt)} hs</td>
             <td className="row-actions">{canRestore && <button className="row-action-wide approve" disabled={busy === row._id} onClick={() => { void restore(row); }}><History size={15} /> Restaurar</button>}
-              {canPurge && <button title="Eliminar para siempre" aria-label={`Eliminar ${row.name || "material"} para siempre`} disabled={busy === row._id} onClick={() => { void purge(row); }}><Trash2 size={16} /></button>}</td>
+              {canPurge && <button title="Eliminar para siempre" aria-label={`Eliminar ${row.name || texts.noun.toLowerCase()} para siempre`} disabled={busy === row._id} onClick={() => { void purge(row); }}><Trash2 size={16} /></button>}</td>
           </tr>)}</tbody></table></div>}
       </div>
-      <footer><span>Restaurar devuelve el material al stock con sus cantidades.</span><button type="button" className="secondary-btn" onClick={onClose}>Cerrar</button></footer>
+      <footer><span>{texts.footer}</span><button type="button" className="secondary-btn" onClick={onClose}>Cerrar</button></footer>
     </section>
   </div>;
 }

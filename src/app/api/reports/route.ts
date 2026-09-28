@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { CashMovement, Collection, Payment, Invoice, Expense, Work } from "@/lib/models";
 import { apiError } from "@/lib/api";
 import { canViewSection } from "@/lib/permissions";
+import { excludedFromTotals } from "@/lib/trash";
 
 export async function GET(request: Request) {
   try {
@@ -10,14 +11,16 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const from = url.searchParams.get("from") ? new Date(url.searchParams.get("from")!) : new Date(new Date().getFullYear(), 0, 1);
     const to = url.searchParams.get("to") ? new Date(url.searchParams.get("to")! + "T23:59:59") : new Date();
+    // Lo que está en la papelera no entra en los reportes.
+    const excluded = await excludedFromTotals();
     const [income, outcomes, cashIncome, cashOutcomes, invoices, expenses, works] = await Promise.all([
-      Collection.aggregate([{ $match: { date: { $gte: from, $lte: to } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }, { $sort: { _id: 1 } }]),
-      Payment.aggregate([{ $match: { date: { $gte: from, $lte: to } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }, { $sort: { _id: 1 } }]),
+      Collection.aggregate([{ $match: { invoiceId: { $nin: excluded.invoices }, clientId: { $nin: excluded.clients }, date: { $gte: from, $lte: to } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }, { $sort: { _id: 1 } }]),
+      Payment.aggregate([{ $match: { expenseId: { $nin: excluded.expenses }, date: { $gte: from, $lte: to } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }, { $sort: { _id: 1 } }]),
       CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "ingreso" } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
       CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "egreso" } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
-      Invoice.aggregate([{ $match: { issueDate: { $gte: from, $lte: to }, status: { $ne: "anulada" } } }, { $group: { _id: "$workId", revenue: { $sum: "$amountCents" } } }]),
-      Expense.aggregate([{ $match: { issueDate: { $gte: from, $lte: to }, status: { $ne: "anulado" } } }, { $group: { _id: "$workId", cost: { $sum: "$amountCents" } } }]),
-      Work.find().select("name budgetCents").lean(),
+      Invoice.aggregate([{ $match: { _id: { $nin: excluded.invoices }, issueDate: { $gte: from, $lte: to }, status: { $ne: "anulada" } } }, { $group: { _id: "$workId", revenue: { $sum: "$amountCents" } } }]),
+      Expense.aggregate([{ $match: { _id: { $nin: excluded.expenses }, issueDate: { $gte: from, $lte: to }, status: { $ne: "anulado" } } }, { $group: { _id: "$workId", cost: { $sum: "$amountCents" } } }]),
+      Work.find({ _id: { $nin: excluded.works } }).select("name budgetCents").lean(),
     ]);
     const costs = new Map(expenses.map(x => [String(x._id), x.cost]));
     const revenues = new Map(invoices.map(x => [String(x._id), x.revenue]));

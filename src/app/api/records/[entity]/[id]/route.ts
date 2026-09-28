@@ -9,6 +9,7 @@ import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { canSeeTask, resolveTaskAssignee } from "@/lib/tasks";
 import { applyExpensePayment, applyInvoiceCollection } from "@/lib/balances";
+import { isTrashEntity } from "@/lib/trash";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -72,10 +73,12 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
-    // Un material no se pierde: va a la papelera con quién lo borró y a qué hora.
-    if (entity === "stock") {
+    // Un material, una obra o un cliente no se pierden: van a la papelera con quién los borró y a qué hora.
+    if (isTrashEntity(entity)) {
       const { StockTrash } = await import("@/lib/models");
-      await StockTrash.create({ item: before, name: (before as Record<string, unknown>).name, deletedById: session.userId, deletedByName: session.name });
+      const record = before as Record<string, unknown>;
+      const name = entity === "works" ? [record.code, record.name].filter(Boolean).join(" — ") : String(record.name || "");
+      await StockTrash.create({ entity, item: before, name, deletedById: session.userId, deletedByName: session.name });
     }
     await model.findByIdAndDelete(id);
     if (entity === "collections") await applyInvoiceCollection((before as Record<string, unknown>).invoiceId, -Number((before as Record<string, unknown>).amountCents || 0));
