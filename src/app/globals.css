@@ -1749,3 +1749,8 @@ tbody tr.task-row.pendiente:hover { background: #e9ecf0; }
   .calendar-dots { display: flex; }
   .calendar-day-number { width: 24px; height: 24px; font-size: .7rem; }
 }
+
+.warehouse-filter { margin-bottom: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 5px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: var(--shadow-sm); }
+.warehouse-filter button { padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; }
+.warehouse-filter button:hover { color: var(--brand-navy-deep); }
+.warehouse-filter button.active { background: var(--brand-navy-deep); color: #fff; }

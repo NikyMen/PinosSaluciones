@@ -13,7 +13,7 @@ import { FormField, QuickCreateModal, fieldErrors, type FieldProps } from "@/com
 import { StockMovementModal, type StockItem, type StockMovement } from "@/components/stock-movement";
 import { ReceivePurchaseModal } from "@/components/receive-purchase";
 import { levelsOf, lowWarehouses } from "@/lib/stock-levels";
-import { warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
+import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
 import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
 import { buildInvoicePdf } from "@/lib/invoice-pdf";
 import { readPdfLogo } from "@/lib/pdf-brand";
@@ -68,6 +68,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   // Estado elegido en una fila que todavía espera el visto bueno.
   const [pendingStatus, setPendingStatus] = useState<{ id: string; status: string } | null>(null);
   // Filtros de Tareas: el atajo elegido y, para gerencia, área y persona.
+  // Qué depósito se mira en el stock; por defecto los dos.
+  const [warehouseView, setWarehouseView] = useState<"" | WarehouseKey>("");
   const [taskScope, setTaskScope] = useState<"" | "mine" | "area">("");
   const [taskRole, setTaskRole] = useState("");
   const [taskPerson, setTaskPerson] = useState("");
@@ -238,23 +240,29 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     onCreateRelation: field.relation ? () => setQuickCreate({ fieldKey: field.key, entity: field.relation! }) : undefined,
   });
 
+  // Con un depósito elegido se ve solo su cantidad; con los dos, cada uno y el total.
+  const columns = entity === "stock" && warehouseView ? config.columns.filter(column => column === `qty_${warehouseView}` || !(column.startsWith("qty_") || column === "quantity")) : config.columns;
+
   return <>
-    <div className="page-heading"><div><p className="eyebrow">GESTIÓN</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && <button className="primary-btn" onClick={() => open()}><Plus size={18} /> Nuevo {config.singular}</button>}</div>
+    <div className="page-heading"><div><p className="eyebrow">GESTIÓN</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && entity !== "stock" && <button className="primary-btn" onClick={() => open()}><Plus size={18} /> Nuevo {config.singular}</button>}</div>
     <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()}><Upload size={17} /> Importar</button></>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
     {entity === "tasks" && <TaskFilters viewer={viewer} people={people} scope={taskScope} role={taskRole} person={taskPerson}
       onScope={value => { setTaskScope(value); setTaskRole(""); setTaskPerson(""); }}
       onRole={value => { setTaskRole(value); setTaskScope(""); }}
       onPerson={value => { setTaskPerson(value); setTaskScope(""); }} />}
     {error && <div className="notice error">{error}</div>}
+    {entity === "stock" && <div className="warehouse-filter" role="group" aria-label="Depósito">
+      {[{ key: "" as const, label: "Ambos depósitos" }, ...WAREHOUSES].map(warehouse => <button key={warehouse.key} type="button" className={warehouseView === warehouse.key ? "active" : ""} aria-pressed={warehouseView === warehouse.key} onClick={() => setWarehouseView(warehouse.key)}>{warehouse.label}</button>)}
+    </div>}
     {entity === "stock" && <StockSummary items={items} />}
-    <section className="table-panel"><div className="table-scroll"><table><thead><tr>{config.columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
+    <section className="table-panel"><div className="table-scroll"><table><thead><tr>{columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
       // En obras la fila lleva a la pantalla de la obra, aunque no se pueda editar.
       const rowAction = entity === "works" ? () => router.push(`/app/works/${item._id}`) : inlineEntities.has(entity) && canEdit ? () => open(item) : null;
       const rowTitle = entity === "works" ? "Abrir la obra" : entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar";
       // Las tareas se pintan enteras según el estado: de un vistazo se ve qué falta.
       const rowClass = [rowAction ? "clickable-row" : "", entity === "tasks" ? `task-row ${String(item.status || "pendiente")}` : ""].filter(Boolean).join(" ");
       return <tr key={item._id} className={rowClass} onClick={rowAction || undefined} onKeyDown={rowAction ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rowAction(); } } : undefined} tabIndex={rowAction ? 0 : undefined} title={rowAction ? rowTitle : undefined}>
-        {config.columns.map(column => <td key={column} data-label={columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
+        {columns.map(column => <td key={column} data-label={columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
           const pending = pendingStatus?.id === item._id ? pendingStatus.status : "";
           return <div className="status-cell" onClick={event => event.stopPropagation()}>
             <select className={`inline-status ${pending || item.status}${pending ? " pending" : ""}`} value={pending || String(item.status || "")} disabled={statusBusy === item._id}
