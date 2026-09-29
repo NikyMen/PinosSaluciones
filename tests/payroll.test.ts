@@ -94,6 +94,11 @@ describe("tarifas, partes por tipo de trabajo y liquidación de la quincena", ()
     const client = await Client.create({ name: "Consorcio Unidad" });
     const existing = await Work.create({ code: "OB-UNI", name: "UNIDAD", clientId: client._id, status: "en_curso" });
     const known = await Worker.create({ lastName: "BARRIOS", firstName: "FRANCO ISMAEL", name: "BARRIOS, FRANCO ISMAEL", category: "medio_oficial" });
+    // En el legajo tiene el nombre completo; en la planilla, sin el segundo nombre.
+    const longName = await Worker.create({ lastName: "IBARRA", firstName: "DANIEL OSCAR", name: "IBARRA, DANIEL OSCAR", category: "ayudante" });
+    // Dos candidatos posibles: no se adivina.
+    await Worker.create({ lastName: "GOMEZ", firstName: "RAMON IGNACIO", name: "GOMEZ, RAMON IGNACIO" });
+    await Worker.create({ lastName: "GOMEZ", firstName: "RAMON ROBERTO", name: "GOMEZ, RAMON ROBERTO" });
     const sheet = { sheet: "1ra15na sep-26", data: [
       ["PRIMERA QUINCENA DE SEPTIEMBRE", null, null, null, null, null, null, null, null, null, null],
       ["Nº Legajo", "Apellido y Nombre", "Categoría", "Día", "T. Trabajo", "Horas", "Obra", "Total 15na $", null, "PRIMERA QUINCENA", null],
@@ -101,34 +106,37 @@ describe("tarifas, partes por tipo de trabajo y liquidación de la quincena", ()
       [151, "BARRIOS FRANCO ISMAEL", "SILLETERO (M.O) ASISTENTE", day("2026-09-03"), "M.O Altura", 10, "UNIDAD", 59_000, null, "M.O Altura", 5_900],
       [151, "BARRIOS FRANCO ISMAEL", "SILLETERO (M.O) ASISTENTE", day("2026-09-03"), "PLUS VIAJE AYUD 40%", 1, "V1397 AYACUCHO SHELL", 15_900, null, "PLUS VIAJE AYUD 40%", 15_900],
       [900, "NUEVO APELLIDO PEDRO", "PINTOR OFICIAL", "04/09/2026", "Oficial", 8.5, "V1397 AYACUCHO SHELL", 53_958, null, "Oficial", 6_348],
+      [321, "IBARRA DANIEL", "AYUDANTE", day("2026-09-04"), "Oficial", 1, "UNIDAD", 6_348, null, null, null],
+      [322, "GOMEZ RAMON", "OFICIAL", day("2026-09-04"), "Oficial", 1, "UNIDAD", 6_348, null, null, null],
       [null, "Total", null, null, null, 29.5, null, 187_858, null, null, null],
     ] };
     const parsed = parsePayrollWorkbook([sheet]);
-    expect(parsed.rows).toHaveLength(4);
+    expect(parsed.rows).toHaveLength(6);
     expect(parsed.rates).toEqual([{ name: "M.O Altura", rateCents: 5_900_00 }, { name: "PLUS VIAJE AYUD 40%", rateCents: 15_900_00 }, { name: "Oficial", rateCents: 6_348_00 }]);
 
     const preview = await previewPayroll(parsed);
-    expect(preview).toMatchObject({ rows: 4, totalCents: 187_858_00, alreadyLoaded: 0, people: { total: 2, matched: 1, toCreate: ["NUEVO APELLIDO PEDRO"] } });
+    expect(preview).toMatchObject({ rows: 6, totalCents: 200_554_00, alreadyLoaded: 0, people: { total: 4, matched: 2, toCreate: ["NUEVO APELLIDO PEDRO", "GOMEZ RAMON"] } });
     expect(preview.sites.find(site => site.site === "UNIDAD")).toMatchObject({ workId: String(existing._id) });
     expect(preview.sites.find(site => site.site === "V1397 AYACUCHO SHELL")).toMatchObject({ workId: "" });
 
     // Sin elegir a dónde va cada obra no se carga.
     await expect(importPayroll(parsed, { UNIDAD: String(existing._id) }, session)).rejects.toThrow(/V1397/);
     const summary = await importPayroll(parsed, { UNIDAD: String(existing._id), "V1397 AYACUCHO SHELL": "new" }, session);
-    expect(summary).toMatchObject({ entries: 4, skipped: 0, workersCreated: 1, fileNumbersSet: 1, worksCreated: 1, totalCents: 187_858_00, conflicts: [] });
+    expect(summary).toMatchObject({ entries: 6, skipped: 0, workersCreated: 2, fileNumbersSet: 2, worksCreated: 1, totalCents: 200_554_00, conflicts: [] });
+    expect(await Worker.findById(longName._id).lean()).toMatchObject({ fileNumber: 321 });
     expect(await Worker.findById(known._id).lean()).toMatchObject({ fileNumber: 151, position: "SILLETERO (M.O) ASISTENTE", workType: "M.O Altura" });
     expect(await Worker.findOne({ fileNumber: 900 }).lean()).toMatchObject({ lastName: "NUEVO", firstName: "APELLIDO PEDRO", workType: "Oficial" });
     expect(await Work.findOne({ code: "V1397 AYACUCHO SHELL" }).lean()).toMatchObject({ name: "V1397 AYACUCHO SHELL", status: "en_curso" });
 
     // La misma planilla otra vez: no duplica.
-    expect((await previewPayroll(parsed)).alreadyLoaded).toBe(4);
+    expect((await previewPayroll(parsed)).alreadyLoaded).toBe(6);
     const again = await importPayroll(parsed, { UNIDAD: String(existing._id), "V1397 AYACUCHO SHELL": String((await Work.findOne({ code: "V1397 AYACUCHO SHELL" }).lean() as { _id: unknown })._id) }, session);
-    expect(again).toMatchObject({ entries: 0, skipped: 4 });
+    expect(again).toMatchObject({ entries: 0, skipped: 6 });
 
     // La liquidación del sistema da lo mismo que la planilla.
     const settlement = await call(await payrollRoute.GET(new Request("http://test/api/payroll?from=2026-09-01&to=2026-09-09")));
-    const imported = settlement.body.rows.filter((row: { fileNumber: number }) => row.fileNumber === 151 || row.fileNumber === 900);
-    expect(imported.reduce((total: number, row: { totalCents: number }) => total + row.totalCents, 0)).toBe(187_858_00);
+    const imported = settlement.body.rows.filter((row: { fileNumber: number }) => [151, 900, 321, 322].includes(row.fileNumber));
+    expect(imported.reduce((total: number, row: { totalCents: number }) => total + row.totalCents, 0)).toBe(200_554_00);
     expect(imported.find((row: { fileNumber: number }) => row.fileNumber === 151)).toMatchObject({ hours: 20, totalCents: 133_900_00, lines: [{ workCode: "OB-UNI", workType: "M.O Altura", quantity: 10 }, { workType: "M.O Altura" }, { workType: "PLUS VIAJE AYUD 40%", unit: "unidad" }] });
   });
 });

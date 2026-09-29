@@ -2,7 +2,6 @@ import type { Types } from "mongoose";
 import { Client, Work, WorkType, Worker, composeWorkerName } from "./models";
 import { HttpError } from "./api";
 import { guessUnit } from "./work-type-labels";
-import { nextFileNumber } from "./worker-files";
 import type { Session } from "./auth";
 
 /*
@@ -142,8 +141,17 @@ async function context(parsed: ParsedPayroll) {
     Worker.find().select("name firstName lastName fileNumber fileHistory position workType active dni phone category").lean() as Promise<WorkerLean[]>,
     WorkType.find().lean() as Promise<Array<{ _id: Id; name: string; rateCents?: number }>>,
   ]);
-  const findWorker = (row: PayrollRowInput) => (row.fileNumber ? workers.find(worker => worker.fileNumber === row.fileNumber) : undefined)
-    || workers.find(worker => workerKeys(worker).includes(nameKey(row.fullName)));
+  // Por legajo, por nombre exacto o, si no, por nombre incompleto ("IBARRA DANIEL" es "IBARRA, DANIEL OSCAR")
+  // siempre que haya una sola persona posible: con dos candidatos no se adivina.
+  const findWorker = (row: PayrollRowInput) => {
+    const byNumber = row.fileNumber ? workers.find(worker => worker.fileNumber === row.fileNumber) : undefined;
+    if (byNumber) return byNumber;
+    const key = nameKey(row.fullName);
+    const exact = workers.find(worker => workerKeys(worker).includes(key));
+    if (exact) return exact;
+    const partial = workers.filter(worker => workerKeys(worker).some(candidate => candidate && key.length >= 8 && (candidate.startsWith(key) || key.startsWith(candidate))));
+    return partial.length === 1 ? partial[0] : undefined;
+  };
   return { works, workers, types, findWorker, keys: occurrenceKeys(parsed.rows) };
 }
 
@@ -237,29 +245,47 @@ export async function importPayroll(parsed: ParsedPayroll, sites: Record<string,
   }
 
   // 2. Personas: completa legajo, puesto y tipo habitual; da de alta a quien falte.
-  const workerFor = new Map<string, WorkerLean>();
-  const usedNumbers = new Set(ctx.workers.flatMap(worker => [worker.fileNumber, ...(worker.fileHistory || []).map(period => period.fileNumber)]).filter(Boolean) as number[]);
+  // Los legajos de la planilla son los oficiales: si alguien tiene otro (el que
+  // se le puso solo al darlo de alta), se le corrige al de la planilla. Primero
+  // se liberan los que se van a reemplazar, así el orden de las filas no importa.
   const byPerson = new Map<string, PayrollRowInput[]>();
   for (const row of parsed.rows) { const key = row.fileNumber ? `l${row.fileNumber}` : nameKey(row.fullName); byPerson.set(key, [...(byPerson.get(key) || []), row]); }
-  for (const [key, rows] of byPerson) {
-    const first = rows[0];
+  const people = [...byPerson].map(([key, rows]) => ({ key, rows, first: rows[0], worker: ctx.findWorker(rows[0]) }));
+  const renumbered = new Set(people.filter(person => person.worker && person.first.fileNumber && person.worker.fileNumber !== person.first.fileNumber).map(person => String(person.worker!._id)));
+  const usedNumbers = new Set(ctx.workers.flatMap(worker => [renumbered.has(String(worker._id)) ? undefined : worker.fileNumber, ...(worker.fileHistory || []).map(period => period.fileNumber)]).filter(Boolean) as number[]);
+  const wanted = new Set(people.map(person => person.first.fileNumber).filter(Boolean) as number[]);
+  const nextFree = () => { let number = Math.max(0, ...usedNumbers, ...wanted) + 1; while (usedNumbers.has(number)) number++; return number; };
+  // Primero los que reciben su número de la planilla; después, quien no pudo.
+  const free = (person: (typeof people)[number]) => Number(Boolean(person.first.fileNumber && !usedNumbers.has(person.first.fileNumber)));
+  people.sort((a, b) => free(b) - free(a));
+
+  const workerFor = new Map<string, WorkerLean>();
+  for (const { key, rows, first, worker: found } of people) {
     const counts = new Map<string, number>();
     for (const row of rows) if (!/plus/i.test(row.workType)) counts.set(row.workType, (counts.get(row.workType) || 0) + row.quantity);
     const habitual = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || first.workType;
-    let worker = ctx.findWorker(first);
+    const desired = first.fileNumber && !usedNumbers.has(first.fileNumber) ? first.fileNumber : null;
+    let worker = found;
     if (!worker) {
       const [lastName, ...rest] = first.fullName.trim().split(/\s+/);
-      const number = first.fileNumber && !usedNumbers.has(first.fileNumber) ? first.fileNumber : await nextFileNumber();
+      if (first.fileNumber && !desired) summary.conflicts.push(`El legajo ${first.fileNumber} de ${first.fullName} ya es de otra persona: se le dio otro número`);
+      const number = desired ?? nextFree();
       usedNumbers.add(number);
       const created = await Worker.create({ lastName, firstName: rest.join(" ") || "-", name: composeWorkerName({ lastName, firstName: rest.join(" ") || "-" }), fileNumber: number, activeSince: period, position: first.position, workType: habitual, rateMode: "hora", active: true });
       worker = created.toObject() as WorkerLean; summary.workersCreated++;
       ctx.workers.push(worker);
     } else {
       const set: Record<string, unknown> = {};
-      if (first.fileNumber && !worker.fileNumber) {
-        if (usedNumbers.has(first.fileNumber)) summary.conflicts.push(`El legajo ${first.fileNumber} de ${first.fullName} ya lo tiene otra persona`);
-        else { set.fileNumber = first.fileNumber; usedNumbers.add(first.fileNumber); summary.fileNumbersSet++; }
-      } else if (first.fileNumber && worker.fileNumber !== first.fileNumber) summary.conflicts.push(`${first.fullName}: la planilla dice legajo ${first.fileNumber} y el sistema tiene ${worker.fileNumber}`);
+      if (first.fileNumber && worker.fileNumber !== first.fileNumber) {
+        if (desired) { set.fileNumber = desired; usedNumbers.add(desired); summary.fileNumbersSet++; }
+        else {
+          // No se pudo: conserva el que tenía si sigue libre, o recibe uno nuevo.
+          const keep = worker.fileNumber && !usedNumbers.has(worker.fileNumber) ? worker.fileNumber : nextFree();
+          usedNumbers.add(keep);
+          if (keep !== worker.fileNumber) set.fileNumber = keep;
+          summary.conflicts.push(`El legajo ${first.fileNumber} de ${first.fullName} ya es de otra persona: queda con el ${keep}`);
+        }
+      }
       if (!worker.position && first.position) set.position = first.position;
       if (!worker.workType) set.workType = habitual;
       if (Object.keys(set).length) { await Worker.updateOne({ _id: worker._id }, { $set: set }); Object.assign(worker, set); }
