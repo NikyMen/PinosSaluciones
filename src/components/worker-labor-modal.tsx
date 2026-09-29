@@ -6,6 +6,7 @@ import { BriefcaseBusiness, Pencil, Timer, Trash2, X } from "lucide-react";
 import { DateInput } from "@/components/fields";
 import { LaborEditor, type AssignedWorker, type LaborDraft, type LaborEntry } from "@/components/work-labor";
 import { date, isoPlusDays, money, titleCase, todayIso } from "@/lib/format";
+import type { WorkTypeRow } from "@/lib/work-type-labels";
 
 type Worker = { _id: string; label: string };
 type WorkerWork = {
@@ -23,6 +24,19 @@ export function WorkerLaborModal({ worker, canEdit, onClose }: { worker: Worker;
   const [formKey, setFormKey] = useState(0);
   const [from, setFrom] = useState(() => isoPlusDays(-15));
   const [to, setTo] = useState(() => todayIso());
+  // Las tarifas y el tipo de trabajo habitual de esta persona, para cargarle horas por tipo.
+  const [workTypes, setWorkTypes] = useState<WorkTypeRow[]>([]);
+  const [habitual, setHabitual] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    void Promise.all([
+      fetch("/api/work-types").then(response => response.ok ? response.json() : { items: [] }),
+      fetch(`/api/records/workers/${worker._id}`).then(response => response.ok ? response.json() : {}),
+    ]).then(([types, record]: [{ items?: WorkTypeRow[] }, { workType?: string }]) => {
+      setWorkTypes((types.items || []).filter(type => type.active));
+      setHabitual({ [worker._id]: String(record.workType || "") });
+    }).catch(() => setWorkTypes([]));
+  }, [worker._id]);
 
   const load = useCallback(async (preferredWorkId?: string) => {
     setLoading(true);
@@ -112,7 +126,7 @@ export function WorkerLaborModal({ worker, canEdit, onClose }: { worker: Worker;
           {work && <>
             <div className="worker-labor-rate"><BriefcaseBusiness size={16} /><span>{work.code} · {work.name}</span><b>{work.assigned.rateMode === "hora" ? `${money(work.assigned.hourlyRateCents || 0)} por hora` : `${money(work.assigned.dailyRateCents || 0)} por jornada`}</b></div>
             {canEdit && <section className="worker-labor-section"><div><p className="eyebrow">CARGAR HORARIO</p><h3>Nuevo parte diario</h3></div>
-              <LaborEditor key={`worker-labor-${formKey}-${work._id}`} assigned={[work.assigned]} busy={busy} submitLabel="Cargar trabajo" onSubmit={addHours} />
+              <LaborEditor key={`worker-labor-${formKey}-${work._id}-${workTypes.length}`} assigned={[work.assigned]} workTypes={workTypes} habitual={habitual} busy={busy} submitLabel="Cargar trabajo" onSubmit={addHours} />
             </section>}
 
             <section className="worker-labor-section"><div><p className="eyebrow">LIQUIDACIÓN</p><h3>Total del período</h3></div>
@@ -124,7 +138,7 @@ export function WorkerLaborModal({ worker, canEdit, onClose }: { worker: Worker;
               <div className="worker-labor-totals"><div><span>Jornadas</span><b>{qty(totals.days)}</b></div><div><span>Horas</span><b>{qty(totals.hours)} h</b></div><div className="amount"><span>A liquidar</span><b>{money(totals.cents)}</b></div></div>
 
               {entries.length ? <div className="detail-list labor-detail">{entries.map(entry => editing === entry._id
-                ? <LaborEditor key={entry._id} assigned={[work.assigned]} busy={busy} submitLabel="Guardar cambios" entry={entry} onCancel={() => setEditing("")} onSubmit={draft => editEntry(entry, draft)} />
+                ? <LaborEditor key={entry._id} assigned={[work.assigned]} workTypes={workTypes} habitual={habitual} busy={busy} submitLabel="Guardar cambios" entry={entry} onCancel={() => setEditing("")} onSubmit={draft => editEntry(entry, draft)} />
                 : <div className="detail-row" key={entry._id}><b>{date(entry.date)}</b><span>{describeEntry(entry)}{entry.note ? ` · ${entry.note}` : ""}</span><strong>{money(entry.costCents)}</strong>{canEdit && <button className="check-delete" onClick={() => setEditing(entry._id)} aria-label={`Editar parte del ${date(entry.date)}`}><Pencil size={14} /></button>}{canEdit && <button className="check-delete" onClick={() => removeEntry(entry)} aria-label={`Borrar parte del ${date(entry.date)}`}><Trash2 size={14} /></button>}</div>)}</div>
                 : <div className="empty-state compact"><p>No hay horas cargadas entre el {date(from)} y el {date(to)}.</p></div>}
             </section>

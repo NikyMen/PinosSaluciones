@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 
+/** Un error que se le puede mostrar a la persona tal cual, con su código HTTP. */
+export class HttpError extends Error {
+  constructor(message: string, readonly status = 400) { super(message); }
+}
+
 export function apiError(error: unknown) {
+  if (error instanceof HttpError) return NextResponse.json({ error: error.message }, { status: error.status });
   const message = error instanceof Error ? error.message : "Error interno";
   if (message === "UNAUTHORIZED") return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
   if (message === "FORBIDDEN") return NextResponse.json({ error: "Sin permisos" }, { status: 403 });

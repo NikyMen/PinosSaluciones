@@ -27,15 +27,16 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const workId = url.searchParams.get("obra") || "";
     const certificateNumber = url.searchParams.get("certificado") || "";
-    const draft: Record<string, unknown> = { number: await nextInvoiceNumber() };
+    const draft: Record<string, unknown> = { number: await nextInvoiceNumber(), vatPct: 21 };
     if (workId && certificateNumber && isValidObjectId(workId)) {
-      const work = await Work.findById(workId, { code: 1, name: 1, clientId: 1, certificates: 1 }).lean<{ code: string; name: string; clientId?: unknown; certificates?: Array<{ number?: string; period?: string; percentage?: number; amountCents?: number }> }>();
+      const work = await Work.findById(workId, { code: 1, name: 1, clientId: 1, quoteId: 1, certificates: 1 }).lean<{ code: string; name: string; clientId?: unknown; quoteId?: unknown; certificates?: Array<{ number?: string; period?: string; percentage?: number; amountCents?: number }> }>();
       const certificate = work?.certificates?.find(item => String(item.number) === certificateNumber);
       if (work && certificate) Object.assign(draft, {
         clientId: work.clientId ? String(work.clientId) : "",
-        workId,
+        workId, quoteId: work.quoteId ? String(work.quoteId) : "",
         certificateNumber,
-        amountCents: Number(certificate.amountCents || 0),
+        // El certificado va sin IVA: es el neto de la factura.
+        netCents: Number(certificate.amountCents || 0),
         issueDate: todayIso(),
         description: `Certificado ${certificateNumber}${certificate.period ? ` — ${certificate.period}` : ""} · Obra ${work.code} — ${work.name} · Avance ${Number(certificate.percentage || 0)}%`,
       });

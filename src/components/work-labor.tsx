@@ -8,6 +8,7 @@ import { computeLabor, dailyRateCents, hourlyRateCents, hoursPerDay, rateMode, t
 import { buildLaborPdf } from "@/lib/labor-pdf";
 import { readPdfLogo } from "@/lib/pdf-brand";
 import { QuickCreateModal, type RecordItem } from "@/components/record-form";
+import { quantityLabel, unitLabels, type WorkTypeRow } from "@/lib/work-type-labels";
 
 export type AssignedWorker = {
   workerId: string; name: string; dni?: string; phone?: string; category?: string;
@@ -17,6 +18,7 @@ export type AssignedWorker = {
 export type LaborEntry = {
   _id: string; workerId?: string; person: string; date: string; mode?: string; hours: number; days?: number;
   dailyRateCents?: number; hourlyRateCents?: number; costCents: number; manualCost?: boolean;
+  workTypeId?: string; workType?: string; unit?: string;
   note?: string; loadedByName?: string;
 };
 
@@ -30,6 +32,9 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
 }) {
   const workId = work._id;
   const [catalog, setCatalog] = useState<Option[]>([]);
+  // Las tarifas por tipo de trabajo, y el tipo habitual de cada persona del legajo.
+  const [workTypes, setWorkTypes] = useState<WorkTypeRow[]>([]);
+  const [habitual, setHabitual] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -46,10 +51,16 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
   useEffect(() => {
     void fetch("/api/records/workers?limit=100")
       .then(response => response.ok ? response.json() : { items: [] })
-      .then((result: { items?: Array<Record<string, unknown>> }) => setCatalog((result.items || []).map(row => ({
+      // Los dados de baja no se asignan a obras.
+      .then((result: { items?: Array<Record<string, unknown>> }) => { setHabitual(Object.fromEntries((result.items || []).map(row => [String(row._id), String(row.workType || "")]))); return result; })
+      .then((result: { items?: Array<Record<string, unknown>> }) => setCatalog((result.items || []).filter(row => row.active !== false).map(row => ({
         value: String(row._id), label: String(row.name || `${row.lastName}, ${row.firstName}`),
-        hint: `DNI ${row.dni} · ${titleCase(String(row.category || ""))}`,
+        hint: [row.fileNumber && `Legajo ${row.fileNumber}`, row.dni && `DNI ${row.dni}`, row.workType || titleCase(String(row.category || ""))].filter(Boolean).join(" · "),
       })))).catch(() => setError("No se pudo cargar el legajo del personal"));
+    void fetch("/api/work-types")
+      .then(response => response.ok ? response.json() : { items: [] })
+      .then((result: { items?: WorkTypeRow[] }) => setWorkTypes((result.items || []).filter(type => type.active)))
+      .catch(() => setWorkTypes([]));
   }, []);
 
   const assignedIds = new Set(assigned.map(worker => String(worker.workerId)));
@@ -242,7 +253,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
 
     <section className="panel work-detail-section">
       <div className="panel-head"><div className="section-title"><Timer /><div><h2>Partes diarios</h2><p>Trabajo por persona y por día, por jornada o por hora. El importe se calcula solo y se puede pisar a mano.</p></div></div></div>
-      {canEdit && <LaborEditor key={`labor-${formKey}`} assigned={assigned} busy={busy} submitLabel="Cargar trabajo"
+      {canEdit && <LaborEditor key={`labor-${formKey}-${workTypes.length}`} assigned={assigned} workTypes={workTypes} habitual={habitual} busy={busy} submitLabel="Cargar trabajo"
         onSubmit={draft => { void addHours(draft); }} />}
       {!assigned.length && <p className="task-history-state">Asigná personal para poder cargarle horas.</p>}
     </section>
@@ -275,7 +286,7 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
       {filtered.length > 0 && <div className="detail-list labor-detail">
         <p className="eyebrow">DETALLE DEL PERÍODO</p>
         {filtered.map(entry => editing === entry._id
-          ? <LaborEditor key={entry._id} assigned={assigned} busy={busy} submitLabel="Guardar cambios" entry={entry}
+          ? <LaborEditor key={entry._id} assigned={assigned} workTypes={workTypes} habitual={habitual} busy={busy} submitLabel="Guardar cambios" entry={entry}
               onCancel={() => setEditing("")} onSubmit={draft => { void editEntry(entry, draft); }} />
           : <div className="detail-row" key={entry._id}>
             <b>{entry.person}</b>
@@ -296,15 +307,16 @@ function initials(name: string) {
 }
 
 
-/** "1,5 jornadas (12 h)" o "6 h", segun como se cargo el parte. */
+/** "1,5 jornadas (12 h)", "6 h" o "8 h · Medio Oficial", segun como se cargo el parte. */
 function describeEntry(entry: LaborEntry) {
+  if (entry.workType) return `${quantityLabel(Number(entry.hours) || 0, entry.unit)} · ${entry.workType}`;
   if (entry.mode !== "jornada") return `${qty(entry.hours)} h`;
   const days = Number(entry.days) || 0;
   return `${qty(days)} ${days === 1 ? "jornada" : "jornadas"} (${qty(entry.hours)} h)`;
 }
 
 /** Lo que se manda al guardar un parte, calculado o pisado a mano. */
-export type LaborDraft = { workerId: string; date: string; mode: RateMode; quantity: number; rateCents: number; costCents: number; note: string };
+export type LaborDraft = { workerId: string; date: string; mode: RateMode; quantity: number; rateCents: number; costCents: number; note: string; workTypeId: string };
 
 /**
  * Carga y correccion de un parte diario.
@@ -313,18 +325,25 @@ export type LaborDraft = { workerId: string; date: string; mode: RateMode; quant
  * escribe otro importe final, ese manda y queda marcado; volver a tocar la
  * cantidad o el valor lo devuelve al calculado.
  */
-export function LaborEditor({ assigned, entry, busy, submitLabel, onSubmit, onCancel }: {
-  assigned: AssignedWorker[]; entry?: LaborEntry; busy: boolean; submitLabel: string;
+export function LaborEditor({ assigned, workTypes = [], habitual = {}, entry, busy, submitLabel, onSubmit, onCancel }: {
+  assigned: AssignedWorker[]; workTypes?: WorkTypeRow[]; habitual?: Record<string, string>; entry?: LaborEntry; busy: boolean; submitLabel: string;
   onSubmit: (draft: LaborDraft) => void; onCancel?: () => void;
 }) {
   const initialWorker = entry ? assigned.find(row => String(row.workerId) === String(entry.workerId)) : assigned.length === 1 ? assigned[0] : undefined;
+  // El tipo de trabajo habitual de la persona viene elegido; con tipo, se cobra su tarifa por cantidad.
+  const habitualType = (id?: string) => workTypes.find(type => type.name === habitual[String(id || "")]);
+  const initialType = entry ? workTypes.find(type => type._id === String(entry.workTypeId || "")) : habitualType(initialWorker?.workerId);
+  const [typeId, setTypeId] = useState(() => initialType?._id || "");
   const [workerId, setWorkerId] = useState(() => String(entry?.workerId || initialWorker?.workerId || ""));
   const [when, setWhen] = useState(() => String(entry?.date || todayIso()).slice(0, 10));
-  const [mode, setMode] = useState<RateMode>(() => (entry?.mode === "jornada" ? "jornada" : entry ? "hora" : rateMode(initialWorker || {})));
+  const [mode, setMode] = useState<RateMode>(() => (entry?.mode === "jornada" ? "jornada" : entry || initialType ? "hora" : rateMode(initialWorker || {})));
   const [quantity, setQuantity] = useState(() => entry ? String(entry.mode === "jornada" ? entry.days ?? 0 : entry.hours) : "");
   const [rateCents, setRateCents] = useState(() => entry
     ? (entry.mode === "jornada" ? Number(entry.dailyRateCents) || 0 : Number(entry.hourlyRateCents) || 0)
-    : initialWorker ? (rateMode(initialWorker) === "jornada" ? dailyRateCents(initialWorker) : hourlyRateCents(initialWorker)) : 0);
+    : initialType ? initialType.rateCents
+      : initialWorker ? (rateMode(initialWorker) === "jornada" ? dailyRateCents(initialWorker) : hourlyRateCents(initialWorker)) : 0);
+  const type = workTypes.find(candidate => candidate._id === typeId);
+  const unit = type ? unitLabels[type.unit] || unitLabels.hora : null;
   const [override, setOverride] = useState<number | null>(() => entry?.manualCost ? Number(entry.costCents) || 0 : null);
   const [note, setNote] = useState(() => String(entry?.note || ""));
 
@@ -339,6 +358,14 @@ export function LaborEditor({ assigned, entry, busy, submitLabel, onSubmit, onCa
     setOverride(null);
   }
 
+  /** Con tipo de trabajo: por cantidad a su tarifa. Sin tipo: el jornal o el valor hora de la persona. */
+  function applyType(nextTypeId: string, next: AssignedWorker | undefined) {
+    const chosen = workTypes.find(candidate => candidate._id === nextTypeId);
+    setTypeId(nextTypeId);
+    if (chosen) { setMode("hora"); setRateCents(chosen.rateCents); setOverride(null); }
+    else { const nextMode = rateMode(next || {}); setMode(nextMode); applyRatesOf(next, nextMode); }
+  }
+
   const options = assigned.map(row => ({
     value: String(row.workerId), label: row.name,
     hint: rateMode(row) === "jornada" ? `Jornal ${money(dailyRateCents(row))}` : `Hora ${money(hourlyRateCents(row))}`,
@@ -346,32 +373,38 @@ export function LaborEditor({ assigned, entry, busy, submitLabel, onSubmit, onCa
 
   return <form className="mini-form labor-editor" onSubmit={event => {
     event.preventDefault();
-    onSubmit({ workerId, date: when, mode, quantity: Number(quantity) || 0, rateCents, costCents: totalCents, note });
+    onSubmit({ workerId, date: when, mode, quantity: Number(quantity) || 0, rateCents, costCents: totalCents, note, workTypeId: typeId });
   }}>
     {entry
       ? <span className="labor-editor-person">{entry.person}</span>
       : <SearchSelect name="workerId" options={options} placeholder="Buscar en el legajo" value={workerId}
           onChange={value => {
             const next = assigned.find(row => String(row.workerId) === value);
-            const nextMode = rateMode(next || {});
-            setWorkerId(value); setMode(nextMode); applyRatesOf(next, nextMode);
+            setWorkerId(value); applyType(habitualType(value)?._id || "", next);
           }} />}
 
-    <label className="labor-field"><small>Como se cobra</small>
+    {workTypes.length > 0 && <label className="labor-field"><small>Tipo de trabajo</small>
+      <select value={typeId} onChange={event => applyType(event.target.value, worker)}>
+        <option value="">Sin tipo (jornal u hora propia)</option>
+        {workTypes.map(option => <option key={option._id} value={option._id}>{option.name} · {money(option.rateCents)} {unitLabels[option.unit]?.per || ""}</option>)}
+      </select>
+    </label>}
+
+    {!type && <label className="labor-field"><small>Como se cobra</small>
       <select value={mode} onChange={event => { const next = event.target.value as RateMode; setMode(next); applyRatesOf(worker, next); }}>
         <option value="jornada">Por jornada</option>
         <option value="hora">Por hora</option>
       </select>
-    </label>
+    </label>}
 
     <DateInput name="date" defaultValue={when} required onValueChange={value => value && setWhen(value)} />
 
-    <label className="labor-field"><small>{mode === "jornada" ? "Jornadas" : "Horas"}</small>
-      <input type="number" min="0" max={mode === "jornada" ? 31 : 24} step="0.5" required placeholder={mode === "jornada" ? "1" : "8"}
+    <label className="labor-field"><small>{type ? `Cantidad (${unit?.short})` : mode === "jornada" ? "Jornadas" : "Horas"}</small>
+      <input type="number" min="0" max={type ? (type.unit === "hora" ? 24 : undefined) : mode === "jornada" ? 31 : 24} step={type && type.unit !== "hora" ? "0.01" : "0.5"} required placeholder={mode === "jornada" ? "1" : "8"}
         value={quantity} onChange={event => { setQuantity(event.target.value); setOverride(null); }} />
     </label>
 
-    <label className="labor-field"><small>{mode === "jornada" ? "Valor del jornal" : "Valor hora"}</small>
+    <label className="labor-field"><small>{type ? `Tarifa ${unit?.per}` : mode === "jornada" ? "Valor del jornal" : "Valor hora"}</small>
       <MoneyInput name="rateCents" key={`rate-${workerId}-${mode}-${rateCents}`} defaultValue={rateCents / 100}
         onValueChange={value => { setRateCents(Math.round(value * 100)); setOverride(null); }} />
     </label>
@@ -384,7 +417,7 @@ export function LaborEditor({ assigned, entry, busy, submitLabel, onSubmit, onCa
     <input placeholder="Tarea realizada (opcional)" value={note} onChange={event => setNote(event.target.value)} />
 
     <p className="labor-hint">
-      {mode === "jornada" ? `${qty(computed.hours)} h en total (jornada de ${qty(perDay)} h)` : `${qty(computed.days)} jornadas`}
+      {type ? `${type.name}: ${money(type.rateCents)} ${unit?.per}` : mode === "jornada" ? `${qty(computed.hours)} h en total (jornada de ${qty(perDay)} h)` : `${qty(computed.days)} jornadas`}
       {override !== null && override !== computed.costCents ? ` · calculado ${money(computed.costCents)}, se paga el importe puesto a mano` : ""}
     </p>
 

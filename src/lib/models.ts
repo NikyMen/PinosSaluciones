@@ -190,6 +190,11 @@ const WorkSchema = new Schema({
     dailyRateCents: Number, hourlyRateCents: Number, costCents: Number,
     // Si alguien pisa el importe a mano, queda marcado y no se recalcula solo.
     manualCost: { type: Boolean, default: false },
+    // El tipo de trabajo (Medio Oficial, PLUS VIAJE…) fija la tarifa: la misma
+    // persona puede tener el mismo día horas de un tipo y un plus de otro.
+    workTypeId: { type: Schema.Types.ObjectId, ref: "WorkType" }, workType: String, unit: String,
+    // Lo importado de la planilla de la quincena: la misma fila no entra dos veces.
+    importKey: String,
     note: String, loadedByName: String, createdAt: { type: Date, default: Date.now },
   }],
 }, options);
@@ -270,7 +275,22 @@ const WorkInspectionSchema = new Schema({
 WorkInspectionSchema.index({ workId: 1, rubro: 1, dayKey: 1 }, { unique: true });
 WorkInspectionSchema.index({ workId: 1, status: 1, dayKey: -1 });
 
+/*
+ * Tipos de trabajo con su tarifa (la tabla "CATEGORIA / HORA" de la planilla
+ * de la quincena). Un cambio de tarifa queda en el historial y no toca los
+ * partes ya cargados, que congelan el valor.
+ */
+const WorkTypeSchema = new Schema({
+  name: { type: String, required: true, trim: true, unique: true },
+  unit: { type: String, enum: ["hora", "unidad", "m2", "ml"], default: "hora" },
+  rateCents: { type: Number, min: 0, default: 0 },
+  active: { type: Boolean, default: true },
+  history: [{ _id: false, rateCents: Number, from: Date, userName: String }],
+}, options);
+
 type WorkerDoc = {
+  fileNumber?: number; position?: string; workType?: string; activeSince?: Date; leftAt?: Date; leaveReason?: string;
+  fileHistory?: Array<{ fileNumber?: number; from?: Date; to?: Date; reason?: string }>;
   name?: string; firstName: string; lastName: string; dni: string; phone?: string;
   category?: string; rateMode?: "jornada" | "hora"; dailyRateCents?: number; hoursPerDay?: number;
   hourlyRateCents?: number; active?: boolean; notes?: string;
@@ -282,6 +302,15 @@ const WorkerSchema = new Schema<WorkerDoc>({
   name: { type: String, trim: true },
   firstName: { type: String, required: true, trim: true },
   lastName: { type: String, required: true, trim: true },
+  // Número de legajo. Si la persona se va y vuelve, recibe uno nuevo: los
+  // períodos anteriores, con su legajo de entonces, quedan en fileHistory.
+  fileNumber: { type: Number, index: true },
+  activeSince: Date, leftAt: Date, leaveReason: String,
+  fileHistory: [{ _id: false, fileNumber: Number, from: Date, to: Date, reason: String }],
+  // El puesto (SILLETERO (M.O) ASISTENTE, PINTOR OFICIAL…) y el tipo de trabajo
+  // que hace habitualmente, que es el que fija la tarifa (Medio Oficial, SILLETERO 1…).
+  position: { type: String, trim: true },
+  workType: { type: String, trim: true },
   dni: { type: String, trim: true },
   phone: { type: String, trim: true },
   category: { type: String, enum: ["capataz", "oficial", "medio_oficial", "ayudante", "especialista"], default: "oficial" },
@@ -427,18 +456,29 @@ const ExpenseSchema = new Schema({
   paidCents: money, attachment: String,
 }, options);
 
+// Las facturas se emiten en Tango y se cargan acá para seguir cada cotización
+// hasta su cobro. `number` es el comprobante completo (punto de venta y número).
+// amountCents es el total; neto e IVA se guardan aparte cuando se cargan.
 const InvoiceSchema = new Schema({
+  voucherType: { type: String, enum: ["factura_a", "factura_b", "factura_c"] },
   number: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
+  quoteId: { type: Schema.Types.ObjectId, ref: "Quote" },
   workId: { type: Schema.Types.ObjectId, ref: "Work" }, certificateNumber: String,
   description: String, issueDate: { type: Date, required: true }, dueDate: Date,
+  netCents: Number, vatPct: Number, vatCents: Number,
   amountCents: money, collectedCents: money,
   status: { type: String, enum: ["pendiente", "parcial", "cobrada", "anulada"], default: "pendiente" }, attachment: String,
 }, options);
 InvoiceSchema.index({ number: 1, clientId: 1 }, { unique: true });
 
+// Un cobro es un recibo: número propio y a qué facturas se aplica, cuánto a cada una.
+// Los cobros viejos tienen una sola factura en `invoiceId` y no tienen `allocations`.
 const CollectionSchema = new Schema({
+  number: { type: String, trim: true },
   clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true }, invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice" },
+  allocations: { type: [{ _id: false, invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", required: true }, amountCents: { type: Number, min: 0, required: true } }], default: undefined },
   date: { type: Date, required: true }, amountCents: money,
+  userName: String,
   method: { type: String, enum: ["transferencia", "efectivo", "cheque", "retencion", "otro"], required: true },
   account: String, reference: String, notes: String,
 }, options);
@@ -546,6 +586,7 @@ export const Work = mongoose.models.Work || mongoose.model("Work", WorkSchema);
 export const StockItem = mongoose.models.StockItem || mongoose.model("StockItem", StockItemSchema);
 export const WorkInspection = mongoose.models.WorkInspection || mongoose.model("WorkInspection", WorkInspectionSchema);
 export const Worker = mongoose.models.Worker || mongoose.model("Worker", WorkerSchema);
+export const WorkType = mongoose.models.WorkType || mongoose.model("WorkType", WorkTypeSchema);
 export const Supplier = mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
 export const PriceList = mongoose.models.PriceList || mongoose.model("PriceList", PriceListSchema);
 export const PriceListItem = mongoose.models.PriceListItem || mongoose.model("PriceListItem", PriceListItemSchema);
@@ -612,6 +653,20 @@ export async function nextPurchaseNumber() {
   }
   const counter = await Counter.findByIdAndUpdate("purchases", { $inc: { seq: 1 } }, { returnDocument: "after" });
   return `OC-${counter.seq}`;
+}
+
+/** Numeración correlativa de los recibos: RC-1, RC-2… Arranca después del más alto ya cargado. */
+export async function nextReceiptNumber() {
+  if (!await Counter.exists({ _id: "receipts" })) {
+    const [highest] = await Collection.aggregate([
+      { $match: { number: /^RC-\d+$/ } },
+      { $project: { seq: { $toInt: { $substr: ["$number", 3, -1] } } } },
+      { $sort: { seq: -1 } }, { $limit: 1 },
+    ]);
+    await Counter.updateOne({ _id: "receipts" }, { $setOnInsert: { seq: highest?.seq || 0 } }, { upsert: true });
+  }
+  const counter = await Counter.findByIdAndUpdate("receipts", { $inc: { seq: 1 } }, { returnDocument: "after" });
+  return `RC-${counter.seq}`;
 }
 
 export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task } as const;

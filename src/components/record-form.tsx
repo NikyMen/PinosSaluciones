@@ -95,7 +95,7 @@ export function FormField({ field, value, relationOptions, personOptions, relati
     const options = [...(field.options || [])];
     if (text && !options.includes(text)) options.push(text);
     return <label>{label}<SearchSelect name={field.key} defaultValue={text || field.defaultValue || ""} required={field.required} autoFocus={autoFocus}
-      options={options.map(option => ({ value: option, label: titleCase(option) }))} /></label>;
+      options={options.map(option => ({ value: option, label: field.optionLabels?.[option] ?? titleCase(option) }))} /></label>;
   }
   if (field.type === "user") return <label>{label}<SearchSelect name={field.key} options={personOptions} value={relationValue} onChange={onRelationChange}
     placeholder="Sin persona asignada" required={field.required} autoFocus={autoFocus} /></label>;

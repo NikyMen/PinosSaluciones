@@ -1,0 +1,96 @@
+import type { Types } from "mongoose";
+import { Client, Collection, Invoice, Quote, Work } from "./models";
+import { collectionAllocations } from "./balances";
+import { invoiceLabel } from "./invoice-labels";
+import { excludedFromTotals } from "./trash";
+
+/*
+ * El seguimiento de punta a punta: cada cotización aprobada (o con facturas)
+ * con su obra, las facturas que se le hicieron y los recibos que las cobraron.
+ * Una factura va a la cotización que tiene cargada o, si no, a la de su obra.
+ * Las facturas sin cotización se agrupan por obra (o por cliente).
+ */
+
+type Lean = Record<string, unknown> & { _id: Types.ObjectId };
+
+export type TrackingInvoice = { _id: string; label: string; issueDate: string | null; amountCents: number; collectedCents: number; status: string };
+export type TrackingReceipt = { _id: string; number: string; date: string; amountCents: number };
+export type TrackingState = "sin_facturar" | "facturado_parcial" | "por_cobrar" | "completa";
+export type TrackingRow = {
+  key: string;
+  quote: { _id: string; number: string; title: string; status: string; amountCents: number } | null;
+  client: { _id: string; name: string } | null;
+  works: Array<{ _id: string; code: string; name: string }>;
+  invoices: TrackingInvoice[];
+  receipts: TrackingReceipt[];
+  quotedCents: number; invoicedCents: number; collectedCents: number; balanceCents: number; toInvoiceCents: number;
+  state: TrackingState;
+};
+
+const iso = (value: unknown) => value ? new Date(value as Date).toISOString() : null;
+
+export async function trackingRows(): Promise<TrackingRow[]> {
+  const excluded = await excludedFromTotals();
+  const [invoices, works, collections] = await Promise.all([
+    Invoice.find({ _id: { $nin: excluded.invoices }, status: { $ne: "anulada" } }).sort({ issueDate: 1 }).lean() as Promise<Lean[]>,
+    Work.find({ _id: { $nin: excluded.works } }).select("code name clientId quoteId").lean() as Promise<Lean[]>,
+    Collection.find({}).select("number date amountCents invoiceId allocations").sort({ date: 1 }).lean() as Promise<Lean[]>,
+  ]);
+  const workById = new Map(works.map(work => [String(work._id), work]));
+  const quoteOf = (invoice: Lean) => String(invoice.quoteId || workById.get(String(invoice.workId))?.quoteId || "");
+  const invoiceQuoteIds = [...new Set(invoices.map(quoteOf).filter(Boolean))];
+  const quotes = await Quote.find({
+    _id: { $nin: excluded.quotes }, clientId: { $nin: excluded.clients },
+    $or: [{ status: { $in: ["aprobada", "convertida"] } }, { _id: { $in: invoiceQuoteIds } }],
+  }).select("number title status amountCents clientId workId").sort({ updatedAt: -1 }).lean() as Lean[];
+  const clients = await Client.find({ _id: { $in: [...quotes.map(quote => quote.clientId), ...invoices.map(invoice => invoice.clientId)] } }).select("name").lean() as Lean[];
+  const clientName = new Map(clients.map(client => [String(client._id), String(client.name || "")]));
+
+  // Qué recibos cobraron cada factura, y cuánto.
+  const receiptsByInvoice = new Map<string, TrackingReceipt[]>();
+  for (const collection of collections) {
+    for (const allocation of collectionAllocations(collection)) {
+      const list = receiptsByInvoice.get(String(allocation.invoiceId)) || [];
+      list.push({ _id: String(collection._id), number: String(collection.number || "Cobro"), date: iso(collection.date) || "", amountCents: allocation.amountCents });
+      receiptsByInvoice.set(String(allocation.invoiceId), list);
+    }
+  }
+
+  const rows = new Map<string, TrackingRow>();
+  const client = (id: unknown) => id ? { _id: String(id), name: clientName.get(String(id)) || "Cliente" } : null;
+  const workRef = (work: Lean) => ({ _id: String(work._id), code: String(work.code || ""), name: String(work.name || "") });
+  for (const quote of quotes) {
+    const quoteWorks = works.filter(work => String(work.quoteId || "") === String(quote._id) || String(quote.workId || "") === String(work._id));
+    rows.set(`q:${quote._id}`, {
+      key: `q:${quote._id}`,
+      quote: { _id: String(quote._id), number: String(quote.number || ""), title: String(quote.title || ""), status: String(quote.status || ""), amountCents: Number(quote.amountCents || 0) },
+      client: client(quote.clientId), works: quoteWorks.map(workRef), invoices: [], receipts: [],
+      quotedCents: Number(quote.amountCents || 0), invoicedCents: 0, collectedCents: 0, balanceCents: 0, toInvoiceCents: 0, state: "sin_facturar",
+    });
+  }
+  for (const invoice of invoices) {
+    const quoteId = quoteOf(invoice);
+    const work = workById.get(String(invoice.workId || ""));
+    const key = quoteId && rows.has(`q:${quoteId}`) ? `q:${quoteId}` : work ? `w:${work._id}` : `c:${invoice.clientId}`;
+    let row = rows.get(key);
+    if (!row) {
+      row = { key, quote: null, client: client(invoice.clientId), works: work ? [workRef(work)] : [], invoices: [], receipts: [], quotedCents: 0, invoicedCents: 0, collectedCents: 0, balanceCents: 0, toInvoiceCents: 0, state: "sin_facturar" };
+      rows.set(key, row);
+    }
+    if (work && !row.works.some(existing => existing._id === String(work._id))) row.works.push(workRef(work));
+    row.invoices.push({ _id: String(invoice._id), label: invoiceLabel(invoice), issueDate: iso(invoice.issueDate), amountCents: Number(invoice.amountCents || 0), collectedCents: Number(invoice.collectedCents || 0), status: String(invoice.status || "") });
+    for (const receipt of receiptsByInvoice.get(String(invoice._id)) || []) {
+      const same = row.receipts.find(existing => existing._id === receipt._id);
+      if (same) same.amountCents += receipt.amountCents; else row.receipts.push({ ...receipt });
+    }
+  }
+
+  return [...rows.values()].map(row => {
+    const invoicedCents = row.invoices.reduce((total, invoice) => total + invoice.amountCents, 0);
+    const collectedCents = row.invoices.reduce((total, invoice) => total + Math.min(invoice.collectedCents, invoice.amountCents), 0);
+    const balanceCents = Math.max(0, invoicedCents - collectedCents);
+    const toInvoiceCents = row.quote ? Math.max(0, row.quotedCents - invoicedCents) : 0;
+    const state: TrackingState = balanceCents > 0 ? "por_cobrar" : !invoicedCents ? "sin_facturar" : toInvoiceCents > 0 ? "facturado_parcial" : "completa";
+    return { ...row, invoicedCents, collectedCents, balanceCents, toInvoiceCents, state };
+  });
+}

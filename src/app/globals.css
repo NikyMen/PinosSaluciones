@@ -1758,3 +1758,75 @@ tbody tr.task-row.pendiente:hover { background: #e9ecf0; }
 /* Precio con la fecha de donde sale, en una celda */
 .cell-stack { display: inline-flex; flex-direction: column; gap: 2px; }
 .cell-stack small { color: var(--muted); font-size: 11px; font-weight: 600; }
+
+/* Recibo: facturas del cliente y cuánto se cobra de cada una */
+.receipt-modal { width: min(980px, 100%); }
+.receipt-table-head { margin: 18px 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.receipt-table-head span { display: inline-flex; gap: 14px; }
+.receipt-table-head .link-btn { font-size: .78rem; }
+.receipt-table td { vertical-align: middle; }
+.receipt-apply { display: flex; align-items: center; gap: 8px; min-width: 170px; }
+.receipt-apply .money-input { flex: 1; }
+.receipt-table tr.row-alert td { background: #fff4f4; }
+.receipt-on-account { margin-top: 16px; display: grid; gap: 10px; max-width: 360px; }
+.receipt-on-account p { margin: 0; color: var(--muted); }
+.receipt-notes { margin-top: 16px; display: grid; gap: 6px; }
+
+/* Seguimiento: cotización → facturas → recibos */
+.tracking-kpis { margin-bottom: 18px; }
+.tracking-quote { display: grid; gap: 2px; color: inherit; text-decoration: none; }
+.tracking-quote small { color: var(--muted); font-size: 11px; }
+.tracking-quote:hover b { text-decoration: underline; }
+.tracking-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.tracking-chip { display: inline-flex; padding: 3px 8px; border-radius: 999px; background: #eef2f7; color: var(--brand-navy-deep); font-size: 11px; font-weight: 700; white-space: nowrap; text-decoration: none; margin: 1px 2px 1px 0; }
+.tracking-chip.cobrada { background: #e6f6ec; color: #1d7a45; }
+.tracking-chip.parcial { background: #fff5e0; color: #946200; }
+.tracking-chip.receipt { background: #e8f0fb; color: #1f4f9a; }
+.tracking-sub { display: block; color: var(--muted); font-size: 11px; font-weight: 600; }
+.badge.tracking-sin_facturar { background: #eef2f7; color: #4a5568; }
+.badge.tracking-facturado_parcial { background: #fff5e0; color: #946200; }
+.badge.tracking-por_cobrar { background: #fdecec; color: #b42318; }
+.badge.tracking-completa { background: #e6f6ec; color: #1d7a45; }
+.tracking-table thead th:last-child, .receipt-table thead th:last-child { position: static; }
+.tracking-filter { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: var(--shadow-sm); }
+.tracking-filter button { padding: 8px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-size: .8rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.tracking-filter button:hover { color: var(--brand-navy-deep); }
+.tracking-filter button.active { background: var(--brand-navy-deep); color: #fff; }
+.toolbar.tracking-toolbar { flex-wrap: wrap; }
+.invoice-number { white-space: nowrap; }
+
+/* Personal: legajo, bajas y períodos */
+.file-number { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+tr.row-inactive td { color: var(--muted); background: #fafbfc; }
+.notice.success { border-color: #bfe3cc; background: #eefaf2; color: #1d6b3d; }
+.danger-btn { height: 40px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--danger); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+.danger-btn:disabled { opacity: .6; cursor: default; }
+.worker-status-modal { width: min(560px, 100%); }
+.worker-periods ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.worker-periods li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.worker-periods li span { color: var(--muted); font-size: .8rem; }
+.worker-periods li small { flex-basis: 100%; color: var(--muted); }
+
+/* Liquidación de quincena y tarifas */
+.page-heading-actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+.payroll-period { margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.payroll-period > label { display: grid; gap: 4px; font-size: .75rem; font-weight: 700; color: var(--muted); }
+.payroll-month { display: flex; align-items: center; gap: 8px; }
+.payroll-month b { min-width: 150px; text-align: center; }
+.payroll-month .secondary-btn { width: 38px; padding: 0; justify-content: center; font-size: 1.1rem; }
+.payroll-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.payroll-name svg { transition: transform .15s; transform: rotate(-90deg); color: var(--muted); }
+.payroll-name svg.open { transform: rotate(0); }
+.payroll-detail > td { padding: 0 12px 14px !important; background: #f8fafc; }
+.payroll-detail table { width: 100%; font-size: .8rem; }
+.payroll-detail th, .payroll-detail td { padding: 6px 8px; }
+.payroll-table thead th:last-child { position: static; }
+.work-types-modal { width: min(820px, 100%); }
+.work-types-table input:not([type="checkbox"]), .work-types-table select { width: 100%; min-width: 150px; }
+.work-types-table thead th:last-child { position: static; }
+.work-types-add { margin-top: 12px; }
+.payroll-import-modal { width: min(960px, 100%); }
+.payroll-file { display: grid; gap: 6px; margin-bottom: 14px; font-weight: 700; }
+.payroll-sites td:last-child { min-width: 260px; }
+.payroll-sites thead th:last-child { position: static; }
+.payroll-note { color: var(--muted); font-size: .82rem; }

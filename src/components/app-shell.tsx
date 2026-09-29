@@ -5,11 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import {
-  BarChart3, CalendarDays, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat,
-  LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart,
-  Tags, Truck, Users, WalletCards, X, PackageSearch,
-} from "lucide-react";
+import { BarChart3, CalendarDays, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat, LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart, Tags, Truck, Users, WalletCards, X, PackageSearch, Route, Calculator } from "lucide-react";
 import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
 import { canViewSection, type UserPermissions } from "@/lib/permissions";
 import { NotificationBell } from "@/components/notification-bell";
@@ -27,6 +23,7 @@ const groups: NavGroup[] = [
   { id: "works", label: "Obras", icon: HardHat, items: [
     { href: "/app/works", label: "Obras", icon: HardHat, permission: "works" },
     { href: "/app/workers", label: "Personal asignado", icon: Users, permission: "workers" },
+    { href: "/app/liquidacion", label: "Liquidación de quincena", icon: Calculator, permission: "workers" },
     { href: "/app/tasks", label: "Tareas y pendientes", icon: ListTodo, permission: "tasks" },
   ] },
   { id: "purchases", label: "Compras y stock", icon: ShoppingCart, items: [
@@ -37,8 +34,9 @@ const groups: NavGroup[] = [
     { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText, permission: "expenses" },
   ] },
   { id: "finance", label: "Finanzas", icon: WalletCards, items: [
+    { href: "/app/seguimiento", label: "Seguimiento", icon: Route, permission: "invoices" },
     { href: "/app/invoices", label: "Facturación", icon: FileText, permission: "invoices" },
-    { href: "/app/collections", label: "Cobranzas", icon: HandCoins, permission: "collections" },
+    { href: "/app/collections", label: "Cobranzas y recibos", icon: HandCoins, permission: "collections" },
     { href: "/app/payments", label: "Pagos", icon: CreditCard, permission: "payments" },
   ] },
 ];

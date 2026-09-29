@@ -1,13 +1,15 @@
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
-import { Notification, Task, Work, composeWorkerName, modelByEntity, nextPurchaseNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
+import { Notification, Task, Work, composeWorkerName, modelByEntity, nextPurchaseNumber, nextReceiptNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
 import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
-import { applyExpensePayment, applyInvoiceCollection } from "@/lib/balances";
+import { applyCollection, applyExpensePayment } from "@/lib/balances";
+import { prepareInvoice } from "@/lib/invoice-service";
+import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
@@ -45,7 +47,9 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 20)));
     const search = sanitizeSearch(url.searchParams.get("search") || "");
-    const searchFilter = search ? { $or: ["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku"].map(key => ({ [key]: { $regex: search, $options: "i" } })) } : {};
+    // En el personal también se busca por número de legajo.
+    const byFileNumber = entity === "workers" && /^\d{1,6}$/.test(search) ? [{ fileNumber: Number(search) }] : [];
+    const searchFilter = search ? { $or: [...["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku", "position", "workType"].map(key => ({ [key]: { $regex: search, $options: "i" } })), ...byFileNumber] } : {};
     const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] } : searchFilter;
     const model = modelByEntity[entity];
     // En ventas interesa lo que se movio recien, no lo que se creo primero.
@@ -74,10 +78,12 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     // La version no se elige a mano: sale de cuantas cotizaciones hay ya con ese titulo.
     if (entity === "quotes") data.version = await nextQuoteVersion(String(data.title || ""));
     if (entity === "tasks") await resolveTaskAssignee(session, data);
-    if (entity === "workers") data.name = composeWorkerName(data);
+    if (entity === "workers") { data.name = composeWorkerName(data); await prepareNewWorker(data); }
+    if (entity === "invoices") await prepareInvoice(data);
+    if (entity === "collections") { if (!data.number) data.number = await nextReceiptNumber(); data.userName = session.name; }
     const item = await model.create(data as never);
 
-    if (entity === "collections") await applyInvoiceCollection(item.invoiceId, item.amountCents);
+    if (entity === "collections") await applyCollection(item, 1);
     if (entity === "payments") await applyExpensePayment(item.expenseId, item.amountCents);
     if (entity === "invoices" && item.workId && item.certificateNumber) await closeCertificate(String(item.workId), String(item.certificateNumber));
     await audit(session, "create", entity, item._id, null, item.toObject(), request.headers.get("x-forwarded-for") || undefined);

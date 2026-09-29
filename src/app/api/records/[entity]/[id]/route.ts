@@ -8,7 +8,9 @@ import { canDelete, canRead, canWrite } from "@/lib/permissions";
 import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { canSeeTask, resolveTaskAssignee } from "@/lib/tasks";
-import { applyExpensePayment, applyInvoiceCollection } from "@/lib/balances";
+import { applyCollection, applyExpensePayment } from "@/lib/balances";
+import { prepareInvoice } from "@/lib/invoice-service";
+import { prepareWorkerChanges } from "@/lib/worker-files";
 import { isTrashEntity } from "@/lib/trash";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
@@ -42,6 +44,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     const sent = new Set(body && typeof body === "object" ? Object.keys(body) : []);
     const changes = Object.fromEntries(Object.entries(parsed.data as Record<string, unknown>).filter(([key]) => sent.has(key)));
     if (entity === "tasks") await resolveTaskAssignee(session, changes, false);
+    if (entity === "invoices") await prepareInvoice(changes, before as Record<string, unknown>);
+    if (entity === "workers") await prepareWorkerChanges(changes, id);
     if (entity === "workers" && (changes.firstName || changes.lastName)) {
       changes.name = composeWorkerName({ ...before as Record<string, unknown>, ...changes });
     }
@@ -51,8 +55,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       await Quote.updateOne({ _id: id }, { $push: { history: { action: `Estado: ${(item as Record<string, unknown>).status}`, at: new Date(), userId: session.userId } } });
     }
     if (entity === "collections" && item) {
-      await applyInvoiceCollection((before as Record<string, unknown>).invoiceId, -Number((before as Record<string, unknown>).amountCents || 0));
-      await applyInvoiceCollection((item as Record<string, unknown>).invoiceId, Number((item as Record<string, unknown>).amountCents || 0));
+      await applyCollection(before as Record<string, unknown>, -1);
+      await applyCollection(item as Record<string, unknown>, 1);
     }
     if (entity === "payments" && item) {
       await applyExpensePayment((before as Record<string, unknown>).expenseId, -Number((before as Record<string, unknown>).amountCents || 0));
@@ -81,7 +85,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
       await StockTrash.create({ entity, item: before, name, deletedById: session.userId, deletedByName: session.name });
     }
     await model.findByIdAndDelete(id);
-    if (entity === "collections") await applyInvoiceCollection((before as Record<string, unknown>).invoiceId, -Number((before as Record<string, unknown>).amountCents || 0));
+    if (entity === "collections") await applyCollection(before as Record<string, unknown>, -1);
     if (entity === "payments") await applyExpensePayment((before as Record<string, unknown>).expenseId, -Number((before as Record<string, unknown>).amountCents || 0));
     await audit(session, "delete", entity, id, before, null, request.headers.get("x-forwarded-for") || undefined);
     return Response.json({ ok: true });
