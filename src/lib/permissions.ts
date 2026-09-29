@@ -18,6 +18,7 @@ const writeAccess: Record<Entity, Role[]> = {
   checks: ["gerencia", "administracion"],
   cash: ["gerencia", "administracion"],
   tasks: ["gerencia", "arquitecto", "auxiliar", "administracion", "compras", "ventas"],
+  assets: ["gerencia", "compras", "administracion"],
 };
 
 export function defaultPermissionsForRole(role: Role): UserPermissions {

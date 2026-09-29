@@ -29,8 +29,9 @@ type Doc = InstanceType<typeof StockItem> & Record<string, unknown> & {
 };
 
 export type MovementInput =
-  | { kind: "ingreso"; warehouse: WarehouseKey; quantity: number; unitCostCents: number; supplierId?: string; reference?: string; note?: string; date?: Date; purchaseId?: string }
-  | { kind: "egreso"; workId: string; parts: Array<{ warehouse: WarehouseKey; quantity: number }>; reference?: string; note?: string; date?: Date }
+  | { kind: "ingreso"; warehouse: WarehouseKey; quantity: number; unitCostCents: number; supplierId?: string; reference?: string; note?: string; date?: Date; purchaseId?: string; ticket?: string }
+  // Desde la caja, varios materiales comparten el remito de cada depósito: llega ya numerado en `remitos`.
+  | { kind: "egreso"; workId: string; parts: Array<{ warehouse: WarehouseKey; quantity: number }>; reference?: string; note?: string; date?: Date; ticket?: string; remitos?: Partial<Record<WarehouseKey, string>> }
   | { kind: "transferencia"; from: WarehouseKey; to: WarehouseKey; quantity: number; note?: string; date?: Date }
   | { kind: "ajuste"; warehouse: WarehouseKey; quantity: number; note?: string; date?: Date };
 
@@ -73,7 +74,7 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
       });
       purchaseId = String(purchase._id);
     }
-    created.push({ kind: "ingreso", quantity: input.quantity, warehouse: input.warehouse, unitCostCents: input.unitCostCents, totalCents, supplierId: input.supplierId, purchaseId, reference: input.reference, note: input.note, ...who });
+    created.push({ kind: "ingreso", quantity: input.quantity, warehouse: input.warehouse, unitCostCents: input.unitCostCents, totalCents, supplierId: input.supplierId, purchaseId, reference: input.reference, note: input.note, ticket: input.ticket, ...who });
   }
 
   if (input.kind === "egreso") {
@@ -88,7 +89,7 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
     const destinationLabel = `Obra ${work.code || ""} · ${work.name || ""}`.trim();
     // Un remito por depósito: cada uno sale con su papel, aunque vayan a la misma obra.
     for (const part of parts) {
-      const remito = await nextRemitoNumber();
+      const remito = input.remitos?.[part.warehouse] || await nextRemitoNumber();
       const totalCents = Math.round(part.quantity * item.avgCostCents);
       levels[part.warehouse] = round(levels[part.warehouse] - part.quantity);
       const expense = await Expense.create({
@@ -98,7 +99,7 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
       });
       created.push({
         kind: "egreso", quantity: part.quantity, warehouse: part.warehouse, workId: work._id, remito, destinationLabel, quoteNumber: quote?.number,
-        unitCostCents: item.avgCostCents, totalCents, expenseId: expense._id, reference: input.reference || remito, note: input.note || destinationLabel, ...who,
+        unitCostCents: item.avgCostCents, totalCents, expenseId: expense._id, reference: input.reference || remito, note: input.note || destinationLabel, ticket: input.ticket, ...who,
       });
     }
   }

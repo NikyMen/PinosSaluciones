@@ -35,6 +35,7 @@ const listProjection: Partial<Record<Entity, Record<string, unknown>>> = {
   works: { labor: 0, activity: 0, checklist: 0, advances: 0, progressBase: 0 },
   quotes: { items: 0, overheads: 0, cascade: 0, history: 0 },
   stock: { movements: { $slice: -12 } },
+  assets: { maintenance: 0, plans: 0 },
 };
 
 export async function GET(request: Request, context: RouteContext<"/api/records/[entity]">) {
@@ -49,7 +50,7 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const search = sanitizeSearch(url.searchParams.get("search") || "");
     // En el personal también se busca por número de legajo.
     const byFileNumber = entity === "workers" && /^\d{1,6}$/.test(search) ? [{ fileNumber: Number(search) }] : [];
-    const searchFilter = search ? { $or: [...["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku", "position", "workType"].map(key => ({ [key]: { $regex: search, $options: "i" } })), ...byFileNumber] } : {};
+    const searchFilter = search ? { $or: [...["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku", "barcode", "position", "workType", "identifier", "brand", "responsible"].map(key => ({ [key]: { $regex: search, $options: "i" } })), ...byFileNumber] } : {};
     const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] } : searchFilter;
     const model = modelByEntity[entity];
     // En ventas interesa lo que se movio recien, no lo que se creo primero.

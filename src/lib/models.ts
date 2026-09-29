@@ -399,11 +399,15 @@ const StockMovementSchema = new Schema({
   // Rastro cruzado con los otros modulos, para poder auditar el circuito completo.
   purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase" },
   expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
+  // El comprobante de la caja (CJ-12) cuando el movimiento salió de ahí, con otros materiales.
+  ticket: String,
 }, { timestamps: { createdAt: true, updatedAt: false } });
 
 const StockItemSchema = new Schema({
   name: { type: String, required: true, trim: true },
   sku: { type: String, trim: true },
+  // Lo que lee el lector o la cámara en la caja: el EAN del envase o la etiqueta interna (PS-000123).
+  barcode: { type: String, trim: true },
   category: { type: String, enum: ["materiales", "herramientas", "seguridad", "consumibles", "otros"], default: "materiales" },
   unit: { type: String, enum: ["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "rollo"], default: "unidad" },
   // El total entre todos los depósitos. Lo que hay en cada uno va en qty_central, qty_salon…
@@ -417,6 +421,89 @@ const StockItemSchema = new Schema({
   location: String, notes: String, active: { type: Boolean, default: true },
   movements: [StockMovementSchema],
 }, options);
+StockItemSchema.index({ barcode: 1 }, { sparse: true });
+
+/*
+ * Un comprobante de la caja: todo lo que entró o salió de una vez, escaneando.
+ * Los movimientos quedan en cada material (con el número de ticket); acá se
+ * guarda la foto completa para reimprimir el ticket y listar lo último.
+ */
+const StockTicketSchema = new Schema({
+  number: { type: String, required: true, unique: true },
+  kind: { type: String, enum: ["ingreso", "egreso"], required: true },
+  date: { type: Date, required: true },
+  warehouse: { type: String, enum: WAREHOUSE_KEYS },
+  supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, supplierName: String,
+  workId: { type: Schema.Types.ObjectId, ref: "Work" }, destinationLabel: String, quoteNumber: String,
+  purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase" },
+  reference: String, note: String,
+  lines: [{
+    _id: false,
+    stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" },
+    name: String, sku: String, barcode: String, unit: String, quantity: Number,
+    unitCostCents: Number, totalCents: Number,
+    parts: [{ _id: false, warehouse: { type: String, enum: WAREHOUSE_KEYS }, quantity: Number, remito: String }],
+  }],
+  remitos: [{ _id: false, number: String, warehouse: { type: String, enum: WAREHOUSE_KEYS } }],
+  totalCents: { type: Number, default: 0 },
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+}, options);
+StockTicketSchema.index({ createdAt: -1 });
+
+/*
+ * Bienes de uso: la camioneta, los andamios, la hidrolavadora. Cada uno lleva
+ * lo que se le hizo (services, arreglos) y lo que toca hacerle: "dentro de 3
+ * meses, service de los 10.000 km". Lo que se programa avisa solo antes de
+ * vencer (scripts/worker.mjs) y deja la tarea a Compras y logística.
+ */
+const AssetMaintenanceSchema = new Schema({
+  date: { type: Date, required: true },
+  kind: { type: String, enum: ["service", "preventivo", "reparacion", "inspeccion", "otro"], default: "service" },
+  description: { type: String, required: true, trim: true },
+  costCents: money,
+  // Kilómetros u horas de uso el día del trabajo.
+  reading: Number,
+  provider: String, notes: String,
+  // Si el costo se cargó en Compras y gastos, y de qué mantenimiento programado salió.
+  expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
+  planId: Schema.Types.ObjectId,
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+}, { timestamps: { createdAt: true, updatedAt: false } });
+
+const AssetPlanSchema = new Schema({
+  title: { type: String, required: true, trim: true },
+  // Vence en una fecha, a cierta lectura (km / horas), o lo primero que llegue.
+  dueDate: Date,
+  dueReading: Number,
+  // Cada cuánto se repite: al marcarlo hecho se ofrece el siguiente con este intervalo.
+  intervalMonths: Number, intervalReading: Number,
+  notes: String,
+  status: { type: String, enum: ["pendiente", "hecho", "cancelado"], default: "pendiente" },
+  doneAt: Date, doneByName: String, maintenanceId: Schema.Types.ObjectId,
+  createdByName: String,
+}, { timestamps: true });
+
+const AssetSchema = new Schema({
+  name: { type: String, required: true, trim: true },
+  category: { type: String, enum: ["vehiculo", "maquinaria", "herramienta", "equipo", "informatica", "inmueble", "otro"], default: "vehiculo" },
+  brand: String, model: String,
+  // Patente, número de serie o de chasis: lo que identifica a este y no a otro igual.
+  identifier: { type: String, trim: true },
+  year: Number,
+  purchaseDate: Date, valueCents: money,
+  responsible: String, location: String,
+  status: { type: String, enum: ["activo", "en_reparacion", "fuera_de_servicio", "baja"], default: "activo" },
+  // Cómo se mide el uso (km de un vehículo, horas de una máquina) y la última lectura.
+  meterUnit: { type: String, enum: ["km", "horas", "ninguno"], default: "ninguno" },
+  currentReading: { type: Number, min: 0 },
+  readingDate: Date,
+  notes: String, attachment: String,
+  maintenance: [AssetMaintenanceSchema],
+  plans: [AssetPlanSchema],
+  // El próximo mantenimiento pendiente, copiado para listar y ordenar sin abrir cada bien.
+  nextDueDate: Date, nextDueTitle: String, nextDueReading: Number,
+}, options);
+AssetSchema.index({ "plans.status": 1, "plans.dueDate": 1 });
 
 // Un renglón de una orden armada desde el buscador de precios. Los precios se
 // copian de la lista vigente al cerrar la orden y quedan congelados: si mañana
@@ -599,6 +686,8 @@ export const Check = mongoose.models.Check || mongoose.model("Check", CheckSchem
 export const CashMovement = mongoose.models.CashMovement || mongoose.model("CashMovement", CashSchema);
 export const Task = mongoose.models.Task || mongoose.model("Task", TaskSchema);
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditSchema);
+export const StockTicket = mongoose.models.StockTicket || mongoose.model("StockTicket", StockTicketSchema);
+export const Asset = mongoose.models.Asset || mongoose.model("Asset", AssetSchema);
 export const StockTrash = mongoose.models.StockTrash || mongoose.model("StockTrash", StockTrashSchema);
 export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);
 export const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
@@ -669,4 +758,4 @@ export async function nextReceiptNumber() {
   return `RC-${counter.seq}`;
 }
 
-export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task } as const;
+export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task, assets: Asset } as const;

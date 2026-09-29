@@ -12,6 +12,7 @@ import { applyCollection, applyExpensePayment } from "@/lib/balances";
 import { prepareInvoice } from "@/lib/invoice-service";
 import { prepareWorkerChanges } from "@/lib/worker-files";
 import { isTrashEntity } from "@/lib/trash";
+import { refreshAssetSchedule } from "@/lib/asset-service";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -54,6 +55,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       const { Quote } = await import("@/lib/models");
       await Quote.updateOne({ _id: id }, { $push: { history: { action: `Estado: ${(item as Record<string, unknown>).status}`, at: new Date(), userId: session.userId } } });
     }
+    // La lectura de uso pudo cambiar a mano: lo que vence por km u horas se recalcula y avisa.
+    if (entity === "assets" && item && "currentReading" in changes) await refreshAssetSchedule(id);
     if (entity === "collections" && item) {
       await applyCollection(before as Record<string, unknown>, -1);
       await applyCollection(item as Record<string, unknown>, 1);

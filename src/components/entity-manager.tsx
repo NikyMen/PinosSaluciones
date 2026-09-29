@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, ArrowRightLeft, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HandCoins, HardHat, History, UserMinus, UserPlus, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
+import { ArrowDownToLine, ArrowRightLeft, Tag, Wrench, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HandCoins, HardHat, History, UserMinus, UserPlus, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
@@ -24,6 +24,9 @@ import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
 import { voucherLabels } from "@/lib/invoice-labels";
+import { AssetMaintenanceModal, NextDueCell, type AssetRecord } from "@/components/asset-maintenance";
+import { meterLabels } from "@/lib/assets";
+import { printLabels, readPrinterSettings } from "@/lib/ticket-print";
 
 type Item = Record<string, unknown> & { _id: string };
 
@@ -95,6 +98,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [convertFor, setConvertFor] = useState<Item | null>(null);
   const [invoiceFor, setInvoiceFor] = useState<Item | null>(null);
   const [statusFor, setStatusFor] = useState<Item | null>(null);
+  // El bien de uso cuyo mantenimiento está abierto.
+  const [maintenanceFor, setMaintenanceFor] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   // El recibo abierto: uno para editar, o uno nuevo (desde una factura viene con su cliente y la factura).
   const [receiptFor, setReceiptFor] = useState<{ receipt: Item | null; clientId?: string; invoiceId?: string } | null>(null);
@@ -182,6 +187,11 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     if (entity === "workers" && key === "fileNumber") return <span className="file-number"><b>{value ? String(value) : "—"}</b>{item.active === false && <span className="badge anulada" title={item.leftAt ? `Baja el ${date(String(item.leftAt))}` : "Dada de baja"}>Baja</span>}</span>;
     if (entity === "invoices" && key === "number") return <span className="invoice-number">{String(value || "—")}</span>;
     if (key === "voucherType") return value ? voucherLabels[String(value)] || titleCase(String(value)) : "—";
+    if (entity === "assets" && key === "nextDueDate") return <NextDueCell item={item} />;
+    if (entity === "assets" && key === "currentReading") return value != null && item.meterUnit && item.meterUnit !== "ninguno" ? `${qty(Number(value), 0)} ${meterLabels[String(item.meterUnit)] || ""}` : "—";
+    // Los selects con nombre propio para cada opción (Vehículo, Informática) se leen igual en la tabla.
+    const labels = config.fields.find(field => field.key === key)?.optionLabels;
+    if (labels && value && key !== "status") return labels[String(value)] ?? titleCase(String(value));
     if (key === "lastPriceCents") return item.lastPriceDate ? <span className="cell-stack">{money(Number(value || 0))}<small>{item.lastPriceSource === "compra" ? "Compra" : "Lista"} del {date(String(item.lastPriceDate))}</small></span> : "—";
     if (key.startsWith("qty_")) { const amount = levelsOf(item)[key.slice(4) as WarehouseKey] ?? 0; return amount ? qty(amount) : "—"; }
     if (key === "quantity" && entity === "stock") return qty(Number(value || 0));
@@ -231,6 +241,19 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     const response = await fetch(`/api/receipts/${item._id}`);
     if (!response.ok) return setError("No se pudo armar el recibo");
     await downloadReceiptPdf(await response.json()).catch(() => setError("No se pudo generar el PDF del recibo"));
+  }
+
+  /** Etiqueta del material para la ticketera. Si no tiene código de barras, se le genera uno propio. */
+  async function printStockLabel(item: Item) {
+    let code = String(item.barcode || "");
+    if (!code) {
+      const response = await fetch("/api/stock/scan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ itemId: item._id, generate: true }) });
+      const result = await response.json();
+      if (!response.ok) return setError(result.error || "No se pudo generar el código");
+      code = String(result.barcode);
+      setItems(current => current.map(row => row._id === item._id ? { ...row, barcode: code } : row));
+    }
+    await printLabels([{ name: String(item.name || ""), code, unit: String(item.unit || "") }], readPrinterSettings().width).catch(() => setError("No se pudo abrir la impresión"));
   }
 
   async function remove(item: Item) {
@@ -337,14 +360,14 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {entity === "stock" && <div className="warehouse-filter" role="group" aria-label="Depósito">
       {[{ key: "" as const, label: "Ambos depósitos" }, ...WAREHOUSES].map(warehouse => <button key={warehouse.key} type="button" className={warehouseView === warehouse.key ? "active" : ""} aria-pressed={warehouseView === warehouse.key} onClick={() => setWarehouseView(warehouse.key)}>{warehouse.label}</button>)}
     </div>}
-    <section className="table-panel"><div className="table-scroll"><table><thead><tr>{columns.map(column => <th key={column}>{columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
+    <section className="table-panel"><div className="table-scroll"><table><thead><tr>{columns.map(column => <th key={column}>{config.columnTitles?.[column] || columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{items.map(item => {
       // En obras la fila lleva a la pantalla de la obra, aunque no se pueda editar.
-      const rowAction = entity === "works" ? () => router.push(`/app/works/${item._id}`) : inlineEntities.has(entity) && canEdit ? () => open(item) : null;
-      const rowTitle = entity === "works" ? "Abrir la obra" : entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar";
+      const rowAction = entity === "works" ? () => router.push(`/app/works/${item._id}`) : entity === "assets" ? () => setMaintenanceFor(item._id) : inlineEntities.has(entity) && canEdit ? () => open(item) : null;
+      const rowTitle = entity === "works" ? "Abrir la obra" : entity === "assets" ? "Ver el mantenimiento" : entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar";
       // Las tareas se pintan enteras según el estado: de un vistazo se ve qué falta.
       const rowClass = [rowAction ? "clickable-row" : "", entity === "tasks" ? `task-row ${String(item.status || "pendiente")}` : "", entity === "workers" && item.active === false ? "row-inactive" : ""].filter(Boolean).join(" ");
       return <tr key={item._id} className={rowClass} onClick={rowAction || undefined} onKeyDown={rowAction ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rowAction(); } } : undefined} tabIndex={rowAction ? 0 : undefined} title={rowAction ? rowTitle : undefined}>
-        {columns.map(column => <td key={column} data-label={columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
+        {columns.map(column => <td key={column} data-label={config.columnTitles?.[column] || columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
           const pending = pendingStatus?.id === item._id ? pendingStatus.status : "";
           return <div className="status-cell" onClick={event => event.stopPropagation()}>
             <select className={`inline-status ${pending || item.status}${pending ? " pending" : ""}`} value={pending || String(item.status || "")} disabled={statusBusy === item._id}
@@ -371,6 +394,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "stock" && canEdit && <button title="Entrada: una compra que llegó" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Pasar entre el Depósito Central y el Salón de Ventas" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "transferencia" })}><ArrowRightLeft size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Salida a obra, con remito" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
+          {entity === "stock" && canEdit && <button title={item.barcode ? `Imprimir la etiqueta (${String(item.barcode)})` : "Generar el código de barras e imprimir la etiqueta"} onClick={() => { void printStockLabel(item); }}><Tag size={16} /></button>}
+          {entity === "assets" && <button className="row-action-wide labor" title="Services, arreglos y próximos mantenimientos" onClick={() => setMaintenanceFor(item._id)}><Wrench size={15} /> Mantenimiento</button>}
           {entity === "purchases" && canEdit && Array.isArray(item.items) && item.items.length > 0 && (item.stockedAt
             ? <span className="row-stocked" title={`Pasada al stock por ${String(item.stockedByName || "")}`}><PackageCheck size={14} /> En stock · {warehouseLabel(String(item.stockedWarehouse || ""))}</span>
             : item.status !== "cancelada" && <button className="row-action-wide approve" title="Llegó la mercadería: sumarla al stock" onClick={() => setReceiveFor(item)}><PackagePlus size={15} /> Pasar a stock</button>)}
@@ -442,6 +467,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       onSaved={updated => { setItems(current => current.map(row => row._id === updated._id ? { ...row, ...updated } as Item : row)); setMovementFor({ item: updated, kind: movementFor.kind }); }} />}
 
     {historyFor && <HistoryModal entity={entity} record={historyFor} onClose={() => setHistoryFor(null)} />}
+    {maintenanceFor && <AssetMaintenanceModal assetId={maintenanceFor} canEdit={canEdit} onClose={() => setMaintenanceFor(null)}
+      onChanged={(updated: AssetRecord) => setItems(current => current.map(row => row._id === updated._id ? { ...row, nextDueDate: updated.nextDueDate, nextDueTitle: updated.nextDueTitle, nextDueReading: updated.nextDueReading, currentReading: updated.currentReading, status: updated.status } : row))} />}
     {laborFor && <WorkerLaborModal worker={laborFor} canEdit={canEdit} onClose={() => setLaborFor(null)} />}
   </>;
 }

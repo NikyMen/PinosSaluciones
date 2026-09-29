@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, CalendarDays, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat, LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart, Tags, Truck, Users, WalletCards, X, PackageSearch, Route, Calculator } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronDown, CircleDollarSign, CreditCard, FileText, HandCoins, HardHat, LayoutDashboard, ListTodo, LogOut, Menu, ReceiptText, Settings, ShoppingCart, Tags, Truck, Users, WalletCards, X, PackageSearch, Route, Calculator, ScanBarcode, CarFront } from "lucide-react";
 import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
 import { canViewSection, type UserPermissions } from "@/lib/permissions";
 import { NotificationBell } from "@/components/notification-bell";
@@ -28,10 +28,12 @@ const groups: NavGroup[] = [
   ] },
   { id: "purchases", label: "Compras y stock", icon: ShoppingCart, items: [
     { href: "/app/stock", label: "Stock", icon: PackageSearch, permission: "stock" },
+    { href: "/app/caja", label: "Caja (entradas y salidas)", icon: ScanBarcode, permission: "stock" },
     { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
     { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
     { href: "/app/purchases", label: "Órdenes de compra", icon: ShoppingCart, permission: "purchases" },
     { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText, permission: "expenses" },
+    { href: "/app/assets", label: "Bienes de uso", icon: CarFront, permission: "assets" },
   ] },
   { id: "finance", label: "Finanzas", icon: WalletCards, items: [
     { href: "/app/seguimiento", label: "Seguimiento", icon: Route, permission: "invoices" },

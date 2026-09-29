@@ -35,6 +35,7 @@ export const entities = [
   "checks",
   "cash",
   "tasks",
+  "assets",
 ] as const;
 
 export type Entity = (typeof entities)[number];
@@ -58,6 +59,7 @@ export const entityLabels: Record<Entity, string> = {
   checks: "Cheques",
   cash: "Caja y bancos",
   tasks: "Tareas y pendientes",
+  assets: "Bienes de uso",
 };
 
 export const viewSectionLabels: Record<ViewSection, string> = {
