@@ -1,5 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { dateTime } from "./format";
+import { COMPANIES, type Company } from "./companies";
 
 /*
  * Lo que comparten todos los PDF de la empresa: el membrete con los datos
@@ -9,15 +10,8 @@ import { dateTime } from "./format";
  * atrás de todo.
  */
 
-export const COMPANY = {
-  legalName: "Trabajos Verticales Pino S.A.S.",
-  brand: "Pino Soluciones Técnicas",
-  address: "Av. Maipú 1278 - 3400 - Corrientes",
-  vat: "IVA Responsable Inscripto",
-  cuit: "30-71629563-6",
-  iibb: "30-71629563-6",
-  since: "10/2022",
-};
+/** La empresa de los documentos que no dependen de una factura (órdenes de compra, remitos, liquidaciones). */
+export const COMPANY = COMPANIES.tvp as Required<Company>;
 
 export type Rgb = [number, number, number];
 export const NAVY: Rgb = [0, 48, 91];
@@ -65,8 +59,9 @@ export function drawWatermark(doc: jsPDF, logo?: string) {
  * El membrete: logo y datos de la empresa a la izquierda; qué documento es, su
  * número y sus datos a la derecha. Deja el cursor en `PAGE.contentTop`.
  */
-export function drawLetterhead(doc: jsPDF, options: { title: string; number?: string; lines?: string[]; logo?: string }) {
+export function drawLetterhead(doc: jsPDF, options: { title: string; number?: string; lines?: string[]; logo?: string; company?: Company }) {
   const { margin, width } = PAGE;
+  const company = options.company || COMPANY;
   const color = ([r, g, b]: Rgb) => doc.setTextColor(r, g, b);
   drawWatermark(doc, options.logo);
 
@@ -75,15 +70,15 @@ export function drawLetterhead(doc: jsPDF, options: { title: string; number?: st
   color(NAVY);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11.5);
-  doc.text(plain(COMPANY.legalName), textLeft, 13.5);
+  doc.text(plain(company.legalName), textLeft, 13.5);
   color(RED);
   doc.setFontSize(7.6);
-  doc.text(plain(COMPANY.brand.toUpperCase()), textLeft, 18.5);
+  doc.text(plain(company.brand.toUpperCase()), textLeft, 18.5);
   color(MUTED);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.6);
-  doc.text(plain(COMPANY.address), textLeft, 23);
-  doc.text(plain(COMPANY.vat), textLeft, 27);
+  doc.text(plain(company.address), textLeft, 23);
+  doc.text(plain(company.vat ? `${company.vat} · CUIT ${company.cuit}` : `CUIT ${company.cuit}`), textLeft, 27);
 
   // El tipo de documento con las letras separadas, como en los comprobantes de antes.
   color(NAVY);
@@ -93,7 +88,7 @@ export function drawLetterhead(doc: jsPDF, options: { title: string; number?: st
   // jsPDF no cuenta ese espacio al alinear a la derecha: se mide a mano.
   const title = plain(options.title.toUpperCase());
   doc.setFontSize(11.5);
-  const available = width - margin - (textLeft + doc.getTextWidth(plain(COMPANY.legalName)) + 8);
+  const available = width - margin - (textLeft + doc.getTextWidth(plain(company.legalName)) + 8);
   let size = 12.5;
   let spacing = 1.1;
   const measure = () => { doc.setFontSize(size); return doc.getTextWidth(title) + spacing * (title.length - 1); };
@@ -129,7 +124,7 @@ export function drawLetterhead(doc: jsPDF, options: { title: string; number?: st
 }
 
 /** El pie de cada hoja: quién lo generó, cuándo, y el número de página. */
-export function drawFooter(doc: jsPDF, options: { page: number; author: string; note?: string }) {
+export function drawFooter(doc: jsPDF, options: { page: number; author: string; note?: string; company?: Company }) {
   const { margin, width } = PAGE;
   const [lr, lg, lb] = LINE; const [mr, mg, mb] = MUTED;
   doc.setFillColor(lr, lg, lb);
@@ -137,7 +132,7 @@ export function drawFooter(doc: jsPDF, options: { page: number; author: string; 
   doc.setTextColor(mr, mg, mb);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.2);
-  doc.text(plain(`${COMPANY.legalName} - ${options.note ? `${options.note} - ` : ""}Generado por ${options.author} el ${dateTime(new Date())}`), margin, 287);
+  doc.text(plain(`${(options.company || COMPANY).legalName} - ${options.note ? `${options.note} - ` : ""}Generado por ${options.author} el ${dateTime(new Date())}`), margin, 287);
   doc.text(`Página ${options.page}`, width - margin, 287, { align: "right" });
 }
 

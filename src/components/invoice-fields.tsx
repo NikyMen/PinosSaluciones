@@ -3,14 +3,15 @@
 import { useState } from "react";
 import type { Field } from "@/lib/entity-config";
 import { money } from "@/lib/format";
-import { MoneyInput } from "@/components/fields";
+import { MoneyInput, SearchSelect } from "@/components/fields";
+import { COMPANIES, COMPANY_KEYS, companyOf, type CompanyKey } from "@/lib/companies";
 import { FormField, type FieldProps } from "@/components/record-form";
 
 type Item = Record<string, unknown> & { _id: string };
 
 const VAT_RATES = [21, 10.5, 27, 0];
 const groups = [
-  { title: "Comprobante", description: "Tal como salió de Tango", keys: ["voucherType", "number", "issueDate", "dueDate"] },
+  { title: "Comprobante", description: "Tal como salió de Tango", keys: ["company", "voucherType", "number", "issueDate", "dueDate"] },
   { title: "A qué corresponde", description: "La cotización completa sola el cliente y la obra", keys: ["quoteId", "clientId", "workId", "certificateNumber"] },
 ];
 
@@ -30,6 +31,28 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
   const vat = Math.round(net * vatPct) / 100;
   const total = Math.round((net + vat) * 100) / 100;
   const field = (key: string) => fields.find(candidate => candidate.key === key);
+  // La empresa elegida y el número: en una factura nueva, el número sugerido es el que sigue en esa empresa.
+  const [company, setCompany] = useState<CompanyKey>(() => companyOf(source.company).key);
+  const [number, setNumber] = useState(() => String(source.number || ""));
+  const [numberTouched, setNumberTouched] = useState(false);
+  const suggested = (draft.numbers || {}) as Record<string, string>;
+
+  function chooseCompany(value: string) {
+    const next = companyOf(value).key;
+    setCompany(next);
+    if (!editing && !numberTouched) setNumber(suggested[next] || "");
+  }
+
+  function renderField(key: string, autoFocus: boolean) {
+    const target = field(key);
+    if (!target) return null;
+    if (key === "company") return <label key={key}><span>Empresa que factura *</span>
+      <SearchSelect name="company" value={company} onChange={chooseCompany} required autoFocus={autoFocus}
+        options={COMPANY_KEYS.map(option => ({ value: option, label: COMPANIES[option].legalName, hint: `CUIT ${COMPANIES[option].cuit}` }))} /></label>;
+    if (key === "number") return <label key={key}><span>Número *<em className="field-hint">{editing ? "Punto de venta y número, como en Tango" : `El que sigue en ${companyOf(company).short}; cambialo si no es`}</em></span>
+      <input name="number" required value={number} placeholder="0001-00000123" onChange={event => { setNumber(event.target.value); setNumberTouched(true); }} /></label>;
+    return <FormField key={key} {...props(target)} autoFocus={autoFocus} />;
+  }
 
   function props(target: Field): FieldProps {
     const base = fieldProps(target);
@@ -44,7 +67,7 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
 
   return <div className="work-form-sections">
     {groups.map((group, groupIndex) => <fieldset key={group.title}><legend><b>{group.title}</b><small>{group.description}</small></legend><div className="form-grid">
-      {group.keys.map((key, index) => { const target = field(key); return target ? <FormField key={key} {...props(target)} autoFocus={groupIndex === 0 && index === 0} /> : null; })}
+      {group.keys.map((key, index) => renderField(key, groupIndex === 0 && index === 0))}
     </div></fieldset>)}
 
     <fieldset><legend><b>Importes</b><small>{byTotal ? "Esta factura se cargó solo con el total" : "El IVA y el total salen del neto"}</small></legend><div className="form-grid">

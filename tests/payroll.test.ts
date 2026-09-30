@@ -163,3 +163,24 @@ describe("importar el personal desde la planilla", () => {
     expect(await Worker.findOne({ lastName: "ZAPATA" }).lean()).toMatchObject({ fileNumber: 600, hourlyRateCents: 6_348_00, active: true });
   });
 });
+
+describe("nombres del personal", () => {
+  it("la liquidación y el script completan el nombre de quien entró sin él", async () => {
+    const { execFileSync } = await import("node:child_process");
+    // Así quedaron los que entraron con el primer CSV: apellido y nombre, pero sin el nombre completo.
+    const { insertedId } = await mongoose.connection.collection("workers").insertOne({ lastName: "SINNOMBRE", firstName: "JUAN", fileNumber: 777, active: true });
+    const client = await Client.create({ name: "Cliente nombres" });
+    await mongoose.connection.collection("works").insertOne({ code: "OB-NOM", name: "Obra nombres", clientId: client._id, status: "en_curso", assignedWorkers: [{ workerId: insertedId, name: "" }], labor: [{ _id: new Types.ObjectId(), workerId: insertedId, person: "", date: day("2026-09-20"), mode: "hora", hours: 8, hourlyRateCents: 1_000_00, costCents: 8_000_00 }] });
+
+    const settlement = await call(await payrollRoute.GET(new Request("http://test/api/payroll?from=2026-09-16&to=2026-09-30")));
+    expect(settlement.body.rows.find((row: { fileNumber: number }) => row.fileNumber === 777)).toMatchObject({ name: "SINNOMBRE, JUAN" });
+
+    const output = execFileSync(process.execPath, ["scripts/fix-worker-names.mjs", "--apply"], { env: { ...process.env, MONGODB_URI: process.env.MONGODB_URI }, encoding: "utf8" });
+    expect(output).toContain("nombres completados");
+    expect(await Worker.findById(insertedId).lean()).toMatchObject({ name: "SINNOMBRE, JUAN" });
+    const work = await Work.findOne({ code: "OB-NOM" }).lean() as { labor: Array<{ person: string }>; assignedWorkers: Array<{ name: string }> };
+    expect([work.labor[0].person, work.assignedWorkers[0].name]).toEqual(["SINNOMBRE, JUAN", "SINNOMBRE, JUAN"]);
+    // Al guardar, nadie queda sin nombre.
+    expect((await Worker.create({ lastName: "NUEVA", firstName: "PERSONA" })).name).toBe("NUEVA, PERSONA");
+  });
+});

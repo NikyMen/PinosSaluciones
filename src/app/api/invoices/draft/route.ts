@@ -5,10 +5,15 @@ import { connectDB } from "@/lib/db";
 import { Invoice, Work } from "@/lib/models";
 import { apiError } from "@/lib/api";
 import { todayIso } from "@/lib/format";
+import { COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 
-/** El número que sigue al de la última factura cargada: "0001-00000123" -> "0001-00000124". */
-async function nextInvoiceNumber() {
-  const last = await Invoice.findOne({}, { number: 1 }).sort({ createdAt: -1 }).lean<{ number?: string }>();
+/**
+ * El número que sigue al de la última factura de esa empresa: "0001-00000123" -> "0001-00000124".
+ * Cada empresa tiene su propia numeración en Tango. Las facturas viejas, sin empresa, son de Trabajos Verticales Pino.
+ */
+async function nextInvoiceNumber(company: CompanyKey) {
+  const filter = company === "tvp" ? { company: { $in: ["tvp", null] } } : { company };
+  const last = await Invoice.findOne(filter, { number: 1 }).sort({ createdAt: -1 }).lean<{ number?: string }>();
   const match = String(last?.number || "").match(/^(.*?)(\d+)(\D*)$/);
   if (!match) return "";
   const [, prefix, digits, suffix] = match;
@@ -27,7 +32,9 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const workId = url.searchParams.get("obra") || "";
     const certificateNumber = url.searchParams.get("certificado") || "";
-    const draft: Record<string, unknown> = { number: await nextInvoiceNumber(), vatPct: 21 };
+    // El número que sigue en cada empresa: la pantalla lo cambia si se cambia la empresa.
+    const numbers = Object.fromEntries(await Promise.all(COMPANY_KEYS.map(async company => [company, await nextInvoiceNumber(company)] as const)));
+    const draft: Record<string, unknown> = { company: "tvp", number: numbers.tvp, numbers, vatPct: 21 };
     if (workId && certificateNumber && isValidObjectId(workId)) {
       const work = await Work.findById(workId, { code: 1, name: 1, clientId: 1, quoteId: 1, certificates: 1 }).lean<{ code: string; name: string; clientId?: unknown; quoteId?: unknown; certificates?: Array<{ number?: string; period?: string; percentage?: number; amountCents?: number }> }>();
       const certificate = work?.certificates?.find(item => String(item.number) === certificateNumber);

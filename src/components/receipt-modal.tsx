@@ -6,6 +6,7 @@ import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/f
 import { date, money, todayIso } from "@/lib/format";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
 import type { PendingInvoice, ReceiptPdfData } from "@/lib/receipt-service";
+import { companyOf } from "@/lib/companies";
 
 type Receipt = Record<string, unknown> & { _id: string };
 
@@ -113,7 +114,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
                   </span></div>
                   <div className="table-scroll"><table className="receipt-table"><thead><tr><th>Factura</th><th>Fecha</th><th>Cotización / obra</th><th>Total</th><th>Saldo</th><th>Se cobra</th></tr></thead><tbody>
                     {rows.map(row => <tr key={row._id} className={Math.round((applied[row._id] || 0) * 100) > row.balanceCents ? "row-alert" : ""}>
-                      <td data-label="Factura"><b>{row.label}</b></td>
+                      <td data-label="Factura"><b>{row.label}</b><span className={`company-badge ${row.company}`}>{companyOf(row.company).short}</span></td>
                       <td data-label="Fecha">{row.issueDate ? date(row.issueDate) : "—"}</td>
                       <td data-label="Cotización / obra">{[row.quoteNumber, row.workLabel].filter(Boolean).join(" · ") || "—"}</td>
                       <td data-label="Total">{money(row.amountCents)}</td>

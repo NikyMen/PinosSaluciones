@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { canWrite } from "@/lib/permissions";
 import { connectDB } from "@/lib/db";
-import { Work, Worker } from "@/lib/models";
+import { Work, Worker, composeWorkerName } from "@/lib/models";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
 import { dailyRateCents, hourlyRateCents, hoursPerDay, rateMode } from "@/lib/labor";
@@ -36,7 +36,7 @@ export async function POST(request: Request, context: RouteContext<"/api/works/[
     if (!worker) return Response.json({ error: "Trabajador no encontrado" }, { status: 404 });
 
     work.assignedWorkers.push({
-      workerId: worker._id, name: worker.name, dni: worker.dni, phone: worker.phone,
+      workerId: worker._id, name: worker.name || composeWorkerName(worker), dni: worker.dni, phone: worker.phone,
       category: worker.category, rateMode: rateMode(worker), dailyRateCents: dailyRateCents(worker),
       hoursPerDay: hoursPerDay(worker), hourlyRateCents: hourlyRateCents(worker),
       assignedByName: session.name,

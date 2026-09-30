@@ -2,6 +2,7 @@ import type { jsPDF } from "jspdf";
 import { date, money } from "./format";
 import { amountInWords, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
 import type { ReceiptPdfData } from "./receipt-service";
+import { companyOf } from "./companies";
 
 /**
  * Recibo de cobro: de quién se recibe, cuánto (también en letras), qué facturas
@@ -18,8 +19,9 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
   const setFill = ([r, g, b]: Rgb) => doc.setFillColor(r, g, b);
   const setStroke = ([r, g, b]: Rgb) => doc.setDrawColor(r, g, b);
   let page = 1;
+  const company = companyOf(data.company);
   const header = () => drawLetterhead(doc, {
-    title: "Recibo", number: `N° ${data.number}`, logo: meta.logo,
+    title: "Recibo", number: `N° ${data.number}`, logo: meta.logo, company,
     lines: [`Fecha: ${date(data.date)}`, "Documento no válido como factura"],
   });
   let y = header();
@@ -59,7 +61,7 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
   y += 8;
   const lines = data.lines.length ? data.lines : [{ label: "Pago a cuenta", issueDate: null, invoiceCents: 0, appliedCents: data.totalCents, quoteNumber: "" }];
   lines.forEach((line, index) => {
-    if (y > BOTTOM - 70) { drawFooter(doc, { page, author: meta.author }); doc.addPage(); page += 1; y = header() + 6; }
+    if (y > BOTTOM - 70) { drawFooter(doc, { page, author: meta.author, company }); doc.addPage(); page += 1; y = header() + 6; }
     if (index % 2 === 1) { setFill([250, 251, 253]); doc.rect(MARGIN, y - 4.6, INNER, 7.4, "F"); }
     setColor(INK); doc.setFont("helvetica", "bold"); doc.setFontSize(8.4);
     doc.text(plain(line.label).slice(0, 44), MARGIN + 3, y);
@@ -99,7 +101,7 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
   doc.text("Recibí conforme (firma y aclaración)", WIDTH - MARGIN - 37.5, signY + 4.5, { align: "center" });
   doc.text(plain(`Emitió: ${data.userName || meta.author}`), MARGIN, signY + 4.5);
 
-  drawFooter(doc, { page, author: meta.author, note: "Recibo de cobro" });
+  drawFooter(doc, { page, author: meta.author, note: "Recibo de cobro", company });
   return `recibo-${data.number}.pdf`;
 }
 

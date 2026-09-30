@@ -4,6 +4,7 @@ import { Client, Collection, Invoice, Quote, Work, nextReceiptNumber } from "./m
 import { applyCollection, collectionAllocations } from "./balances";
 import { invoiceLabel } from "./invoice-service";
 import { money } from "./format";
+import { companyOf, type CompanyKey } from "./companies";
 import type { Session } from "./auth";
 
 /*
@@ -37,7 +38,7 @@ export type ReceiptInput = {
 type Lean = Record<string, unknown> & { _id: Types.ObjectId };
 
 export type PendingInvoice = {
-  _id: string; label: string; number: string; issueDate: string | null; dueDate: string | null;
+  _id: string; label: string; number: string; company: CompanyKey; issueDate: string | null; dueDate: string | null;
   amountCents: number; collectedCents: number; balanceCents: number; appliedCents: number;
   quoteNumber: string; workLabel: string;
 };
@@ -63,7 +64,7 @@ export async function pendingInvoices(clientId: string, receiptId?: string): Pro
     const amountCents = Number(invoice.amountCents || 0);
     const collectedCents = Number(invoice.collectedCents || 0) - appliedCents;
     return {
-      _id: id, label: invoiceLabel(invoice), number: String(invoice.number || ""),
+      _id: id, label: invoiceLabel(invoice), number: String(invoice.number || ""), company: companyOf(invoice.company).key,
       issueDate: invoice.issueDate ? new Date(invoice.issueDate as Date).toISOString() : null,
       dueDate: invoice.dueDate ? new Date(invoice.dueDate as Date).toISOString() : null,
       amountCents, collectedCents, balanceCents: Math.max(0, amountCents - collectedCents), appliedCents,
@@ -87,6 +88,9 @@ export async function saveReceipt(input: ReceiptInput, session: Session, receipt
     if (!invoice) throw new ReceiptError("Una de las facturas no es de este cliente o ya está cobrada");
     if (amountCents > invoice.balanceCents) throw new ReceiptError(`A la ${invoice.label} le quedan ${money(invoice.balanceCents)} por cobrar`);
   }
+  // Un recibo lo emite una sola empresa: la de las facturas que cobra.
+  const companies = new Set([...byInvoice.keys()].map(invoiceId => pending.get(invoiceId)!.company));
+  if (companies.size > 1) throw new ReceiptError("Un recibo es de una sola empresa: hacé uno para las facturas de Trabajos Verticales Pino y otro para las de Constructora Pino");
   const allocations = [...byInvoice].map(([invoiceId, amountCents]) => ({ invoiceId: new Types.ObjectId(invoiceId), amountCents }));
   const amountCents = allocations.length ? allocations.reduce((total, allocation) => total + allocation.amountCents, 0) : Math.round(Number(input.amountCents || 0));
   if (amountCents <= 0) throw new ReceiptError("Poné cuánto se cobra");
@@ -110,6 +114,7 @@ export async function saveReceipt(input: ReceiptInput, session: Session, receipt
 }
 
 export type ReceiptPdfData = {
+  company: CompanyKey;
   number: string; date: string; method: string; account: string; reference: string; notes: string; userName: string;
   client: { name: string; cuit: string; address: string };
   lines: Array<{ label: string; issueDate: string | null; invoiceCents: number; appliedCents: number; quoteNumber: string }>;
@@ -129,6 +134,7 @@ export async function receiptPdfData(receiptId: string): Promise<ReceiptPdfData 
   const byId = new Map(invoices.map(invoice => [String(invoice._id), invoice]));
   const quoteNumber = new Map(quotes.map(quote => [String(quote._id), String(quote.number || "")]));
   return {
+    company: companyOf(invoices[0]?.company).key,
     number: String(receipt.number || String(receipt._id).slice(-6).toUpperCase()),
     date: new Date(receipt.date as Date).toISOString(),
     method: String(receipt.method || ""), account: String(receipt.account || ""), reference: String(receipt.reference || ""),

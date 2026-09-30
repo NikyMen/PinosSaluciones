@@ -324,6 +324,11 @@ const WorkerSchema = new Schema<WorkerDoc>({
   notes: String,
 }, options);
 
+// El nombre completo ("APELLIDO, NOMBRE") es lo que muestran listados y liquidaciones: nunca queda vacío.
+WorkerSchema.pre("validate", function () {
+  if (!this.name && (this.lastName || this.firstName)) this.name = composeWorkerName(this);
+});
+
 const SupplierSchema = new Schema({
   name: { type: String, required: true }, contactName: String, email: String, phone: String,
   address: String, notes: String, active: { type: Boolean, default: true },
@@ -547,6 +552,8 @@ const ExpenseSchema = new Schema({
 // hasta su cobro. `number` es el comprobante completo (punto de venta y número).
 // amountCents es el total; neto e IVA se guardan aparte cuando se cargan.
 const InvoiceSchema = new Schema({
+  // Qué empresa del grupo la emitió. Las viejas, sin empresa, son de Trabajos Verticales Pino.
+  company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
   voucherType: { type: String, enum: ["factura_a", "factura_b", "factura_c"] },
   number: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" },

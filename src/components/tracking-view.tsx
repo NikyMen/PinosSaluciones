@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Search } from "lucide-react";
 import { date, money } from "@/lib/format";
 import type { TrackingRow, TrackingState } from "@/lib/tracking";
+import { companyOf } from "@/lib/companies";
 
 const stateLabels: Record<TrackingState, string> = { sin_facturar: "Sin facturar", facturado_parcial: "Falta facturar", por_cobrar: "Por cobrar", completa: "Cobrada" };
 const filters: Array<{ value: "" | "por_cobrar" | "por_facturar" | "completa"; label: string }> = [
@@ -99,7 +100,7 @@ export function TrackingView() {
               : <span className="muted">Sin cotización</span>}</td>
             <td data-label="Cliente">{row.client?.name || "—"}</td>
             <td data-label="Obra">{row.works.length ? row.works.map(work => <Link key={work._id} href={`/app/works/${work._id}`} className="tracking-chip">{work.code || work.name}</Link>) : "—"}</td>
-            <td data-label="Facturas">{row.invoices.length ? <div className="tracking-list">{row.invoices.map(invoice => <span key={invoice._id} className={`tracking-chip ${invoice.status}`} title={`${invoice.issueDate ? date(invoice.issueDate) : ""} · ${money(invoice.amountCents)} · cobrado ${money(invoice.collectedCents)}`}>{invoice.label}</span>)}</div> : <span className="muted">—</span>}</td>
+            <td data-label="Facturas">{row.invoices.length ? <div className="tracking-list">{row.invoices.map(invoice => <span key={invoice._id} className={`tracking-chip ${invoice.status}`} title={`${companyOf(invoice.company).legalName} · ${invoice.issueDate ? date(invoice.issueDate) : ""} · ${money(invoice.amountCents)} · cobrado ${money(invoice.collectedCents)}`}><i className={`company-dot ${invoice.company}`} />{companyOf(invoice.company).short} · {invoice.label}</span>)}</div> : <span className="muted">—</span>}</td>
             <td data-label="Recibos">{row.receipts.length ? <div className="tracking-list">{row.receipts.map(receipt => <span key={receipt._id} className="tracking-chip receipt" title={`${date(receipt.date)} · ${money(receipt.amountCents)}`}>{receipt.number}</span>)}</div> : <span className="muted">—</span>}</td>
             <td data-label="Facturado">{money(row.invoicedCents)}{row.toInvoiceCents > 0 && <small className="tracking-sub">Falta {money(row.toInvoiceCents)}</small>}</td>
             <td data-label="Cobrado">{money(row.collectedCents)}</td>

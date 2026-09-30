@@ -24,6 +24,7 @@ import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
 import { voucherLabels } from "@/lib/invoice-labels";
+import { companyOf } from "@/lib/companies";
 import { AssetMaintenanceModal, NextDueCell, type AssetRecord } from "@/components/asset-maintenance";
 import { meterLabels } from "@/lib/assets";
 import { printLabels, readPrinterSettings } from "@/lib/ticket-print";
@@ -186,6 +187,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     // El legajo, y si la persona está dada de baja, se ve ahí mismo.
     if (entity === "workers" && key === "fileNumber") return <span className="file-number"><b>{value ? String(value) : "—"}</b>{item.active === false && <span className="badge anulada" title={item.leftAt ? `Baja el ${date(String(item.leftAt))}` : "Dada de baja"}>Baja</span>}</span>;
     if (entity === "invoices" && key === "number") return <span className="invoice-number">{String(value || "—")}</span>;
+    if (entity === "invoices" && key === "company") { const company = companyOf(value); return <span className={`company-badge ${company.key}`} title={`${company.legalName} · CUIT ${company.cuit}`}>{company.short}</span>; }
     if (key === "voucherType") return value ? voucherLabels[String(value)] || titleCase(String(value)) : "—";
     if (entity === "assets" && key === "nextDueDate") return <NextDueCell item={item} />;
     if (entity === "assets" && key === "currentReading") return value != null && item.meterUnit && item.meterUnit !== "ninguno" ? `${qty(Number(value), 0)} ${meterLabels[String(item.meterUnit)] || ""}` : "—";

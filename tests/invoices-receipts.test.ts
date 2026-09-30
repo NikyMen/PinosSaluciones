@@ -125,12 +125,29 @@ describe("facturas de Tango, recibos y seguimiento", () => {
     const { jsPDF } = await import("jspdf");
     const doc = new jsPDF();
     const filename = buildReceiptPdf(doc, {
-      number: "RC-9", date: "2026-09-25T00:00:00.000Z", method: "cheque", account: "Banco Nación", reference: "Ch. 123", notes: "", userName: "Fernando",
+      company: "constructora", number: "RC-9", date: "2026-09-25T00:00:00.000Z", method: "cheque", account: "Banco Nación", reference: "Ch. 123", notes: "", userName: "Fernando",
       client: { name: "Consorcio", cuit: "30-1", address: "Corrientes" },
       lines: [{ label: "Factura A 0003-00000120", issueDate: "2026-09-10T00:00:00.000Z", invoiceCents: 100_00, appliedCents: 100_00, quoteNumber: "COT-1" }],
       totalCents: 100_00,
     }, { author: "Fernando" });
     expect(filename).toBe("recibo-RC-9.pdf");
     expect(doc.getNumberOfPages()).toBe(1);
+  });
+});
+
+describe("empresa que factura", () => {
+  it("numera por empresa y no mezcla empresas en un recibo", async () => {
+    const client = await Client.create({ name: "Cliente dos empresas" });
+    const tvp = await call(await recordsRoute.POST(json("POST", { company: "tvp", voucherType: "factura_a", number: "0003-00000500", clientId: String(client._id), issueDate: "2026-09-29", netCents: 100_00, vatPct: 21, status: "pendiente" }), params({ entity: "invoices" })));
+    const constructora = await call(await recordsRoute.POST(json("POST", { company: "constructora", voucherType: "factura_a", number: "0005-00000077", clientId: String(client._id), issueDate: "2026-09-29", netCents: 200_00, vatPct: 21, status: "pendiente" }), params({ entity: "invoices" })));
+    expect([tvp.body.company, constructora.body.company]).toEqual(["tvp", "constructora"]);
+    // Cada empresa sigue su numeración.
+    const draft = (await call(await draftRoute.GET(new Request("http://test/api/invoices/draft")))).body;
+    expect(draft).toMatchObject({ company: "tvp", number: "0003-00000501", numbers: { tvp: "0003-00000501", constructora: "0005-00000078" } });
+    // Un recibo es de una sola empresa.
+    const mixed = await call(await receiptsRoute.POST(json("POST", { clientId: String(client._id), date: "2026-09-30", method: "efectivo", allocations: [{ invoiceId: tvp.body._id, amountCents: 121_00 }, { invoiceId: constructora.body._id, amountCents: 242_00 }] })));
+    expect(mixed).toMatchObject({ status: 409, body: { error: expect.stringContaining("una sola empresa") } });
+    const ok = await call(await receiptsRoute.POST(json("POST", { clientId: String(client._id), date: "2026-09-30", method: "efectivo", allocations: [{ invoiceId: constructora.body._id, amountCents: 242_00 }] })));
+    expect(ok.body.pdf.company).toBe("constructora");
   });
 });

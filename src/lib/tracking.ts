@@ -3,6 +3,7 @@ import { Client, Collection, Invoice, Quote, Work } from "./models";
 import { collectionAllocations } from "./balances";
 import { invoiceLabel } from "./invoice-labels";
 import { excludedFromTotals } from "./trash";
+import { companyOf, type CompanyKey } from "./companies";
 
 /*
  * El seguimiento de punta a punta: cada cotización aprobada (o con facturas)
@@ -13,7 +14,7 @@ import { excludedFromTotals } from "./trash";
 
 type Lean = Record<string, unknown> & { _id: Types.ObjectId };
 
-export type TrackingInvoice = { _id: string; label: string; issueDate: string | null; amountCents: number; collectedCents: number; status: string };
+export type TrackingInvoice = { _id: string; company: CompanyKey; label: string; issueDate: string | null; amountCents: number; collectedCents: number; status: string };
 export type TrackingReceipt = { _id: string; number: string; date: string; amountCents: number };
 export type TrackingState = "sin_facturar" | "facturado_parcial" | "por_cobrar" | "completa";
 export type TrackingRow = {
@@ -78,7 +79,7 @@ export async function trackingRows(): Promise<TrackingRow[]> {
       rows.set(key, row);
     }
     if (work && !row.works.some(existing => existing._id === String(work._id))) row.works.push(workRef(work));
-    row.invoices.push({ _id: String(invoice._id), label: invoiceLabel(invoice), issueDate: iso(invoice.issueDate), amountCents: Number(invoice.amountCents || 0), collectedCents: Number(invoice.collectedCents || 0), status: String(invoice.status || "") });
+    row.invoices.push({ _id: String(invoice._id), company: companyOf(invoice.company).key, label: invoiceLabel(invoice), issueDate: iso(invoice.issueDate), amountCents: Number(invoice.amountCents || 0), collectedCents: Number(invoice.collectedCents || 0), status: String(invoice.status || "") });
     for (const receipt of receiptsByInvoice.get(String(invoice._id)) || []) {
       const same = row.receipts.find(existing => existing._id === receipt._id);
       if (same) same.amountCents += receipt.amountCents; else row.receipts.push({ ...receipt });

@@ -286,6 +286,8 @@ export async function importPayroll(parsed: ParsedPayroll, sites: Record<string,
           summary.conflicts.push(`El legajo ${first.fileNumber} de ${first.fullName} ya es de otra persona: queda con el ${keep}`);
         }
       }
+      // Quien entró con el CSV de personal puede no tener el nombre completo armado.
+      if (!worker.name) set.name = composeWorkerName(worker);
       if (!worker.position && first.position) set.position = first.position;
       if (!worker.workType) set.workType = habitual;
       if (Object.keys(set).length) { await Worker.updateOne({ _id: worker._id }, { $set: set }); Object.assign(worker, set); }

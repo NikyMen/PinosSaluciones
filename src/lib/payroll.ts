@@ -1,5 +1,5 @@
 import type { Types } from "mongoose";
-import { Work, Worker } from "./models";
+import { Work, Worker, composeWorkerName } from "./models";
 import { excludedFromTotals } from "./trash";
 
 /*
@@ -46,7 +46,7 @@ export async function payroll(from: Date, to: Date) {
     const day = new Date(entry.date as Date);
     const row = rows.get(key) || {
       workerId: key, fileNumber: fileNumberAt(worker, day),
-      name: String(worker?.name || entry.person || "Sin nombre"), lastName: String(worker?.lastName || entry.person || ""), firstName: String(worker?.firstName || ""),
+      name: String(worker?.name || (worker && composeWorkerName({ lastName: worker.lastName, firstName: worker.firstName })) || entry.person || "Sin nombre"), lastName: String(worker?.lastName || entry.person || ""), firstName: String(worker?.firstName || ""),
       dni: String(worker?.dni || ""), position: String(worker?.position || ""), byType: [], hours: 0, totalCents: 0, lines: [],
     };
     const byJournal = entry.mode === "jornada" && !entry.workType;
