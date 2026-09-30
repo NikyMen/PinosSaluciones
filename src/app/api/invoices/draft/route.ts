@@ -2,7 +2,7 @@ import { isValidObjectId } from "mongoose";
 import { requireSession } from "@/lib/auth";
 import { canWrite } from "@/lib/permissions";
 import { connectDB } from "@/lib/db";
-import { Invoice, Work } from "@/lib/models";
+import { Invoice, Quote, Work } from "@/lib/models";
 import { apiError } from "@/lib/api";
 import { todayIso } from "@/lib/format";
 import { COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
@@ -38,6 +38,9 @@ export async function GET(request: Request) {
     if (workId && certificateNumber && isValidObjectId(workId)) {
       const work = await Work.findById(workId, { code: 1, name: 1, clientId: 1, quoteId: 1, certificates: 1 }).lean<{ code: string; name: string; clientId?: unknown; quoteId?: unknown; certificates?: Array<{ number?: string; period?: string; percentage?: number; amountCents?: number }> }>();
       const certificate = work?.certificates?.find(item => String(item.number) === certificateNumber);
+      // La empresa es la que tiene cargada la cotización de la obra.
+      const quote = work?.quoteId ? await Quote.findById(work.quoteId).select("company").lean<{ company?: string }>() : null;
+      if (quote?.company && COMPANY_KEYS.includes(quote.company as CompanyKey)) Object.assign(draft, { company: quote.company, number: numbers[quote.company] });
       if (work && certificate) Object.assign(draft, {
         clientId: work.clientId ? String(work.clientId) : "",
         workId, quoteId: work.quoteId ? String(work.quoteId) : "",

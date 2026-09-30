@@ -9,6 +9,7 @@ import { WAREHOUSE_KEYS } from "@/lib/warehouses";
 
 const id = z.string().regex(/^[a-f\d]{24}$/i, "ID inválido");
 const schema = z.object({
+  company: z.enum(["tvp", "constructora"]).default("tvp"),
   supplierId: id,
   items: z.array(z.object({
     itemId: id,
@@ -29,8 +30,8 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || "Pedido inválido" }, { status: 400 });
     await connectDB();
-    const { supplierId, items, workId, requestedDate, expectedDate, deliverTo, notes } = parsed.data;
-    const result = await createPurchaseOrder({ supplierId, lines: items, workId, requestedDate, expectedDate, deliverTo, notes, session });
+    const { company, supplierId, items, workId, requestedDate, expectedDate, deliverTo, notes } = parsed.data;
+    const result = await createPurchaseOrder({ company, supplierId, lines: items, workId, requestedDate, expectedDate, deliverTo, notes, session });
     await audit(session, "create", "purchases", result.purchase._id, null, result.purchase, request.headers.get("x-forwarded-for") || undefined);
     return Response.json(result, { status: 201 });
   } catch (error) {

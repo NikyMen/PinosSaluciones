@@ -2,7 +2,7 @@ import type { jsPDF } from "jspdf";
 import { date, money } from "./format";
 import { amountInWords, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
 import type { ReceiptPdfData } from "./receipt-service";
-import { companyOf } from "./companies";
+import { bankLines, companyOf } from "./companies";
 
 /**
  * Recibo de cobro: de quién se recibe, cuánto (también en letras), qué facturas
@@ -90,6 +90,11 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
   if (data.notes.trim()) {
     setColor(MUTED); doc.setFontSize(7.8);
     for (const line of (doc.splitTextToSize(plain(`Observaciones: ${data.notes.trim()}`), INNER) as string[]).slice(0, 4)) { doc.text(line, MARGIN, y); y += 4.4; }
+  }
+
+  for (const line of bankLines(company)) {
+    setColor(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(7.8);
+    for (const part of (doc.splitTextToSize(plain(line), INNER) as string[]).slice(0, 2)) { doc.text(part, MARGIN, y); y += 4.4; }
   }
 
   // La firma de quien recibe, al pie.

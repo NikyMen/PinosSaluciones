@@ -21,8 +21,8 @@ type StoredItem = {
 
 const productKey = (item: { code?: string; name: string; presentation?: string }) => `${normalize(item.code) || normalize(item.name)}|${normalize(item.presentation)}`;
 
-export async function createPurchaseOrder({ supplierId, lines, workId, requestedDate, expectedDate, deliverTo = "central", notes, session }: {
-  supplierId: string; lines: Array<{ itemId: string; quantity: number }>; workId?: string; requestedDate?: Date; expectedDate?: Date; deliverTo?: string; notes?: string; session: Session;
+export async function createPurchaseOrder({ company = "tvp", supplierId, lines, workId, requestedDate, expectedDate, deliverTo = "central", notes, session }: {
+  company?: string; supplierId: string; lines: Array<{ itemId: string; quantity: number }>; workId?: string; requestedDate?: Date; expectedDate?: Date; deliverTo?: string; notes?: string; session: Session;
 }) {
   const supplier = await Supplier.findById(supplierId).lean() as ({ _id: Types.ObjectId; name: string; discountPct?: number } & Record<string, unknown>) | null;
   if (!supplier) throw new PurchaseOrderError("Proveedor no encontrado");
@@ -69,7 +69,7 @@ export async function createPurchaseOrder({ supplierId, lines, workId, requested
 
   const summary = items.slice(0, 3).map(item => `${qty(item.quantity)} x ${item.name}`).join(", ");
   const purchase = await Purchase.create({
-    number: await nextPurchaseNumber(),
+    number: await nextPurchaseNumber(), company,
     supplierId, workId: work ? workId : undefined,
     description: `${items.length} ${items.length === 1 ? "producto" : "productos"} de ${supplier.name}: ${summary}${items.length > 3 ? ` y ${items.length - 3} más` : ""}`,
     amountCents: subtotalCents + vatCents, subtotalCents, vatCents, items, notes: notes || "",

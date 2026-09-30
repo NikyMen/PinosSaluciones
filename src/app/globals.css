@@ -1992,3 +1992,11 @@ td > .company-badge:first-child { margin-left: 0; }
 .company-badge.constructora { background: #fdecec; color: var(--brand-red-dark); }
 .company-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--brand-navy); vertical-align: middle; }
 .company-dot.constructora { background: var(--brand-red); }
+
+/* Bienes de uso: sector de cada bien */
+.asset-sectors { margin-bottom: 14px; }
+.sector-badge { display: inline-flex; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; background: #eef2f7; color: #4a5568; }
+.sector-badge.albanileria { background: #fbeee4; color: #9a4a12; }
+.sector-badge.altura { background: #e8f0fb; color: #1f4f9a; }
+.sector-badge.pintura { background: #f3e8fb; color: #6b2fa0; }
+.sector-badge.aislamiento { background: #e3f4ed; color: #16815d; }

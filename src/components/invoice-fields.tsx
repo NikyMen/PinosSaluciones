@@ -61,6 +61,7 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
     return { ...base, onRelationChange: (value: string) => {
       const quote = quotes.find(candidate => candidate._id === value);
       const work = works.find(candidate => String(candidate.quoteId || "") === value) || works.find(candidate => candidate._id === String(quote?.workId || ""));
+      if (quote?.company) chooseCompany(String(quote.company));
       onRelations({ quoteId: value, ...(quote?.clientId ? { clientId: String(quote.clientId) } : {}), ...(work ? { workId: work._id } : {}) });
     } };
   }

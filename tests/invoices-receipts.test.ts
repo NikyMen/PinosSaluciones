@@ -151,3 +151,27 @@ describe("empresa que factura", () => {
     expect(ok.body.pdf.company).toBe("constructora");
   });
 });
+
+describe("empresa desde la cotización, sectores y datos bancarios", () => {
+  it("la factura del certificado toma la empresa de la cotización", async () => {
+    const client = await Client.create({ name: "Cliente constructora" });
+    const quote = await Quote.create({ number: "COT-90", clientId: client._id, title: "Obra constructora", amountCents: 1_000_00, status: "aprobada", company: "constructora" });
+    const work = await Work.create({ code: "OB-90", name: "Obra constructora", clientId: client._id, quoteId: quote._id, status: "en_curso", certificates: [{ number: "C1", period: "Sep", percentage: 10, amountCents: 100_00, approved: true }] });
+    const draft = (await call(await draftRoute.GET(new Request(`http://test/api/invoices/draft?obra=${work._id}&certificado=C1`)))).body;
+    expect(draft).toMatchObject({ company: "constructora", quoteId: String(quote._id), netCents: 100_00 });
+  });
+
+  it("un bien de uso sin sector es de uso general", async () => {
+    const created = await call(await recordsRoute.POST(json("POST", { name: "Fiat Fiorino", category: "vehiculo", status: "activo" }), params({ entity: "assets" })));
+    expect(created.body.sector).toBe("general");
+    const scaffold = await call(await recordsRoute.POST(json("POST", { name: "Silleta", category: "herramienta", status: "activo", sector: "altura" }), params({ entity: "assets" })));
+    expect(scaffold.body.sector).toBe("altura");
+  });
+
+  it("los datos para transferir salen solo cuando están cargados", async () => {
+    const { bankLines, COMPANIES } = await import("../src/lib/companies");
+    expect(bankLines(COMPANIES.tvp)).toEqual([]);
+    expect(bankLines({ ...COMPANIES.constructora, bank: "Banco Nación", cbu: "0110000000000000000000", alias: "PINO.CONSTRUCTORA" }))
+      .toEqual(["Datos para transferir a Constructora Pino S.R.L.: Banco Nación · CBU 0110000000000000000000 · Alias PINO.CONSTRUCTORA"]);
+  });
+});

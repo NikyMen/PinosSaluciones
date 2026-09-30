@@ -337,3 +337,25 @@ describe("listas de precios (base)", () => {
     expect(search.body.total).toBe(0);
   });
 });
+
+describe("empresa que compra", () => {
+  it("la orden va a nombre de la empresa elegida, también en el PDF", async () => {
+    const supplier = await Supplier.create({ name: "Proveedor empresas" });
+    await importList(String(supplier._id), "2026-09-01", [item("EMP1", "MEMBRANA EMP", "Balde", 1_000)]);
+    const line = await PriceListItem.findOne({ supplierId: supplier._id, current: true }).lean() as { _id: Types.ObjectId };
+    const response = await call(await ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company: "constructora", requestedDate: "2026-09-30", supplierId: String(supplier._id), items: [{ itemId: String(line._id), quantity: 1 }] }) })));
+    expect(response.status).toBe(201);
+    expect(response.body.purchase.company).toBe("constructora");
+    expect(response.body.pdf.company).toBe("constructora");
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF();
+    // Lo que se escribe en el papel: el membrete y a nombre de quién va la factura.
+    const written: string[] = [];
+    const original = doc.text.bind(doc);
+    doc.text = ((text: string | string[], ...rest: unknown[]) => { written.push(([] as string[]).concat(text).join(" ")); return (original as (...args: unknown[]) => unknown)(text, ...rest); }) as typeof doc.text;
+    buildPurchaseOrderPdf(doc, response.body.pdf, { author: "Compras" });
+    expect(written).toContain("Constructora Pino S.R.L.");
+    expect(written).toContain("Enviar factura a favor de: CONSTRUCTORA PINO S.R.L. (CUIT 30-71758997-8)");
+    expect(written.some(text => text.includes("Trabajos Verticales"))).toBe(false);
+  });
+});

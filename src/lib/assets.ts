@@ -9,6 +9,12 @@
 
 export const ASSET_NOTICE_DAYS = 14;
 
+/** Los sectores que usan los bienes. "General" es lo que va a cualquier obra o sector: autos, andamios… */
+export const sectorLabels: Record<string, string> = {
+  albanileria: "Albañilería", altura: "Trabajos en altura", pintura: "Pintura",
+  aislamiento: "Aislamiento / Espuma / Impermeabilización", general: "General",
+};
+
 export type AssetPlan = {
   _id?: unknown; title: string; dueDate?: string | Date | null; dueReading?: number | null;
   intervalMonths?: number | null; intervalReading?: number | null; notes?: string;

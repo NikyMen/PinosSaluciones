@@ -97,6 +97,8 @@ const CascadeSchema = new Schema({
 
 const QuoteSchema = new Schema({
   number: { type: String, required: true, unique: true, trim: true },
+  // Con qué empresa se va a facturar, si ya se sabe. La factura la toma de acá.
+  company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
   clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   title: { type: String, required: true }, description: String,
   version: { type: Number, default: 1, min: 1 }, amountCents: money,
@@ -490,6 +492,8 @@ const AssetPlanSchema = new Schema({
 
 const AssetSchema = new Schema({
   name: { type: String, required: true, trim: true },
+  // El sector que lo usa. "general" es lo que va a cualquier obra o sector (autos, andamios…).
+  sector: { type: String, enum: ["albanileria", "altura", "pintura", "aislamiento", "general"], default: "general" },
   category: { type: String, enum: ["vehiculo", "maquinaria", "herramienta", "equipo", "informatica", "inmueble", "otro"], default: "vehiculo" },
   brand: String, model: String,
   // Patente, número de serie o de chasis: lo que identifica a este y no a otro igual.
@@ -522,7 +526,9 @@ const PurchaseLineSchema = new Schema({
 }, { _id: false });
 
 const PurchaseSchema = new Schema({
-  number: { type: String, required: true, unique: true }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, workId: { type: Schema.Types.ObjectId, ref: "Work" },
+  number: { type: String, required: true, unique: true },
+  // Qué empresa compra: a su nombre va la factura del proveedor.
+  company: { type: String, enum: ["tvp", "constructora"], default: "tvp" }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, workId: { type: Schema.Types.ObjectId, ref: "Work" },
   description: { type: String, required: true }, amountCents: money,
   stage: { type: String, enum: ["solicitud", "orden", "recepcion"], default: "solicitud" },
   status: { type: String, enum: ["borrador", "aprobada", "enviada", "recibida", "cancelada"], default: "borrador" },
@@ -578,6 +584,8 @@ const CollectionSchema = new Schema({
 }, options);
 
 const PaymentSchema = new Schema({
+  // Qué empresa paga.
+  company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
   supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
   date: { type: Date, required: true }, amountCents: money,
   method: { type: String, enum: ["transferencia", "efectivo", "cheque", "otro"], required: true },

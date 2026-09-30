@@ -1,8 +1,9 @@
 import type { jsPDF } from "jspdf";
 import { date, money, qty } from "./format";
 import { VAT_RATE } from "./price-lists";
-import { amountInWords, COMPANY, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
+import { amountInWords, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
 import { deliveryLabel } from "./warehouses";
+import { companyOf, type CompanyKey } from "./companies";
 
 /**
  * Orden de compra en PDF: el papel que se le pasa al proveedor para hacer el
@@ -18,6 +19,8 @@ export type PurchaseOrderLine = {
 };
 
 export type PurchaseOrderPdfData = {
+  /** Qué empresa compra: su membrete y a su nombre la factura. */
+  company?: CompanyKey;
   number: string;
   requestedDate: string;
   expectedDate?: string;
@@ -55,7 +58,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
 
   function header() {
     y = drawLetterhead(doc, {
-      title: "Orden de compra", number: `N° ${data.number}`, logo: meta.logo,
+      title: "Orden de compra", number: `N° ${data.number}`, logo: meta.logo, company: companyOf(data.company),
       lines: [`Fecha de emisión: ${date(data.requestedDate)}`, `Entrega: ${data.expectedDate ? date(data.expectedDate) : "a coordinar"}`],
     });
   }
@@ -81,7 +84,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
 
   function ensure(space: number, withTableHead = false) {
     if (y + space <= BOTTOM) return;
-    drawFooter(doc, { page, author: meta.author });
+    drawFooter(doc, { page, author: meta.author, company: companyOf(data.company) });
     doc.addPage();
     page += 1;
     header();
@@ -242,7 +245,8 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   setColor(NAVY);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
-  doc.text(plain(`Enviar factura a favor de: ${COMPANY.legalName.toUpperCase()} (CUIT ${COMPANY.cuit})`), MARGIN, y);
+  const buyer = companyOf(data.company);
+  doc.text(plain(`Enviar factura a favor de: ${buyer.legalName.toUpperCase()} (CUIT ${buyer.cuit})`), MARGIN, y);
 
   // La firma, siempre al pie de la última hoja.
   ensure(28);
@@ -255,7 +259,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   doc.setFontSize(7.6);
   doc.text("Firma del responsable", WIDTH - MARGIN - 35, signY + 4.5, { align: "center" });
 
-  drawFooter(doc, { page, author: meta.author });
+  drawFooter(doc, { page, author: meta.author, company: companyOf(data.company) });
   return `orden-de-compra-${data.number}.pdf`;
 }
 
@@ -271,6 +275,7 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
   const items = (Array.isArray(purchase.items) ? purchase.items : []) as PurchaseOrderLine[];
   const subtotalCents = Number(purchase.subtotalCents ?? items.reduce((total, item) => total + Number(item.totalCents || 0), 0));
   return {
+    company: companyOf(purchase.company).key,
     number: String(purchase.number || ""),
     requestedDate: isoOrUndefined(purchase.requestedDate) || new Date().toISOString(),
     expectedDate: isoOrUndefined(purchase.expectedDate),

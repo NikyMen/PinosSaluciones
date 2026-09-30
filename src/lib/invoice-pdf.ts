@@ -1,6 +1,7 @@
 import type { jsPDF } from "jspdf";
 import { date, money, todayIso } from "./format";
-import { COMPANY, drawFooter, drawLetterhead, PAGE } from "./pdf-brand";
+import { drawFooter, drawLetterhead, PAGE } from "./pdf-brand";
+import { bankLines, companyOf, type CompanyKey } from "./companies";
 
 /**
  * Factura de avance de obra, en PDF.
@@ -14,6 +15,8 @@ import { COMPANY, drawFooter, drawLetterhead, PAGE } from "./pdf-brand";
  */
 
 export type InvoicePdfData = {
+  /** Qué empresa factura (la de la cotización). */
+  company?: CompanyKey;
   /** Número del certificado con el que queda guardado el avance. */
   number: string;
   period: string;
@@ -52,7 +55,8 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
     return `${cut}...`;
   }
 
-  drawLetterhead(doc, { title: "Factura de avance", number: `N° ${data.number}`, logo: meta.logo, lines: [`Emisión: ${date(todayIso())}`, `Período: ${data.period}`] });
+  const COMPANY = companyOf(data.company);
+  drawLetterhead(doc, { title: "Factura de avance", number: `N° ${data.number}`, logo: meta.logo, company: COMPANY, lines: [`Emisión: ${date(todayIso())}`, `Período: ${data.period}`] });
 
   /* ── Encabezado del comprobante: emisor | letra | numeración ─────────────── */
   const boxTop = PAGE.contentTop + 6;
@@ -71,7 +75,7 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
   setColor(MUTED);
   doc.text(plain(COMPANY.address), MARGIN + 5, boxTop + 15);
   doc.text(plain(`CUIT: ${COMPANY.cuit}`), MARGIN + 5, boxTop + 20.5);
-  doc.text(plain(`Condición frente al IVA: ${COMPANY.vat}`), MARGIN + 5, boxTop + 26);
+  doc.text(plain(`Condición frente al IVA: ${COMPANY.vat || "-"}`), MARGIN + 5, boxTop + 26);
   doc.text("Documento interno - sin validez fiscal", MARGIN + 5, boxTop + 31.5);
 
   // Después del recuadro de la letra, que ocupa 10 mm a cada lado del medio.
@@ -218,6 +222,13 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
   doc.text(plain(clip(`Se factura el ${data.percentage}% de ${money(data.quote.amountCents)} presupuestados.`, noteWidth)), MARGIN, y);
   doc.text(plain(clip(`Cotizacion ${data.quote.number || "-"} aprobada y convertida en la obra ${data.work.code}.`, noteWidth)), MARGIN, y + 5.5);
   if (data.work.startDate) doc.text(plain(clip(`Inicio previsto de la obra: ${date(data.work.startDate)}.`, noteWidth)), MARGIN, y + 11);
+
+  // Los datos para transferir a la empresa que factura, si ya están cargados.
+  let bankY = y + 32;
+  for (const line of bankLines(COMPANY)) {
+    setColor(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(7.8);
+    for (const part of (doc.splitTextToSize(plain(line), INNER) as string[]).slice(0, 2)) { doc.text(part, MARGIN, bankY); bankY += 4.4; }
+  }
 
   drawFooter(doc, { page: 1, author: meta.author, note: "Documento interno, sin validez fiscal" });
 

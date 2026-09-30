@@ -19,7 +19,7 @@ export type TrackingReceipt = { _id: string; number: string; date: string; amoun
 export type TrackingState = "sin_facturar" | "facturado_parcial" | "por_cobrar" | "completa";
 export type TrackingRow = {
   key: string;
-  quote: { _id: string; number: string; title: string; status: string; amountCents: number } | null;
+  quote: { _id: string; number: string; title: string; status: string; amountCents: number; company: CompanyKey } | null;
   client: { _id: string; name: string } | null;
   works: Array<{ _id: string; code: string; name: string }>;
   invoices: TrackingInvoice[];
@@ -43,7 +43,7 @@ export async function trackingRows(): Promise<TrackingRow[]> {
   const quotes = await Quote.find({
     _id: { $nin: excluded.quotes }, clientId: { $nin: excluded.clients },
     $or: [{ status: { $in: ["aprobada", "convertida"] } }, { _id: { $in: invoiceQuoteIds } }],
-  }).select("number title status amountCents clientId workId").sort({ updatedAt: -1 }).lean() as Lean[];
+  }).select("number title status amountCents clientId workId company").sort({ updatedAt: -1 }).lean() as Lean[];
   const clients = await Client.find({ _id: { $in: [...quotes.map(quote => quote.clientId), ...invoices.map(invoice => invoice.clientId)] } }).select("name").lean() as Lean[];
   const clientName = new Map(clients.map(client => [String(client._id), String(client.name || "")]));
 
@@ -64,7 +64,7 @@ export async function trackingRows(): Promise<TrackingRow[]> {
     const quoteWorks = works.filter(work => String(work.quoteId || "") === String(quote._id) || String(quote.workId || "") === String(work._id));
     rows.set(`q:${quote._id}`, {
       key: `q:${quote._id}`,
-      quote: { _id: String(quote._id), number: String(quote.number || ""), title: String(quote.title || ""), status: String(quote.status || ""), amountCents: Number(quote.amountCents || 0) },
+      quote: { _id: String(quote._id), number: String(quote.number || ""), title: String(quote.title || ""), status: String(quote.status || ""), amountCents: Number(quote.amountCents || 0), company: companyOf(quote.company).key },
       client: client(quote.clientId), works: quoteWorks.map(workRef), invoices: [], receipts: [],
       quotedCents: Number(quote.amountCents || 0), invoicedCents: 0, collectedCents: 0, balanceCents: 0, toInvoiceCents: 0, state: "sin_facturar",
     });

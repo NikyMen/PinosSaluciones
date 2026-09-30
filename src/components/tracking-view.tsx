@@ -96,7 +96,7 @@ export function TrackingView() {
             <th>Cotización</th><th>Cliente</th><th>Obra</th><th>Facturas</th><th>Recibos</th><th>Facturado</th><th>Cobrado</th><th>Saldo</th><th>Estado</th>
           </tr></thead><tbody>{visible.map(row => <tr key={row.key}>
             <td data-label="Cotización">{row.quote
-              ? <Link href={`/app/quotes/${row.quote._id}`} className="tracking-quote"><b>{row.quote.number}</b><small>{row.quote.title}</small><small>{money(row.quote.amountCents)}</small></Link>
+              ? <Link href={`/app/quotes/${row.quote._id}`} className="tracking-quote"><b>{row.quote.number} <span className={`company-badge ${row.quote.company}`}>{companyOf(row.quote.company).short}</span></b><small>{row.quote.title}</small><small>{money(row.quote.amountCents)}</small></Link>
               : <span className="muted">Sin cotización</span>}</td>
             <td data-label="Cliente">{row.client?.name || "—"}</td>
             <td data-label="Obra">{row.works.length ? row.works.map(work => <Link key={work._id} href={`/app/works/${work._id}`} className="tracking-chip">{work.code || work.name}</Link>) : "—"}</td>

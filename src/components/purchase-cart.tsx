@@ -8,6 +8,7 @@ import { VAT_RATE } from "@/lib/price-lists";
 import { purchaseCart, usePurchaseCart, type CartLine } from "@/lib/purchase-cart";
 import { downloadPurchaseOrderPdf, type PurchaseOrderPdfData } from "@/lib/purchase-order-pdf";
 import { DateInput, SearchSelect, type Option } from "@/components/fields";
+import { COMPANIES, COMPANY_KEYS } from "@/lib/companies";
 import { DELIVERY_OPTIONS } from "@/lib/warehouses";
 
 /*
@@ -111,6 +112,7 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
   const [deliverTo, setDeliverTo] = useState("central");
   const [expectedDate, setExpectedDate] = useState("");
   const [orderDate, setOrderDate] = useState("");
+  const [company, setCompany] = useState("tvp");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -123,7 +125,7 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
     setBusy(true); setError("");
     const response = await fetch("/api/purchases/orders", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ supplierId, items: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })), workId, requestedDate: orderDate, expectedDate, deliverTo, notes }),
+      body: JSON.stringify({ supplierId, items: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })), company, workId, requestedDate: orderDate, expectedDate, deliverTo, notes }),
     });
     const result = await response.json();
     if (!response.ok) { setBusy(false); return setError(result.error || "No se pudo cerrar la orden"); }
@@ -151,6 +153,9 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
       <div className="total"><dt>Total</dt><dd>{money(subtotal + vat)}</dd></div>
     </dl>
     <div className="form-grid cart-form">
+      <label><span>Empresa que compra *<em className="field-hint">A su nombre va la factura del proveedor</em></span>
+        <SearchSelect name={`company-${supplierId}`} value={company} onChange={value => setCompany(value || "tvp")}
+          options={COMPANY_KEYS.map(key => ({ value: key, label: COMPANIES[key].legalName, hint: `CUIT ${COMPANIES[key].cuit}` }))} /></label>
       <label><span>Fecha de la orden *</span>
         <DateInput name={`date-${supplierId}`} required recent onValueChange={setOrderDate} /></label>
       <label><span>Entregar en<em className="field-hint">Dónde recibe la mercadería</em></span>
