@@ -51,3 +51,20 @@ describe("qué tareas ve cada uno",()=>{
   it("ignora un área inventada",()=>{expect(taskScope(gerencia,new URLSearchParams("assigneeRole=marketing"))).toEqual({})});
   it("una tarea de otra área no se abre por id",()=>{expect(canSeeTask(compras,{assigneeRole:"contador"})).toBe(false);expect(canSeeTask(compras,{assigneeRole:"contador",assigneeId:compras.userId})).toBe(true);expect(canSeeTask(gerencia,{assigneeRole:"contador"})).toBe(true)});
 });
+
+describe("secciones nuevas y permisos guardados", () => {
+  it("quien tiene permisos guardados de antes ve Bienes de uso según su rol", async () => {
+    const { normalizePermissions } = await import("../src/lib/permissions");
+    const saved = { view: ["dashboard", "stock", "works"] as const, edit: ["stock"] as const };
+    const gerencia = normalizePermissions("gerencia", { view: [...saved.view], edit: [...saved.edit] });
+    expect(gerencia.view).toContain("assets");
+    expect(gerencia.edit).toContain("assets");
+    expect(gerencia.view).not.toContain("clients");
+    const ventas = normalizePermissions("ventas", { view: [...saved.view], edit: [] });
+    expect(ventas.view).toContain("assets");
+    expect(ventas.edit).not.toContain("assets");
+    // Una vez guardados con la sección ya existente, si se la sacaron, queda sacada.
+    const edited = normalizePermissions("gerencia", { view: ["dashboard"], edit: [], seen: gerencia.seen });
+    expect(edited.view).toEqual(["dashboard"]);
+  });
+});

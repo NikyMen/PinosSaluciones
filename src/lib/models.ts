@@ -25,6 +25,8 @@ const UserSchema = new Schema({
     type: new Schema({
       view: [{ type: String, enum: viewSections }],
       edit: [{ type: String, enum: entities }],
+      // Las secciones que existían cuando se guardaron: una sección nueva se da según el rol.
+      seen: [{ type: String, enum: viewSections }],
     }, { _id: false }),
     default: undefined,
   },
