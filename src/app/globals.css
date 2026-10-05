@@ -172,6 +172,8 @@ svg { flex: none; }
 .panel-head p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: .66rem; }
 .panel-head a { display: inline-flex; align-items: center; gap: 5px; color: var(--brand-navy); font-size: .7rem; font-weight: 800; }
 .panel-head a:hover { color: var(--brand-red); }
+/* Un botón primario en la cabecera conserva la letra blanca sobre el azul. */
+.panel-head a.primary-btn, .panel-head a.primary-btn:hover { color: #fff; }
 .toolbar { margin-bottom: 14px; display: flex; align-items: center; gap: 9px; }
 .search { height: 43px; min-width: 260px; max-width: 560px; padding: 0 13px; display: flex; flex: 1; align-items: center; gap: 9px; border: 1px solid var(--line-strong); border-radius: 10px; color: #8190a1; background: #fff; }
 .search:focus-within { border-color: var(--brand-navy-light); box-shadow: 0 0 0 4px rgba(0,48,91,.06); }
