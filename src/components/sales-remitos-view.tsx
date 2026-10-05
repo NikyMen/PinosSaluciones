@@ -9,6 +9,7 @@ import { downloadRemitoPdf } from "@/lib/remito-pdf";
 import { invoiceLabel } from "@/lib/invoice-labels";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
 import { StockPicker, type PickedItem } from "@/components/stock-picker";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 type Line = { stockItemId: string; name: string; unit: string; quantity: number; unitPriceCents: number; totalCents: number };
 type Remito = {
@@ -132,7 +133,7 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
   const [error, setError] = useState("");
 
   useEffect(() => {
-    void fetch("/api/records/clients?limit=100").then(response => response.ok ? response.json() : { items: [] })
+    void fetchAllRecords<{ _id: string; name: string; cuit?: string }>("clients").then(items => ({ items }))
       .then(result => setClients((result.items || []).map((client: { _id: string; name: string; cuit?: string }) => ({ value: client._id, label: client.name, hint: client.cuit }))));
   }, []);
 

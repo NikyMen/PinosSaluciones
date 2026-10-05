@@ -11,6 +11,7 @@ import { COMPANIES, COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { downloadRemitoPdf, type RemitoData } from "@/lib/remito-pdf";
 import { printLabels, printTicket, readPrinterSettings, savePrinterSettings, type PrinterSettings, type TicketData } from "@/lib/ticket-print";
 import { cleanScannedCode } from "@/lib/barcode";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Caja del depósito: lo que entra y lo que sale, escaneando.
@@ -88,8 +89,8 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     const timer = window.setTimeout(() => { setPrinter(readPrinterSettings()); void loadRecent(); }, 0);
     const toOptions = (rows: Array<Record<string, unknown>>) => rows.map(row => ({ value: String(row._id), label: String(row.name || row.code || ""), hint: row.code ? String(row.code) : undefined }));
     void Promise.all([
-      fetch("/api/records/suppliers?limit=100").then(response => response.ok ? response.json() : { items: [] }),
-      fetch("/api/records/works?limit=100").then(response => response.ok ? response.json() : { items: [] }),
+      fetchAllRecords("suppliers").then(items => ({ items })),
+      fetchAllRecords("works").then(items => ({ items })),
     ]).then(([supplierRows, workRows]) => {
       setSuppliers(toOptions(supplierRows.items || []));
       // Sólo las obras vivas: no se entrega material a una obra terminada.

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, ExternalLink, Loader2, Plus, Settings2, Trash2, Video, X } from "lucide-react";
 import { todayIso } from "@/lib/format";
 import { SearchSelect, type Option } from "@/components/fields";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 /*
  * El calendario: el mes entero en una grilla de lunes a domingo, con los turnos
@@ -207,7 +208,7 @@ function BookingModal({ day, onClose, onBooked }: { day: string; onClose: () => 
   }, [onClose]);
 
   useEffect(() => {
-    fetch("/api/records/clients?limit=100").then(response => response.json()).then(data => {
+    fetchAllRecords<{ _id: string; name: string }>("clients").then(items => ({ items })).then(data => {
       setClients((data.items || []).map((client: { _id: string; name: string }) => ({ value: client._id, label: client.name })));
     }).catch(() => {});
   }, []);

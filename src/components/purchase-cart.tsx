@@ -10,6 +10,7 @@ import { downloadPurchaseOrderPdf, type PurchaseOrderPdfData } from "@/lib/purch
 import { DateInput, SearchSelect, type Option } from "@/components/fields";
 import { COMPANIES, COMPANY_KEYS } from "@/lib/companies";
 import { DELIVERY_OPTIONS } from "@/lib/warehouses";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 /*
  * El pedido de compra: lo que se fue agregando desde el buscador, separado por
@@ -46,8 +47,8 @@ function PurchaseCartModal({ onClose }: { onClose: () => void }) {
 
   // Las obras, para decir a cuál va el material. Quien no ve obras pide sin obra.
   useEffect(() => {
-    fetch("/api/records/works?limit=100")
-      .then(response => response.ok ? response.json() : { items: [] })
+    fetchAllRecords<{ _id: string; code?: string; name?: string; status?: string }>("works")
+      .then(items => ({ items }))
       .then((result: { items?: Array<{ _id: string; code?: string; name?: string; status?: string }> }) => setWorks((result.items || [])
         .filter(work => work.status !== "terminada" && work.status !== "cancelada")
         .map(work => ({ value: work._id, label: `${work.code || ""} · ${work.name || ""}`.trim() }))))

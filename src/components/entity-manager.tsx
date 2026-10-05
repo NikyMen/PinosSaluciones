@@ -31,6 +31,7 @@ import { AssetMaintenanceModal, NextDueCell, type AssetRecord } from "@/componen
 import { CashTransferModal } from "@/components/cash-transfer";
 import { meterLabels, sectorLabels } from "@/lib/assets";
 import { printLabels, readPrinterSettings } from "@/lib/ticket-print";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 type Item = Record<string, unknown> & { _id: string };
 
@@ -162,12 +163,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const relationEntities = useMemo(() => [...new Set(config.fields.filter(field => field.relation).map(field => field.relation!))], [config.fields]);
 
   useEffect(() => {
-    Promise.all(relationEntities.map(async relation => {
-      // El plan de cuentas entero: el select tiene que poder ofrecer todas.
-      const response = await fetch(`/api/records/${relation}?limit=${relation === "accounts" ? 300 : 100}`);
-      const result = await response.json();
-      return [relation, response.ok ? result.items || [] : []] as const;
-    })).then(values => setRelations(Object.fromEntries(values)));
+    // Todos los registros, no la primera página: el select y la columna tienen que encontrar cualquiera.
+    Promise.all(relationEntities.map(async relation => [relation, await fetchAllRecords<Item>(relation)] as const))
+      .then(values => setRelations(Object.fromEntries(values)));
   }, [relationEntities]);
 
   useEffect(() => {

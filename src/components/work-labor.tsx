@@ -9,6 +9,7 @@ import { buildLaborPdf } from "@/lib/labor-pdf";
 import { readPdfLogo } from "@/lib/pdf-brand";
 import { QuickCreateModal, type RecordItem } from "@/components/record-form";
 import { quantityLabel, unitLabels, type WorkTypeRow } from "@/lib/work-type-labels";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 export type AssignedWorker = {
   workerId: string; name: string; dni?: string; phone?: string; category?: string;
@@ -51,8 +52,8 @@ export function WorkLabor({ work, assigned: assignedProp, labor: laborProp, canE
   const [to, setTo] = useState(() => todayIso());
 
   useEffect(() => {
-    void fetch("/api/records/workers?limit=100")
-      .then(response => response.ok ? response.json() : { items: [] })
+    void fetchAllRecords("workers")
+      .then(items => ({ items }))
       // Los dados de baja no se asignan a obras.
       .then((result: { items?: Array<Record<string, unknown>> }) => {
         setHabitual(Object.fromEntries((result.items || []).map(row => [String(row._id), String(row.workType || "")])));

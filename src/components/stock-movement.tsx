@@ -9,6 +9,7 @@ import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses"
 import { downloadRemitoPdf, remitoFromMovement } from "@/lib/remito-pdf";
 import { COMPANIES, COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-owners";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 export type StockMovement = {
   _id?: string; kind: "ingreso" | "egreso" | "transferencia" | "ajuste" | "recepcion" | "venta" | "devolucion" | "no_utilizable"; quantity: number;
@@ -67,9 +68,9 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
       value: String(row._id), label: String(row.name || row.code || ""), hint: row.code ? String(row.code) : undefined,
     }));
     void Promise.all([
-      fetch("/api/records/suppliers?limit=100").then(response => response.ok ? response.json() : { items: [] }),
+      fetchAllRecords("suppliers").then(items => ({ items })),
       // Solo las obras vivas: no tiene sentido entregar material a una obra terminada.
-      fetch("/api/records/works?limit=100").then(response => response.ok ? response.json() : { items: [] }),
+      fetchAllRecords("works").then(items => ({ items })),
     ]).then(([supplierRows, workRows]) => {
       setSuppliers(toOptions(supplierRows.items || []));
       setWorks(toOptions((workRows.items || []).filter((row: Record<string, unknown>) => row.status !== "terminada" && row.status !== "cancelada")));
