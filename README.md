@@ -2,7 +2,7 @@
 
 Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. No emite comprobantes fiscales ni se conecta con ARCA: las Factura A y B se emiten en Tango y se cargan acá; el comprobante interno X se numera en el sistema y queda fuera del libro IVA.
 
-La barra lateral tiene trece módulos: Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión. Qué hace cada parte de la especificación funcional v1.5 y qué falta: [`docs/requerimientos/especificacion-v1-5.md`](docs/requerimientos/especificacion-v1-5.md).
+La barra lateral tiene trece módulos: Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión. Desde el menú del usuario (arriba a la derecha) cada persona puede pasar al menú de antes (**V1**: Tablero, Comercial, Obras, Compras y stock, Finanzas e iA y Reportes) o volver al de módulos (**V2**); la elección queda en la cookie `pino-nav` de ese navegador. El Calendario también está en ese menú. Qué hace cada parte de la especificación funcional v1.5 y qué falta: [`docs/requerimientos/especificacion-v1-5.md`](docs/requerimientos/especificacion-v1-5.md).
 
 ## Documentación
 
