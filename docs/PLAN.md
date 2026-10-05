@@ -99,6 +99,18 @@ Comandos de calidad: `pnpm lint`, `pnpm test`, `pnpm build`.
 
 ---
 
+### Especificación v1.5 (octubre 2026)
+
+Administración mandó la especificación funcional v1.5 y pidió por chat el menú en trece módulos
+y la Factura X. Implementado: menú, talonarios por empresa y punto de venta, Factura X con
+sustitución, plan de cuentas obligatorio, órdenes de pago, CUIT propietario del stock,
+transferencias en tránsito, remitos de venta facturables, reservas al aprobar con solicitud de
+compra, ruta de compras, libro IVA, movimientos por cuenta, bitácora e indicadores de facturación
+parcial. Detalle y pendientes: [[requerimientos/especificacion-v1-5]]. Decisiones:
+[[decisiones/2026-10-multi-cuit-depositos-comprobantes]].
+
+---
+
 ## Antes de la próxima reunión
 
 Conviene llevar resueltas las 6 preguntas abiertas del acta. Las dos que más impactan:

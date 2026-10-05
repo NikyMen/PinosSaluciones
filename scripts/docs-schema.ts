@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import type { Schema } from "mongoose";
 import { entityLabels, entities } from "../src/lib/constants";
-import { modelByEntity, User, AuditLog, Counter, WorkInspection, PriceList, PriceListItem } from "../src/lib/models";
+import { modelByEntity, User, AuditLog, Counter, WorkInspection, PriceList, PriceListItem, VoucherBook, StockTransfer, SalesRemito, StockReservation } from "../src/lib/models";
 
 const OUT = "docs/modelo-datos/esquema-actual.md";
 
@@ -66,10 +66,14 @@ function table(rows: Row[]) {
 const extras = [
   ["User", User, "Usuarios del sistema y sus permisos."],
   ["AuditLog", AuditLog, "Registro de auditoría: quién cambió qué y cuándo."],
-  ["Counter", Counter, "Contadores para numeración correlativa (hoy: cotizaciones)."],
+  ["Counter", Counter, "Contadores para numeración correlativa: cotizaciones, órdenes de compra, recibos, remitos, órdenes de pago y caja."],
   ["WorkInspection", WorkInspection, "Inspecciones diarias de obra, una por obra, rubro y día. De acá sale el avance físico."],
   ["PriceList", PriceList, "Listas de precios de proveedores: el Excel que mandó cada uno y desde cuándo vale. La vigente es una por proveedor; las anteriores quedan como historia."],
   ["PriceListItem", PriceListItem, "Cada producto de una lista de precios, sin IVA. El buscador de precios recorre los de las listas vigentes."],
+  ["VoucherBook", VoucherBook, "Talonarios: qué comprobantes (A, B, C, X) usa cada empresa para vender y comprar, y en qué punto de venta. La X lleva acá su numeración interna."],
+  ["StockTransfer", StockTransfer, "Transferencias entre depósitos: salen con remito, quedan en tránsito y el destino confirma lo recibido (con las diferencias)."],
+  ["SalesRemito", SalesRemito, "Remitos de venta al cliente desde el Salón (y devoluciones). Descuentan el stock; la factura los referencia."],
+  ["StockReservation", StockReservation, "Reservas de stock de una cotización aprobada. Las consumen las salidas a su obra; se liberan si la cotización se cae."],
 ] as const;
 
 const parts: string[] = [

@@ -7,6 +7,7 @@ import { connectDB } from "@/lib/db";
 import { composeWorkerName, modelByEntity, WorkType, Worker } from "@/lib/models";
 import { prepareNewWorker, prepareWorkerChanges } from "@/lib/worker-files";
 import { schemas } from "@/lib/schemas";
+import { beforeCreate } from "@/lib/document-rules";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
 
@@ -95,6 +96,8 @@ export async function POST(request:Request,context:RouteContext<"/api/import/[en
       try{
         const data=parsed.data as Record<string,unknown>;
         if(entity==="workers"){data.name=composeWorkerName(data);await prepareNewWorker(data)}
+        // Las mismas reglas que un alta a mano: cuenta del plan obligatoria, talonarios habilitados, numeración de la X.
+        await beforeCreate(entity as Entity,data);
         const item=await model.create(data as never);await audit(session,"import",entity,item._id,null,item.toObject());imported++;
         if(entity==="workers")workers.push(item.toObject() as WorkerMatch);
       }catch(error){errors.push({row:index+2,error:error instanceof Error?error.message:"Error al guardar"})}

@@ -4,6 +4,8 @@ import { CashMovement, Collection, Payment, Invoice, Expense, Work } from "@/lib
 import { apiError } from "@/lib/api";
 import { canViewSection } from "@/lib/permissions";
 import { excludedFromTotals } from "@/lib/trash";
+import { VOID_INVOICE_STATUSES } from "@/lib/invoice-labels";
+import { effectivePayments } from "@/lib/balances";
 
 export async function GET(request: Request) {
   try {
@@ -15,10 +17,10 @@ export async function GET(request: Request) {
     const excluded = await excludedFromTotals();
     const [income, outcomes, cashIncome, cashOutcomes, invoices, expenses, works] = await Promise.all([
       Collection.aggregate([{ $match: { invoiceId: { $nin: excluded.invoices }, clientId: { $nin: excluded.clients }, date: { $gte: from, $lte: to } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }, { $sort: { _id: 1 } }]),
-      Payment.aggregate([{ $match: { expenseId: { $nin: excluded.expenses }, date: { $gte: from, $lte: to } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }, { $sort: { _id: 1 } }]),
-      CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "ingreso" } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
-      CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "egreso" } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
-      Invoice.aggregate([{ $match: { _id: { $nin: excluded.invoices }, issueDate: { $gte: from, $lte: to }, status: { $ne: "anulada" } } }, { $group: { _id: "$workId", revenue: { $sum: "$amountCents" } } }]),
+      Payment.aggregate([{ $match: { expenseId: { $nin: excluded.expenses }, ...effectivePayments, date: { $gte: from, $lte: to } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }, { $sort: { _id: 1 } }]),
+      CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "ingreso", transferId: { $exists: false } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
+      CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "egreso", transferId: { $exists: false } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
+      Invoice.aggregate([{ $match: { _id: { $nin: excluded.invoices }, issueDate: { $gte: from, $lte: to }, status: { $nin: VOID_INVOICE_STATUSES } } }, { $group: { _id: "$workId", revenue: { $sum: "$amountCents" } } }]),
       Expense.aggregate([{ $match: { _id: { $nin: excluded.expenses }, issueDate: { $gte: from, $lte: to }, status: { $ne: "anulado" } } }, { $group: { _id: "$workId", cost: { $sum: "$amountCents" } } }]),
       Work.find({ _id: { $nin: excluded.works } }).select("name budgetCents").lean(),
     ]);

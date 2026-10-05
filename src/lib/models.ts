@@ -2,6 +2,8 @@ import mongoose, { Schema } from "mongoose";
 import { entities, ROLES, viewSections } from "./constants";
 import { CHECK_RESULTS, DEVIATIONS, INSPECTION_RUBROS, MATERIAL_CONDITIONS, ORDER_STATUS, PERFORMANCE, PRODUCTION_CONSUMPTION, WEATHER } from "./inspections";
 import { WAREHOUSE_KEYS } from "./warehouses";
+import { ACCOUNT_CODES } from "./account-catalog";
+import { INVOICE_STATUSES, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES, VOUCHER_TYPES } from "./invoice-labels";
 
 const options = { timestamps: true, strict: true } as const;
 const money = { type: Number, min: 0, default: 0 };
@@ -152,7 +154,8 @@ const WorkSchema = new Schema({
   code: { type: String, required: true, unique: true },
   name: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, managerId: { type: Schema.Types.ObjectId, ref: "User" },
-  status: { type: String, enum: ["planificada", "en_curso", "pausada", "terminada", "cancelada"], default: "planificada" },
+  // planificada = Pendiente de inicio, en_curso = Activa, terminada = Finalizada; cerrada es con todo conciliado.
+  status: { type: String, enum: ["planificada", "en_curso", "pausada", "terminada", "cerrada", "cancelada"], default: "planificada" },
   startDate: Date, endDate: Date, budgetCents: money,
   // El avance fisico ya no se escribe a mano: lo recalcula el cierre de cada
   // inspeccion. Se guarda para que listados y tablero no tengan que calcularlo.
@@ -334,7 +337,7 @@ WorkerSchema.pre("validate", function () {
 });
 
 const SupplierSchema = new Schema({
-  name: { type: String, required: true }, contactName: String, email: String, phone: String,
+  name: { type: String, required: true }, cuit: { type: String, trim: true }, contactName: String, email: String, phone: String,
   address: String, notes: String, active: { type: Boolean, default: true },
   // El descuento que nos hace sobre su lista. No cambia cuando llega una lista
   // nueva: se guarda acá y se aplica a todas.
@@ -388,8 +391,13 @@ const warehouseStockFields = Object.fromEntries(WAREHOUSE_KEYS.flatMap(key => [
   [`min_${key}`, { type: Number, min: 0 }],
 ]));
 
+/** De qué empresa era cada parte de lo que se movió: { owner: "tvp", quantity: 3 }. */
+const OwnerPartSchema = new Schema({ owner: { type: String, enum: ["tvp", "constructora", "sin_asignar"] }, quantity: Number }, { _id: false });
+
 const StockMovementSchema = new Schema({
-  kind: { type: String, enum: ["ingreso", "egreso", "transferencia", "ajuste"], required: true },
+  // transferencia: sale de un depósito y queda en tránsito; recepcion: llega al otro depósito.
+  // venta: remito al cliente desde el Salón; devolucion: el cliente devuelve; no_utilizable: llegó dañado.
+  kind: { type: String, enum: ["ingreso", "egreso", "transferencia", "recepcion", "ajuste", "venta", "devolucion", "no_utilizable"], required: true },
   quantity: { type: Number, required: true },
   // De qué depósito sale (o a cuál entra) y, en un pase entre depósitos, a cuál va.
   warehouse: { type: String, enum: WAREHOUSE_KEYS },
@@ -410,6 +418,10 @@ const StockMovementSchema = new Schema({
   expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
   // El comprobante de la caja (CJ-12) cuando el movimiento salió de ahí, con otros materiales.
   ticket: String,
+  // CUIT propietario de lo que se movió (una entrada es de una sola empresa; una salida puede mezclar).
+  owner: { type: String, enum: ["tvp", "constructora", "sin_asignar"] }, ownerParts: { type: [OwnerPartSchema], default: undefined },
+  transferId: { type: Schema.Types.ObjectId, ref: "StockTransfer" },
+  salesRemitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito" }, clientId: { type: Schema.Types.ObjectId, ref: "Client" },
 }, { timestamps: { createdAt: true, updatedAt: false } });
 
 const StockItemSchema = new Schema({
@@ -423,6 +435,13 @@ const StockItemSchema = new Schema({
   quantity: { type: Number, default: 0 },
   minQuantity: { type: Number, min: 0, default: 0 },
   ...warehouseStockFields,
+  // De qué empresa es lo que hay en cada ubicación: src/lib/stock-owners.ts.
+  owners: Schema.Types.Mixed,
+  // Lo que salió de un depósito y todavía no llegó al otro; lo que llegó dañado y no se puede usar;
+  // lo reservado por cotizaciones aprobadas (sigue en el depósito pero ya tiene destino).
+  transitQty: { type: Number, min: 0, default: 0 },
+  unusableQty: { type: Number, min: 0, default: 0 },
+  reservedQty: { type: Number, min: 0, default: 0 },
   // Costo promedio ponderado: cada compra a distinto precio lo recalcula.
   avgCostCents: { type: Number, min: 0, default: 0 },
   valueCents: { type: Number, min: 0, default: 0 },
@@ -431,6 +450,79 @@ const StockItemSchema = new Schema({
   movements: [StockMovementSchema],
 }, options);
 StockItemSchema.index({ barcode: 1 }, { sparse: true });
+
+/*
+ * Un pase entre depósitos (Central → Salón, o al revés). Sale del origen y
+ * queda "en tránsito" hasta que el destino confirma lo que recibió. Las
+ * diferencias (faltó, llegó dañado) quedan documentadas en cada renglón. No es
+ * una venta ni se factura: solo cambia dónde está el material.
+ */
+const StockTransferSchema = new Schema({
+  number: { type: String, required: true, unique: true },
+  from: { type: String, enum: WAREHOUSE_KEYS, required: true },
+  to: { type: String, enum: WAREHOUSE_KEYS, required: true },
+  status: { type: String, enum: ["en_transito", "recibida", "con_diferencias", "anulada"], default: "en_transito" },
+  lines: [{
+    _id: false,
+    stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true },
+    name: String, unit: String, quantity: Number, ownerParts: { type: [OwnerPartSchema], default: undefined },
+    receivedQty: Number, damagedQty: Number, missingQty: Number, note: String,
+  }],
+  note: String, receptionNote: String,
+  sentAt: { type: Date, default: Date.now }, sentByName: String,
+  receivedAt: Date, receivedByName: String,
+  // Si la pidió una reserva o una venta, para seguirla.
+  quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, salesRemitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito" },
+}, options);
+StockTransferSchema.index({ status: 1, createdAt: -1 });
+
+/*
+ * Remito de venta: la salida al cliente, siempre desde el Salón de Ventas. Es
+ * lo que descuenta el stock; la factura (A, B o X) después referencia uno o
+ * varios remitos y no vuelve a descontar. Una devolución del cliente es un
+ * remito de entrada que vuelve el material al Salón.
+ */
+const SalesRemitoSchema = new Schema({
+  number: { type: String, required: true, unique: true },
+  kind: { type: String, enum: ["salida", "devolucion"], default: "salida" },
+  // Quién le va a facturar al cliente: independiente de quién es dueño de lo que sale.
+  company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
+  clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
+  quoteId: { type: Schema.Types.ObjectId, ref: "Quote" },
+  warehouse: { type: String, enum: WAREHOUSE_KEYS, default: "salon" },
+  date: { type: Date, required: true },
+  lines: [{
+    _id: false,
+    stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true },
+    name: String, unit: String, quantity: Number,
+    unitPriceCents: { type: Number, min: 0, default: 0 }, totalCents: { type: Number, min: 0, default: 0 },
+    unitCostCents: Number, ownerParts: { type: [OwnerPartSchema], default: undefined },
+  }],
+  totalCents: { type: Number, min: 0, default: 0 },
+  status: { type: String, enum: ["pendiente", "facturado", "anulado"], default: "pendiente" },
+  invoiceIds: { type: [{ type: Schema.Types.ObjectId, ref: "Invoice" }], default: [] },
+  // La devolución dice qué remito devuelve.
+  returnsId: { type: Schema.Types.ObjectId, ref: "SalesRemito" },
+  note: String, userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+}, options);
+SalesRemitoSchema.index({ clientId: 1, status: 1 });
+
+/*
+ * Reserva de stock para una cotización aprobada: el material sigue en el
+ * depósito pero ya tiene destino. Se consume con las salidas a la obra de esa
+ * cotización y se libera si la cotización se cae.
+ */
+const StockReservationSchema = new Schema({
+  stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true },
+  quoteId: { type: Schema.Types.ObjectId, ref: "Quote", required: true },
+  workId: { type: Schema.Types.ObjectId, ref: "Work" },
+  quantity: { type: Number, min: 0, required: true },
+  consumedQty: { type: Number, min: 0, default: 0 },
+  status: { type: String, enum: ["activa", "consumida", "liberada"], default: "activa" },
+  userName: String,
+}, options);
+StockReservationSchema.index({ quoteId: 1, status: 1 });
+StockReservationSchema.index({ stockItemId: 1, status: 1 });
 
 /*
  * Un comprobante de la caja: todo lo que entró o salió de una vez, escaneando.
@@ -531,12 +623,17 @@ const PurchaseSchema = new Schema({
   number: { type: String, required: true, unique: true },
   // Qué empresa compra: a su nombre va la factura del proveedor.
   company: { type: String, enum: ["tvp", "constructora"], default: "tvp" }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, workId: { type: Schema.Types.ObjectId, ref: "Work" },
+  // De dónde sale la necesidad: la cotización (con su obra) o un pedido. Con eso la ruta se recorre de punta a punta.
+  quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, neededBy: Date,
+  priority: { type: String, enum: ["alta", "media", "baja"], default: "media" },
   description: { type: String, required: true }, amountCents: money,
   stage: { type: String, enum: ["solicitud", "orden", "recepcion"], default: "solicitud" },
   status: { type: String, enum: ["borrador", "aprobada", "enviada", "recibida", "cancelada"], default: "borrador" },
   requestedDate: { type: Date, required: true }, expectedDate: Date, receivedDate: Date, receiptNotes: String,
   // Lo que sigue lo llena la orden cerrada desde el buscador de precios.
   items: { type: [PurchaseLineSchema], default: undefined },
+  // El requerimiento de abastecimiento que deja una cotización aprobada: cuánto hace falta, cuánto se reservó y qué falta comprar.
+  requestLines: { type: [{ _id: false, stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" }, name: String, unit: String, neededQty: Number, reservedQty: Number, shortageQty: Number }], default: undefined },
   subtotalCents: Number, vatCents: Number, notes: String,
   priceListId: { type: Schema.Types.ObjectId, ref: "PriceList" }, priceListDate: Date,
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
@@ -547,8 +644,30 @@ const PurchaseSchema = new Schema({
   stockedAt: Date, stockedWarehouse: { type: String, enum: WAREHOUSE_KEYS }, stockedByName: String,
 }, options);
 
+/*
+ * Las imputaciones a una cuenta del plan dejan su historia: quién la cambió,
+ * cuándo, de cuál a cuál y por qué. Va en el mismo registro para leerla junto.
+ */
+const AccountChangeSchema = new Schema({
+  fromId: { type: Schema.Types.ObjectId, ref: "Account" }, fromName: String,
+  toId: { type: Schema.Types.ObjectId, ref: "Account" }, toName: String,
+  reason: String, userName: String, at: { type: Date, default: Date.now },
+}, { _id: false });
+
+/*
+ * Un gasto es una factura de compra (cuando tiene tipo de comprobante: A, C o
+ * el registro interno X) o un costo interno, como el material que sale del
+ * depósito a una obra. La factura de compra se ata a su orden de compra.
+ */
 const ExpenseSchema = new Schema({
   number: String, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, workId: { type: Schema.Types.ObjectId, ref: "Work" },
+  // Qué empresa compró: el comprobante del proveedor viene a su nombre.
+  company: { type: String, enum: ["tvp", "constructora"] },
+  voucherType: { type: String, enum: PURCHASE_VOUCHER_TYPES },
+  netCents: Number, vatPct: Number, vatCents: Number,
+  // La orden de compra de donde sale y el remito o la conformidad de lo recibido.
+  purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase" }, receiptRef: String,
+  accountId: { type: Schema.Types.ObjectId, ref: "Account" },
   description: { type: String, required: true },
   category: { type: String, enum: ["materiales", "transporte", "combustible", "servicios", "costo_indirecto", "gasto_fijo", "mano_obra"], required: true },
   amountCents: money, issueDate: { type: Date, required: true }, dueDate: Date,
@@ -562,16 +681,24 @@ const ExpenseSchema = new Schema({
 const InvoiceSchema = new Schema({
   // Qué empresa del grupo la emitió. Las viejas, sin empresa, son de Trabajos Verticales Pino.
   company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
-  voucherType: { type: String, enum: ["factura_a", "factura_b", "factura_c"] },
+  // A y B son fiscales (pasan por ARCA); X es el comprobante interno, que no.
+  voucherType: { type: String, enum: [...SALES_VOUCHER_TYPES, "factura_c"] },
+  pointOfSale: String,
   number: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" },
   workId: { type: Schema.Types.ObjectId, ref: "Work" }, certificateNumber: String,
   description: String, issueDate: { type: Date, required: true }, dueDate: Date,
   netCents: Number, vatPct: Number, vatCents: Number,
   amountCents: money, collectedCents: money,
-  status: { type: String, enum: ["pendiente", "parcial", "cobrada", "anulada"], default: "pendiente" }, attachment: String,
+  // "sustituida": una X que se reemplazó por un comprobante fiscal. Deja de contar; lo cobrado pasa al nuevo.
+  status: { type: String, enum: INVOICE_STATUSES, default: "pendiente" }, attachment: String,
+  replacesId: { type: Schema.Types.ObjectId, ref: "Invoice" }, replacedById: { type: Schema.Types.ObjectId, ref: "Invoice" },
+  // Los remitos de venta que factura. La factura no vuelve a mover stock: eso ya lo hizo el remito.
+  remitoIds: { type: [{ type: Schema.Types.ObjectId, ref: "SalesRemito" }], default: undefined },
 }, options);
-InvoiceSchema.index({ number: 1, clientId: 1 }, { unique: true });
+// El mismo número puede existir en las dos empresas, o en una A y una X: lo único es empresa + tipo + número (+ cliente, como antes).
+// El índice viejo (solo número y cliente) lo saca src/lib/db.ts al conectar.
+InvoiceSchema.index({ company: 1, voucherType: 1, number: 1, clientId: 1 }, { unique: true });
 
 // Un cobro es un recibo: número propio y a qué facturas se aplica, cuánto a cada una.
 // Los cobros viejos tienen una sola factura en `invoiceId` y no tienen `allocations`.
@@ -582,16 +709,26 @@ const CollectionSchema = new Schema({
   date: { type: Date, required: true }, amountCents: money,
   userName: String,
   method: { type: String, enum: ["transferencia", "efectivo", "cheque", "retencion", "otro"], required: true },
+  // `account` es la caja o el banco donde entró; `accountId`, la cuenta del plan (CI) a la que se imputa.
   account: String, reference: String, notes: String,
+  accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
 }, options);
 
+/*
+ * La orden de pago y su pago. Una OP sale de una factura de compra aprobada;
+ * mientras está "emitida" no descuenta nada del saldo de la factura: lo hace
+ * cuando se paga. Los pagos de antes no tienen estado y ya están pagados.
+ */
 const PaymentSchema = new Schema({
+  number: String,
   // Qué empresa paga.
   company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
   supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
-  date: { type: Date, required: true }, amountCents: money,
+  status: { type: String, enum: ["emitida", "pagada", "anulada"], default: "pagada" },
+  date: { type: Date, required: true }, dueDate: Date, amountCents: money, retentionsCents: money,
   method: { type: String, enum: ["transferencia", "efectivo", "cheque", "otro"], required: true },
   account: String, reference: String, notes: String,
+  accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
 }, options);
 
 const CheckSchema = new Schema({
@@ -604,9 +741,44 @@ const CheckSchema = new Schema({
 
 const CashSchema = new Schema({
   date: { type: Date, required: true }, direction: { type: String, enum: ["ingreso", "egreso"], required: true },
-  account: { type: String, required: true }, category: { type: String, required: true }, description: { type: String, required: true },
+  // `account` es la caja o la cuenta bancaria; `accountId`, la cuenta del plan a la que se imputa (obligatoria).
+  // `category` es el texto libre de antes: los movimientos viejos lo tienen y no tienen cuenta del plan.
+  account: { type: String, required: true }, category: String, description: { type: String, required: true },
+  accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
+  company: { type: String, enum: ["tvp", "constructora"] },
+  workId: { type: Schema.Types.ObjectId, ref: "Work" }, costCenter: String,
+  // Un movimiento entre cuentas propias son dos registros (egreso y ingreso) con el mismo identificador.
+  transferId: String,
   amountCents: money, reference: String, reconciled: { type: Boolean, default: false },
 }, options);
+CashSchema.index({ transferId: 1 }, { sparse: true });
+
+/* El plan de cuentas: el catálogo maestro de src/lib/account-catalog.ts, que se puede ampliar o desactivar. */
+const AccountSchema = new Schema({
+  code: { type: String, enum: ACCOUNT_CODES, required: true },
+  name: { type: String, required: true, trim: true, unique: true },
+  direction: { type: String, enum: ["ingreso", "egreso"], required: true },
+  active: { type: Boolean, default: true },
+  notes: String,
+}, options);
+
+/*
+ * Talonarios: qué comprobantes usa cada empresa y en qué punto de venta. Los
+ * fiscales (A, B, C) se numeran en Tango/ARCA y acá solo se sugiere el que
+ * sigue; el X es interno y lleva su propia numeración, que se toma de acá.
+ */
+const VoucherBookSchema = new Schema({
+  company: { type: String, enum: ["tvp", "constructora"], required: true },
+  scope: { type: String, enum: ["venta", "compra"], required: true },
+  voucherType: { type: String, enum: VOUCHER_TYPES, required: true },
+  pointOfSale: { type: String, default: "0001", trim: true },
+  fiscal: { type: Boolean, default: true },
+  // El último número usado de un talonario interno (X). Los fiscales no lo usan.
+  lastNumber: { type: Number, min: 0, default: 0 },
+  active: { type: Boolean, default: true },
+  notes: String,
+}, options);
+VoucherBookSchema.index({ company: 1, scope: 1, voucherType: 1, pointOfSale: 1 }, { unique: true });
 
 const TaskSchema = new Schema({
   title: { type: String, required: true }, description: String,
@@ -707,6 +879,11 @@ export const StockTicket = mongoose.models.StockTicket || mongoose.model("StockT
 export const Asset = mongoose.models.Asset || mongoose.model("Asset", AssetSchema);
 export const StockTrash = mongoose.models.StockTrash || mongoose.model("StockTrash", StockTrashSchema);
 export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);
+export const StockTransfer = mongoose.models.StockTransfer || mongoose.model("StockTransfer", StockTransferSchema);
+export const SalesRemito = mongoose.models.SalesRemito || mongoose.model("SalesRemito", SalesRemitoSchema);
+export const StockReservation = mongoose.models.StockReservation || mongoose.model("StockReservation", StockReservationSchema);
+export const Account = mongoose.models.Account || mongoose.model("Account", AccountSchema);
+export const VoucherBook = mongoose.models.VoucherBook || mongoose.model("VoucherBook", VoucherBookSchema);
 export const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
 export const CalendarSettings = mongoose.models.CalendarSettings || mongoose.model("CalendarSettings", CalendarSettingsSchema);
 export const CalendarBooking = mongoose.models.CalendarBooking || mongoose.model("CalendarBooking", CalendarBookingSchema);
@@ -775,4 +952,4 @@ export async function nextReceiptNumber() {
   return `RC-${counter.seq}`;
 }
 
-export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task, assets: Asset } as const;
+export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task, assets: Asset, accounts: Account } as const;

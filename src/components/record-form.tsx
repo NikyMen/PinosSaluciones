@@ -6,6 +6,7 @@ import type { Entity } from "@/lib/constants";
 import { entityConfig, type Field } from "@/lib/entity-config";
 import { isoPlusDays, money, titleCase } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput, PhoneList, SearchSelect, type Option } from "@/components/fields";
+import { useLedgerAccounts } from "@/components/ledger-account";
 
 /*
  * El formulario genérico de un registro: un campo por cada entrada de
@@ -41,7 +42,7 @@ export function QuickCreateModal({ entity, onClose, onCreated, hint = "Se crea a
 }) {
   const config = entityConfig[entity];
   // El alta rápida sólo pide campos simples: nada de relaciones anidadas ni archivos.
-  const fields = config.fields.filter(field => field.type !== "relation" && field.type !== "file");
+  const fields = config.fields.filter(field => field.type !== "relation" && field.type !== "file" && field.type !== "account" && field.type !== "hidden" && !field.editOnly && !field.readOnly);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -82,7 +83,9 @@ export function FormField({ field, value, relationOptions, personOptions, relati
   const label = <span>{field.label}{field.required && " *"}{field.hint && <em className="field-hint">{field.hint}</em>}</span>;
   const text = String(value ?? "");
 
-  if (field.readOnly) return <label className="readonly-field">{label}<output>{field.type === "money" ? money(Number(value || 0)) : text || "—"}</output></label>;
+  if (field.type === "hidden") return <input type="hidden" name={field.key} value={Array.isArray(value) ? value.map(String).join(",") : text} />;
+  if (field.readOnly) return <label className="readonly-field">{label}<output>{field.type === "money" ? money(Number(value || 0)) : field.optionLabels?.[text] ?? (text ? titleCase(text) : "—")}</output></label>;
+  if (field.type === "account") return <label>{label}<AccountSelect field={field} value={relationValue} onChange={onRelationChange} autoFocus={autoFocus} /></label>;
   if (field.type === "money") return <label>{label}<MoneyInput name={field.key} defaultValue={Number(value || 0) / 100} required={field.required} autoFocus={autoFocus} /></label>;
   if (field.type === "date") return <label>{label}<DateInput name={field.key} required={field.required} autoFocus={autoFocus} quickRanges={field.quickRanges} hideToday={field.hideToday}
     defaultValue={value ? new Date(String(value)).toISOString().slice(0, 10) : field.defaultInDays ? isoPlusDays(field.defaultInDays) : ""} /></label>;
@@ -104,4 +107,10 @@ export function FormField({ field, value, relationOptions, personOptions, relati
 
   return <label>{label}<input name={field.key} type={field.type === "number" ? "number" : field.type || "text"} required={field.required} defaultValue={text || field.defaultValue || ""} autoFocus={autoFocus}
     step={field.step ?? (field.key === "progress" ? "1" : undefined)} min={field.type === "number" ? "0" : undefined} placeholder={field.placeholder} /></label>;
+}
+
+/** Una cuenta del plan: solo las activas y, si el campo lo dice, solo las de ingreso (CI) o las de egreso. */
+function AccountSelect({ field, value, onChange, autoFocus }: { field: Field; value: string; onChange: (value: string) => void; autoFocus?: boolean }) {
+  const options = useLedgerAccounts(field.direction);
+  return <SearchSelect name={field.key} options={options} value={value} onChange={onChange} required={field.required} autoFocus={autoFocus} placeholder="Elegí la cuenta del plan…" />;
 }

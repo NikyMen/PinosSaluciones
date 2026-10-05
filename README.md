@@ -1,6 +1,8 @@
 # Pinos Soluciones — ERP/CRM
 
-Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. No emite comprobantes fiscales ni se conecta con ARCA.
+Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. No emite comprobantes fiscales ni se conecta con ARCA: las Factura A y B se emiten en Tango y se cargan acá; el comprobante interno X se numera en el sistema y queda fuera del libro IVA.
+
+La barra lateral tiene trece módulos: Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión. Qué hace cada parte de la especificación funcional v1.5 y qué falta: [`docs/requerimientos/especificacion-v1-5.md`](docs/requerimientos/especificacion-v1-5.md).
 
 ## Documentación
 
@@ -32,7 +34,7 @@ pnpm dev:web
 `MONGODB_URI` es la unica variable que cambia entre entornos: en local la define `pnpm dev`;
 en el VPS debe ser la URI de la base existente (por ejemplo, con usuario, clave y `authSource=admin`).
 No hardcodees la URI en el codigo.
-En el VPS se puede usar `/opt/pinos/.env`; también funcionan variables de entorno exportadas por el proceso.
+En el VPS se usa el `.env` de la raíz del checkout (`/var/www/pino-soluciones/.env`); también funcionan variables de entorno exportadas por el proceso.
 
 Para cargar datos ficticios de Corrientes sin borrar ni sobrescribir registros existentes:
 
@@ -44,38 +46,71 @@ Abrir `http://localhost:3000` (o el puerto que informe Next, por ejemplo `3001`)
 
 ## Despliegue en VPS
 
-1. Instalar Node LTS, pnpm, MongoDB Database Tools, Nginx y PM2 (`pnpm add -g pm2`).
-2. Crear un usuario Linux exclusivo y clonar el repositorio en `/opt/pinos`.
-3. Crear `/opt/pinos/.env` desde `.env.example` y reemplazar `MONGODB_URI` por la URI de la base que ya existe en el VPS. Usar una `SESSION_SECRET` aleatoria y `APP_URL=https://tu-dominio`. MongoDB debe escuchar solo en localhost o una red privada autenticada.
-4. Crear el directorio persistente: `sudo install -d -o pinos -g pinos /var/lib/pinos/uploads /var/log/pinos /var/backups/pinos`.
+Producción corre en un VPS propio (el que resuelve `pinosoluciones.consultoriadigital.io`), así:
+
+- Código en `/var/www/pino-soluciones`, con el `.env` en esa misma carpeta.
+- PM2 corre `pinos-web` (puerto `3515`) y `pinos-worker`, y arranca solo con el servidor (`pm2 startup` + `pm2 save`).
+- Nginx atiende el 80 y el 443 y hace proxy a `127.0.0.1:3515`; el certificado lo emite y renueva Certbot. La base de `deploy/pinosoluciones.nginx.conf` es el bloque `:80`: Certbot agrega solo el 443 y la redirección.
+- MongoDB 7 corre en Docker (container `mongodb`), escuchando solo en `127.0.0.1:27017`.
+- Los archivos subidos van a `/var/lib/pinos/uploads` (`UPLOAD_DIR`).
+- PM2 está instalado con pnpm global y en una sesión SSH sin terminal interactiva no está en el `PATH`: usar `/root/.local/share/pnpm/bin/pm2` o hacer antes `export PATH=/root/.local/share/pnpm:$PATH`.
+
+### Instalación desde cero
+
+1. Instalar Node LTS, pnpm, Docker, Nginx, Certbot y PM2 (`pnpm add -g pm2`).
+2. Clonar el repositorio en `/var/www/pino-soluciones`.
+3. Crear `.env` desde `.env.example` y reemplazar `MONGODB_URI` por la URI de la base del VPS. Usar una `SESSION_SECRET` aleatoria y `APP_URL=https://tu-dominio`. MongoDB debe escuchar solo en localhost o una red privada autenticada.
+4. Crear los directorios persistentes: `install -d /var/lib/pinos/uploads /var/backups/pinos`.
 5. Ejecutar:
 
 ```bash
-cd /opt/pinos
+cd /var/www/pino-soluciones
 pnpm install --frozen-lockfile
 pnpm db:check
 pnpm seed
 # Opcional: solo para una instalacion de demostracion
 pnpm seed:demo
 pnpm build
-cp -r public .next/standalone/
-mkdir -p .next/standalone/.next
-cp -r .next/static .next/standalone/.next/
 pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup
 ```
 
-6. Publicar el dominio. En el VPS actual el puerto 443 lo termina Traefik (container `n8n-traefik-1`), no Nginx: copiar `deploy/traefik-pinosoluciones.yml` a `/docker/n8n/dynamic/` (Traefik lo toma solo, sin reiniciar nada) y dejar en Nginx solo el `:80` que redirige, como en `deploy/nginx.conf.example`. El certificado lo emite Traefik por TLS-ALPN-01 en el primer request HTTPS, asi que el dominio ya tiene que resolver a la IP del VPS. **No usar Certbot aca**: emitiria un certificado que nadie sirve, porque Nginx no puede escuchar en el 443.
+6. Publicar el dominio: copiar `deploy/pinosoluciones.nginx.conf` a `/etc/nginx/sites-available/`, enlazarlo en `sites-enabled`, `nginx -t && systemctl reload nginx` y después `certbot --nginx -d tu-dominio`. El dominio ya tiene que resolver a la IP del VPS.
 7. Verificar `https://dominio/api/health` y `pm2 status`.
 
-El proceso web escucha en `3515` por defecto en PM2; `deploy/traefik-pinosoluciones.yml` ya apunta a ese puerto. Si se cambia, actualizar ambos valores.
+El proceso web escucha en `3515` por defecto en PM2; `deploy/pinosoluciones.nginx.conf` ya apunta a ese puerto. Si se cambia, actualizar ambos valores.
 
-`output: "standalone"` no copia `public/` ni `.next/static` dentro de `.next/standalone`: los tres `cp` del paso 5 hay que repetirlos **despues de cada `pnpm build`**. Si se saltean, el sitio responde 200 pero sirve el HTML sin CSS ni imagenes.
+`output: "standalone"` no copia `public/` ni `.next/static` dentro de `.next/standalone`; de eso se encarga el `postbuild` (`scripts/postbuild-standalone.mjs`), que además enlaza el `.env`. Si se saltea, el sitio responde 200 pero sirve el HTML sin CSS ni imagenes.
+
+`deploy/traefik-pinosoluciones.yml` y `deploy/nginx.conf.example` sirven solo para un servidor donde el 443 lo atienda Traefik (era el caso del VPS anterior). En ese caso no se usa Certbot.
+
+### Actualizar producción
+
+Antes de un deploy que toque datos, hacer un backup (ver abajo). Después:
+
+```bash
+cd /var/www/pino-soluciones
+git pull --ff-only origin main
+pnpm install --frozen-lockfile
+pnpm build
+pm2 reload ecosystem.config.cjs --update-env
+```
 
 ## Backups
 
-Dar permiso de ejecución a `deploy/backup.sh`, cargar las variables de `.env` y programarlo diariamente con cron. Mantiene 14 días localmente. Para producción se recomienda copiar cada backup cifrado a otro servidor o almacenamiento S3 compatible.
+En producción el host no tiene `mongodump`, porque Mongo corre en Docker, así que `deploy/backup.sh` no funciona tal cual. Backup manual:
+
+```bash
+cd /var/www/pino-soluciones && set -a && . ./.env && set +a
+STAMP=$(date +%Y-%m-%d_%H-%M-%S); mkdir -p /var/backups/pinos/$STAMP
+docker exec mongodb mongodump --uri="$MONGODB_URI" --archive --gzip > /var/backups/pinos/$STAMP/mongodb.archive.gz
+tar -czf /var/backups/pinos/$STAMP/uploads.tar.gz -C /var/lib/pinos uploads
+```
+
+Hoy no hay backup automático programado. Para producción se recomienda programarlo diariamente y copiar cada backup cifrado a otro servidor o almacenamiento S3 compatible.
+
+En un servidor con MongoDB Database Tools instalados, `deploy/backup.sh` sí sirve: darle permiso de ejecución, cargar las variables de `.env` y programarlo con cron. Mantiene 14 días localmente.
 
 La restauración es destructiva y debe probarse primero en una base separada:
 
@@ -93,5 +128,8 @@ Cada módulo acepta `.xlsx` o `.csv` de hasta 2.000 filas y 5 MB. La primera fil
 - Permisos por rol validados tanto en interfaz como en API.
 - Auditoría de altas, cambios, bajas e importaciones.
 - El worker genera tareas por facturas y cheques próximos a vencer.
-- Para actualizar: `pnpm install --frozen-lockfile && pnpm build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && pnpm pm2:reload`.
+- Bitácora completa (usuario, fecha y hora, valor anterior y nuevo) en Seguridad › Bitácora de cambios, solo para gerencia.
+- Todo ingreso y egreso de plata (caja y bancos, recibos, pagos) se imputa a una cuenta del plan de cuentas. El catálogo y los talonarios de comprobantes se crean solos la primera vez; no hace falta correr nada al actualizar.
+- Toda compra entra al Depósito Central; al Salón de Ventas el material llega por transferencia (queda en tránsito hasta que se confirma la recepción).
+- Para actualizar producción: ver [Actualizar producción](#actualizar-producción).
 - Comandos de calidad: `pnpm lint`, `pnpm test`, `pnpm build`.

@@ -7,8 +7,11 @@ import { canRead, canWrite } from "@/lib/permissions";
 import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
-import { applyCollection, applyExpensePayment } from "@/lib/balances";
-import { prepareInvoice } from "@/lib/invoice-service";
+import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balances";
+import { checkSubstitution, completeSubstitution, prepareInvoice } from "@/lib/invoice-service";
+import { beforeCreate } from "@/lib/document-rules";
+import { attachRemitos, checkRemitosForInvoice } from "@/lib/sales-remitos";
+import { ensureAccountCatalog } from "@/lib/account-service";
 import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
 
@@ -44,17 +47,19 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const { entity } = await context.params;
     if (!validEntity(entity) || !canRead(session, entity)) throw new Error("FORBIDDEN");
     await connectDB();
+    if (entity === "accounts") await ensureAccountCatalog();
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
-    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 20)));
+    // El plan de cuentas entero entra en un select: son menos de 200.
+    const limit = Math.min(entity === "accounts" ? 300 : 100, Math.max(1, Number(url.searchParams.get("limit") || 20)));
     const search = sanitizeSearch(url.searchParams.get("search") || "");
     // En el personal también se busca por número de legajo.
     const byFileNumber = entity === "workers" && /^\d{1,6}$/.test(search) ? [{ fileNumber: Number(search) }] : [];
     const searchFilter = search ? { $or: [...["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku", "barcode", "position", "workType", "identifier", "brand", "responsible"].map(key => ({ [key]: { $regex: search, $options: "i" } })), ...byFileNumber] } : {};
     const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] } : searchFilter;
     const model = modelByEntity[entity];
-    // En ventas interesa lo que se movio recien, no lo que se creo primero.
-    const sort: Record<string, -1> = entity === "quotes" ? { updatedAt: -1 } : { createdAt: -1 };
+    // En ventas interesa lo que se movio recien, no lo que se creo primero. El plan de cuentas va por código.
+    const sort: Record<string, 1 | -1> = entity === "quotes" ? { updatedAt: -1 } : entity === "accounts" ? { code: 1, name: 1 } : { createdAt: -1 };
     const [items, total] = await Promise.all([
       model.find(filter, listProjection[entity] || {}).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
       model.countDocuments(filter),
@@ -80,12 +85,18 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     if (entity === "quotes") data.version = await nextQuoteVersion(String(data.title || ""));
     if (entity === "tasks") await resolveTaskAssignee(session, data);
     if (entity === "workers") { data.name = composeWorkerName(data); await prepareNewWorker(data); }
+    await beforeCreate(entity, data);
+    const replaced = entity === "invoices" ? await checkSubstitution(data) : null;
+    // La factura referencia los remitos de venta que factura: no vuelve a descontar stock.
+    if (entity === "invoices") await checkRemitosForInvoice(data);
     if (entity === "invoices") await prepareInvoice(data);
     if (entity === "collections") { if (!data.number) data.number = await nextReceiptNumber(); data.userName = session.name; }
     const item = await model.create(data as never);
 
+    if (replaced) await completeSubstitution(replaced, item);
+    if (entity === "invoices" && Array.isArray(data.remitoIds)) await attachRemitos(item._id, data.remitoIds, replaced?._id);
     if (entity === "collections") await applyCollection(item, 1);
-    if (entity === "payments") await applyExpensePayment(item.expenseId, item.amountCents);
+    if (entity === "payments") await applyExpensePayment(item.expenseId, paidByPayment(item));
     if (entity === "invoices" && item.workId && item.certificateNumber) await closeCertificate(String(item.workId), String(item.certificateNumber));
     await audit(session, "create", entity, item._id, null, item.toObject(), request.headers.get("x-forwarded-for") || undefined);
     return Response.json(item, { status: 201 });

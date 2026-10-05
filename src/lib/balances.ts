@@ -1,12 +1,13 @@
-import { Expense, Invoice } from "./models";
+import { Counter, Expense, Invoice, Payment } from "./models";
+import { VOID_INVOICE_STATUSES } from "./invoice-labels";
 
 export async function applyInvoiceCollection(invoiceId: unknown, deltaCents: number) {
   if (!invoiceId || !deltaCents) return;
   const invoice = await Invoice.findByIdAndUpdate(invoiceId, { $inc: { collectedCents: deltaCents } }, { new: true });
   if (!invoice) return;
   invoice.collectedCents = Math.max(0, invoice.collectedCents);
-  // Una factura anulada sigue anulada aunque se le mueva un cobro.
-  if (invoice.status !== "anulada") invoice.status = invoice.collectedCents >= invoice.amountCents ? "cobrada" : invoice.collectedCents > 0 ? "parcial" : "pendiente";
+  // Una factura anulada (o una X sustituida) sigue así aunque se le mueva un cobro.
+  if (!VOID_INVOICE_STATUSES.includes(invoice.status)) invoice.status = invoice.collectedCents >= invoice.amountCents ? "cobrada" : invoice.collectedCents > 0 ? "parcial" : "pendiente";
   await invoice.save();
 }
 
@@ -33,4 +34,27 @@ export async function applyExpensePayment(expenseId: unknown, deltaCents: number
   expense.paidCents = Math.max(0, expense.paidCents);
   expense.status = expense.paidCents >= expense.amountCents ? "pagado" : expense.paidCents > 0 ? "parcial" : "pendiente";
   await expense.save();
+}
+
+/** Lo que un pago descuenta de su factura de compra: una orden de pago emitida o anulada todavía no paga nada. */
+export function paidByPayment(payment: { status?: unknown; amountCents?: unknown; [key: string]: unknown } | null | undefined) {
+  if (!payment) return 0;
+  return payment.status === "emitida" || payment.status === "anulada" ? 0 : Number(payment.amountCents || 0);
+}
+
+/** Los pagos que cuentan como plata que salió: los de antes (sin estado) y los pagados. */
+export const effectivePayments = { status: { $nin: ["emitida", "anulada"] } };
+
+/** El próximo número de orden de pago: OP-1, OP-2… */
+export async function nextPaymentOrderNumber() {
+  if (!await Counter.exists({ _id: "payment_orders" })) {
+    const [highest] = await Payment.aggregate([
+      { $match: { number: /^OP-\d+$/ } },
+      { $project: { seq: { $toInt: { $substr: ["$number", 3, -1] } } } },
+      { $sort: { seq: -1 } }, { $limit: 1 },
+    ]);
+    await Counter.updateOne({ _id: "payment_orders" }, { $setOnInsert: { seq: highest?.seq || 0 } }, { upsert: true });
+  }
+  const counter = await Counter.findByIdAndUpdate("payment_orders", { $inc: { seq: 1 } }, { returnDocument: "after" });
+  return `OP-${counter.seq}`;
 }

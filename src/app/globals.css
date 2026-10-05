@@ -720,7 +720,7 @@ td b { color: #273449; }
 .select-create { width: 100%; margin-top: 5px; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; color: var(--brand-navy); background: transparent; font-size: .74rem; font-weight: 800; }
 .select-create:hover { background: #eef4f9; }
 
-.date-field { display: flex; flex-direction: column; gap: 7px; }
+.date-field { position: relative; display: flex; flex-direction: column; gap: 7px; }
 .date-input { position: relative; height: 43px; padding: 0 4px 0 12px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line-strong); border-radius: 11px; background: #fff; }
 .date-input:focus-within { border-color: var(--brand-navy-light); box-shadow: 0 0 0 4px rgba(0,48,91,.07); }
 .date-input.invalid { border-color: var(--danger); box-shadow: 0 0 0 4px rgba(189,36,48,.08); }
@@ -2000,3 +2000,89 @@ td > .company-badge:first-child { margin-left: 0; }
 .sector-badge.altura { background: #e8f0fb; color: #1f4f9a; }
 .sector-badge.pintura { background: #f3e8fb; color: #6b2fa0; }
 .sector-badge.aislamiento { background: #e3f4ed; color: #16815d; }
+
+/* ── Especificación v1.5: menú en 13 módulos, comprobantes X, plan de cuentas y contabilidad ── */
+/* Con trece módulos la barra se aprieta un poco para que entre sin scroll en una pantalla común. */
+.sidebar nav { margin-top: 14px; gap: 1px; }
+.sidebar .nav-group-trigger { min-height: 37px; }
+.nav-children.open { max-height: 260px; }
+.badge.planificada, .badge.emitida { color: #80590f; background: var(--warning-soft); }
+.badge.cerrada { color: #1f4b72; background: #e4eef7; }
+.badge.pagada { color: #126245; background: var(--success-soft); }
+.badge.sustituida { color: #4a5568; background: #eef2f7; }
+.voucher-x { display: inline-flex; padding: 2px 8px; border-radius: 6px; color: #fff; background: #1d2733; font-size: .66rem; font-weight: 850; letter-spacing: .03em; }
+.account-code { display: inline-flex; min-width: 38px; justify-content: center; padding: 2px 7px; border-radius: 6px; color: var(--brand-navy); background: #e7eef6; font-size: .66rem; font-weight: 850; }
+.period-filter { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 7px; }
+.period-filter label { display: flex; flex-direction: column; gap: 3px; color: var(--muted-2); font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.period-filter input, .period-filter select, .toolbar-select select { height: 38px; padding: 0 9px; border: 1px solid var(--line); border-radius: 9px; background: #fff; font: inherit; font-size: .74rem; }
+.period-filter > .secondary-btn { height: 38px; padding: 0 12px; }
+.toolbar { flex-wrap: wrap; }
+.toolbar-select { display: flex; align-items: center; gap: 7px; color: var(--muted-2); font-size: .68rem; font-weight: 800; }
+.ledger-codes { margin-bottom: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.ledger-codes > div { padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); }
+.ledger-codes b { color: var(--brand-navy); font-size: .74rem; }
+.ledger-codes span { color: var(--muted); font-size: .6rem; }
+.ledger-codes strong { color: var(--brand-navy-deep); font-size: .9rem; }
+.ledger-table .chevron { vertical-align: -2px; transition: transform .2s; }
+.ledger-table .chevron.open { transform: rotate(180deg); }
+.ledger-detail td { background: #f7fafc; font-size: .7rem; }
+.ledger-detail td small { display: block; color: var(--muted); font-size: .6rem; }
+.config-companies { display: grid; gap: 14px; margin-bottom: 14px; }
+.config-company > header, .config-new-book > header, .config-warehouses > header { padding: 16px 18px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.config-company h2, .config-new-book h2, .config-warehouses h2 { margin: 0; display: flex; align-items: center; gap: 7px; color: var(--brand-navy-deep); font-size: .95rem; }
+.config-company header small, .config-new-book header small, .config-warehouses header small { color: var(--muted); font-size: .68rem; }
+.config-new-book { margin-bottom: 14px; }
+.config-new-book form { padding: 4px 18px 18px; align-items: end; }
+.config-new-book .form-actions { display: flex; align-items: flex-end; }
+.config-warehouses ul { margin: 0; padding: 0 18px 18px 36px; display: grid; gap: 6px; font-size: .74rem; }
+.config-warehouses li span { display: block; color: var(--muted); font-size: .68rem; }
+.audit-diff { margin: 0; padding-left: 15px; font-size: .66rem; }
+.audit-diff b { color: var(--brand-navy); }
+.audit-table td { vertical-align: top; }
+.pager { margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: .72rem; }
+
+/* Stock: propietario, tránsito, transferencias y remitos de venta */
+.owner-split { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.owner-chip { padding: 1px 6px; border-radius: 999px; font-size: .6rem; font-weight: 800; white-space: nowrap; background: #eef2f7; color: #4a5568; }
+.owner-chip.tvp { background: #e7eef6; color: var(--brand-navy); }
+.owner-chip.constructora { background: #fdecec; color: var(--brand-red-dark); }
+.stock-owners-line { margin: -6px 22px 12px; color: var(--muted); font-size: .68rem; }
+.stock-picker { margin-top: 12px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+.stock-picker .search { margin: 8px; }
+.stock-picker ul { max-height: 230px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.stock-picker li { padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); font-size: .72rem; }
+.stock-picker li > span { display: flex; flex-direction: column; }
+.stock-picker li small { color: var(--muted); font-size: .62rem; }
+.stock-picker li .secondary-btn { height: 30px; padding: 0 10px; font-size: .64rem; }
+.picked-lines { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: .72rem; }
+.picked-lines th { padding: 6px 8px; color: var(--muted-2); font-size: .6rem; text-align: left; text-transform: uppercase; }
+.picked-lines td { padding: 5px 8px; border-top: 1px solid var(--line); }
+.picked-lines input { width: 100%; max-width: 130px; height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.transfer-lines { margin: 0; padding-left: 14px; font-size: .68rem; }
+.transfer-lines small { color: var(--muted); }
+.row-selected td { background: #f2f7fb; }
+.badge.transfer-en_transito, .badge.remito-pendiente { color: #80590f; background: var(--warning-soft); }
+.badge.transfer-recibida, .badge.remito-facturado { color: #126245; background: var(--success-soft); }
+.badge.transfer-con_diferencias { color: #9e2630; background: var(--danger-soft); }
+.badge.transfer-anulada, .badge.remito-anulado { color: #4a5568; background: #eef2f7; }
+.badge.devolucion, .badge.recepcion, .badge.venta { color: #1f4b72; background: #e4eef7; }
+.badge.no_utilizable { color: #9e2630; background: var(--danger-soft); }
+.receive-options > div { padding: 12px 14px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--brand-navy); border-radius: 11px; background: #f2f7fb; }
+.receive-options > div span { display: flex; flex-direction: column; }
+.receive-options > div small { color: var(--muted); font-size: .64rem; }
+.quote-stock { margin-top: 18px; }
+.quote-stock .panel-head h2 { display: flex; align-items: center; gap: 7px; }
+.quote-stock .panel-head p { margin: 2px 0 0; color: var(--muted); font-size: .68rem; }
+.route-steps { display: flex; gap: 2px; }
+.route-steps i { padding: 2px 6px; border-radius: 4px; color: #8a97a8; background: #eef2f7; font-size: .56rem; font-style: normal; font-weight: 800; }
+.route-steps i.done { color: #fff; background: var(--brand-navy); }
+.route-alert { display: flex; align-items: center; gap: 4px; margin-top: 4px; color: var(--danger); font-size: .6rem; font-weight: 700; }
+.unlinked-panel { margin-top: 14px; }
+.unlinked-panel > header { padding: 16px 18px 6px; }
+.unlinked-panel h2 { margin: 0; color: var(--brand-navy-deep); font-size: .95rem; }
+.unlinked-panel header small { color: var(--muted); font-size: .68rem; }
+.unlinked-grid { padding: 8px 18px 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.unlinked-grid h3 { margin: 0 0 6px; color: var(--brand-navy); font-size: .74rem; }
+.unlinked-grid ul { margin: 0; padding: 0; list-style: none; font-size: .68rem; }
+.unlinked-grid li { padding: 4px 0; display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); }
+.badge.audit-action { color: var(--brand-navy); background: #e8f1f8; }

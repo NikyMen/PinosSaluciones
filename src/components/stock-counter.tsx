@@ -7,6 +7,7 @@ import { CameraScanner, scanFeedback, useKeyboardScanner } from "@/components/ba
 import { amountToInput, dateTime, money, parseAmount, qty, todayIso } from "@/lib/format";
 import { levelsOf, splitDelivery, totalOf } from "@/lib/stock-levels";
 import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
+import { COMPANIES, COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { downloadRemitoPdf, type RemitoData } from "@/lib/remito-pdf";
 import { printLabels, printTicket, readPrinterSettings, savePrinterSettings, type PrinterSettings, type TicketData } from "@/lib/ticket-print";
 import { cleanScannedCode } from "@/lib/barcode";
@@ -59,7 +60,8 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
   const [camera, setCamera] = useState(false);
   const [suppliers, setSuppliers] = useState<Option[]>([]);
   const [works, setWorks] = useState<Option[]>([]);
-  const [warehouse, setWarehouse] = useState<WarehouseKey>("central");
+  // Una entrada es una compra: entra al Central, a nombre de la empresa que compró (CUIT propietario).
+  const [owner, setOwner] = useState<CompanyKey>("tvp");
   // En la salida, vacío es "automático": primero del Central y lo que falte del Salón.
   const [outFrom, setOutFrom] = useState<"" | WarehouseKey>("");
   const [workId, setWorkId] = useState("");
@@ -234,7 +236,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     const form = new FormData(event.currentTarget);
     const common = { note: String(form.get("note") || ""), date: String(form.get("date") || "") || undefined };
     const body = mode === "ingreso"
-      ? { kind: mode, warehouse, supplierId, reference: String(form.get("reference") || ""), ...common, lines: checked.map(row => ({ itemId: row.line.item._id, quantity: row.amount, unitCostCents: row.unitCents })) }
+      ? { kind: mode, warehouse: "central", owner, supplierId, reference: String(form.get("reference") || ""), ...common, lines: checked.map(row => ({ itemId: row.line.item._id, quantity: row.amount, unitCostCents: row.unitCents })) }
       : { kind: mode, workId, warehouse: outFrom, ...common, lines: checked.map(row => ({ itemId: row.line.item._id, quantity: row.amount })) };
     const response = await fetch("/api/stock/caja", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const result = await response.json();
@@ -342,7 +344,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
         <div className="counter-side-body">
           <p className="eyebrow">{entry ? "ENTRADA" : "SALIDA A OBRA"}</p>
           {entry ? <>
-            <div className="counter-field"><span>Entra al depósito *</span><div className="counter-segment">{WAREHOUSES.map(entry => <button key={entry.key} type="button" className={warehouse === entry.key ? "active" : ""} aria-pressed={warehouse === entry.key} onClick={() => { setWarehouse(entry.key); setConfirming(false); }}>{entry.label}</button>)}</div></div>
+            <div className="counter-field"><span>Empresa que compró *<em className="field-hint">Entra al Depósito Central a su nombre</em></span><div className="counter-segment">{COMPANY_KEYS.map(key => <button key={key} type="button" className={owner === key ? "active" : ""} aria-pressed={owner === key} onClick={() => { setOwner(key); setConfirming(false); }}>{COMPANIES[key].short}</button>)}</div></div>
             <label className="counter-field"><span>Proveedor</span><SearchSelect name="supplierId" options={suppliers} value={supplierId} onChange={setSupplierId} placeholder="Elegí el proveedor…" /></label>
             <label className="counter-field"><span>Factura o remito del proveedor</span><input name="reference" placeholder="Número del comprobante" /></label>
           </> : <>

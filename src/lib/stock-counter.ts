@@ -5,6 +5,7 @@ import { levelsOf, splitDelivery } from "./stock-levels";
 import { internalBarcode } from "./barcode";
 import { warehouseLabel, WAREHOUSES, type WarehouseKey } from "./warehouses";
 import type { Session } from "./auth";
+import type { CompanyKey } from "./companies";
 
 /*
  * La caja del depósito: se escanean los materiales que entran o salen y se
@@ -21,7 +22,8 @@ import type { Session } from "./auth";
 
 export type CounterLine = { itemId: string; quantity: number; unitCostCents?: number };
 export type CounterInput =
-  | { kind: "ingreso"; warehouse: WarehouseKey; supplierId?: string; reference?: string; note?: string; date?: Date; lines: CounterLine[] }
+  // Una entrada es una compra: siempre al Depósito Central, a nombre de la empresa que compró.
+  | { kind: "ingreso"; warehouse: "central"; owner?: CompanyKey; supplierId?: string; reference?: string; note?: string; date?: Date; lines: CounterLine[] }
   | { kind: "egreso"; workId: string; warehouse?: WarehouseKey; note?: string; date?: Date; lines: CounterLine[] };
 
 type ItemDoc = Parameters<typeof applyStockMovement>[0] & { barcode?: string };
@@ -96,7 +98,7 @@ export async function registerCounterOperation(input: CounterInput, session: Ses
     });
     // Una sola orden recibida por toda la entrada, con su número de caja: es la que ve Compras.
     const purchase = await Purchase.create({
-      number, supplierId: input.supplierId, items,
+      number, company: input.owner || "tvp", supplierId: input.supplierId, items,
       description: `Entrada por caja ${number}: ${items.length === 1 ? `${items[0].quantity} de ${items[0].name}` : `${items.length} materiales`} (${warehouseLabel(input.warehouse)})`,
       amountCents: items.reduce((total, line) => total + line.totalCents, 0), subtotalCents: items.reduce((total, line) => total + line.totalCents, 0),
       stage: "recepcion", status: "recibida", requestedDate: date, receivedDate: date,
@@ -110,7 +112,7 @@ export async function registerCounterOperation(input: CounterInput, session: Ses
       const before = item.toObject();
       const unitCostCents = Math.max(0, Math.round(line.unitCostCents || 0));
       const result = await applyStockMovement(item, {
-        kind: "ingreso", warehouse: input.warehouse, quantity: line.quantity, unitCostCents,
+        kind: "ingreso", warehouse: input.warehouse, owner: input.owner, quantity: line.quantity, unitCostCents,
         supplierId: input.supplierId, reference: input.reference || number, note: input.note || `Caja ${number}`, date, purchaseId, ticket: number,
       }, session);
       changed.push({ item, before, after: result.item });

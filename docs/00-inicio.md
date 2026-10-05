@@ -19,6 +19,7 @@ respuesta exacta: *cuánto costó realmente cada obra*.
 | Ver el estado del proyecto | [[PLAN]] |
 | Saber qué falta construir | [[gap-analysis]] |
 | Buscar un requerimiento puntual | [[requerimientos/00-backlog]] |
+| Ver qué se hizo de la especificación v1.5 (multi-CUIT, depósitos, Factura X, plan de cuentas) | [[requerimientos/especificacion-v1-5]] |
 | Entender un término del rubro | [[glosario]] |
 
 ---
@@ -54,6 +55,8 @@ El tablero gerencial queda deliberadamente para el final.
 ## Decisiones tomadas
 
 - [[decisiones/2026-08-certificado-por-item]]
+- [[decisiones/2026-09-avance-por-inspecciones]]
+- [[decisiones/2026-10-multi-cuit-depositos-comprobantes]]
 
 ---
 

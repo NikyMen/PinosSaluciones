@@ -9,6 +9,10 @@ Orden de desarrollo **definido por el cliente** en [[../reuniones/2026-08-releva
 
 Módulos nuevos que surgieron: [[logistica]] · [[bienes-de-uso]]
 
+La especificación funcional v1.5 de administración (octubre 2026) ordena todo en trece módulos y
+suma multi-CUIT, depósitos con tránsito, remitos de venta, Factura X y plan de cuentas. Estado
+punto por punto: [[especificacion-v1-5]].
+
 ## Estado por módulo
 
 | Módulo | Requerimientos | Nuevo o existente |

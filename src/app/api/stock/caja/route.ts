@@ -21,7 +21,7 @@ const warehouse = z.enum(WAREHOUSE_KEYS);
 const line = z.object({ itemId: objectId, quantity: z.coerce.number().positive("Cada cantidad tiene que ser mayor a cero"), unitCostCents: z.coerce.number().int().min(0).optional() });
 const common = { note: z.string().trim().max(1000).optional().default(""), date: z.coerce.date().optional(), lines: z.array(line).min(1, "Escaneá al menos un material").max(200) };
 const schema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("ingreso"), warehouse: warehouse.default("central"), supplierId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), reference: z.string().trim().max(120).optional().default(""), ...common }),
+  z.object({ kind: z.literal("ingreso"), warehouse: z.literal("central", { error: "Toda compra entra al Depósito Central" }).default("central"), owner: z.enum(["tvp", "constructora"]).default("tvp"), supplierId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), reference: z.string().trim().max(120).optional().default(""), ...common }),
   z.object({ kind: z.literal("egreso"), workId: objectId, warehouse: z.union([warehouse, z.literal("")]).optional().transform(value => value || undefined), ...common }),
 ]);
 

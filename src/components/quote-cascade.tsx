@@ -9,6 +9,7 @@ import { money, preciseMoney, qty as formatQty } from "@/lib/format";
 import { computeCascade, defaultCascadeParams, insumosSummary, parseCoef, rubroLabels, solveBenefitPct, targetPriceFromUnitPrice } from "@/lib/cascada";
 import type { CascadeParams, Insumo, OverheadLine, QuoteItem, Rubro } from "@/lib/cascada";
 import { conceptGroups, findConcept } from "@/lib/cascada-conceptos";
+import { QuoteStock } from "@/components/quote-stock";
 
 /**
  * El cotizador cascada: la traduccion a pantalla de las 7 planillas de analisis
@@ -377,6 +378,9 @@ export function QuoteCascade({ id, canEdit, canForceUnlock }: { id: string; canE
       </tbody></table></div>
       {!insumos.length && <div className="empty-state compact"><p>Cargá los insumos de los ítems y acá sale sola la lista de compras.</p></div>}
     </section>
+
+    {/* Disponibilidad de los materiales: consulta mientras se cotiza, reserva cuando se aprueba. */}
+    <QuoteStock quoteId={id} status={quote.status} />
   </>;
 }
 

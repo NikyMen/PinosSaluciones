@@ -5,6 +5,8 @@ import { applyCollection, collectionAllocations } from "./balances";
 import { invoiceLabel } from "./invoice-service";
 import { money } from "./format";
 import { companyOf, type CompanyKey } from "./companies";
+import { accountChange, checkLedgerAccount } from "./account-service";
+import { VOID_INVOICE_STATUSES } from "./invoice-labels";
 import type { Session } from "./auth";
 
 /*
@@ -23,6 +25,9 @@ export const receiptSchema = z.object({
   date: z.string({ error: "Poné la fecha del recibo" }).regex(/^\d{4}-\d{2}-\d{2}$/, "Poné la fecha del recibo").transform(value => new Date(`${value}T00:00:00.000Z`)),
   method: z.enum(["transferencia", "efectivo", "cheque", "retencion", "otro"], { error: "Elegí el medio de pago" }),
   account: z.string().trim().max(200).optional().default(""),
+  // La cuenta del plan (una CI) a la que se imputa el cobro: es obligatoria.
+  accountId: z.string({ error: "Elegí la cuenta del plan a la que se imputa el cobro" }).regex(/^[a-f\d]{24}$/i, "Elegí la cuenta del plan a la que se imputa el cobro"),
+  accountChangeReason: z.string().trim().max(500).optional().default(""),
   reference: z.string().trim().max(200).optional().default(""),
   notes: z.string().trim().max(1000).optional().default(""),
   amountCents: z.coerce.number().int().min(0).optional(),
@@ -31,6 +36,7 @@ export const receiptSchema = z.object({
 
 export type ReceiptInput = {
   clientId: string; date: Date; method: string; account?: string; reference?: string; notes?: string;
+  accountId: string; accountChangeReason?: string;
   /** Solo cuenta si no se aplica a ninguna factura (un pago a cuenta). */ amountCents?: number;
   allocations: Array<{ invoiceId: string; amountCents: number }>;
 };
@@ -51,7 +57,7 @@ export type PendingInvoice = {
 export async function pendingInvoices(clientId: string, receiptId?: string): Promise<PendingInvoice[]> {
   const receipt = receiptId ? await Collection.findById(receiptId).lean() as Lean | null : null;
   const applied = new Map(collectionAllocations(receipt ?? {}).map(allocation => [String(allocation.invoiceId), allocation.amountCents]));
-  const invoices = await Invoice.find({ clientId, status: { $ne: "anulada" } }).sort({ issueDate: 1, createdAt: 1 }).lean() as Lean[];
+  const invoices = await Invoice.find({ clientId, status: { $nin: VOID_INVOICE_STATUSES } }).sort({ issueDate: 1, createdAt: 1 }).lean() as Lean[];
   const [quotes, works] = await Promise.all([
     Quote.find({ _id: { $in: invoices.map(invoice => invoice.quoteId).filter(Boolean) } }).select("number").lean() as Promise<Lean[]>,
     Work.find({ _id: { $in: invoices.map(invoice => invoice.workId).filter(Boolean) } }).select("code name").lean() as Promise<Lean[]>,
@@ -78,6 +84,8 @@ export async function saveReceipt(input: ReceiptInput, session: Session, receipt
   const before = receiptId ? await Collection.findById(receiptId) : null;
   if (receiptId && !before) throw new ReceiptError("Recibo no encontrado");
   if (!await Client.exists({ _id: input.clientId })) throw new ReceiptError("Elegí el cliente");
+  await checkLedgerAccount("ingreso", input.accountId, "el cobro");
+  const history = before ? await accountChange(before.toObject(), { accountId: input.accountId }, input.accountChangeReason, session) : null;
 
   // La misma factura dos veces es un solo renglón.
   const byInvoice = new Map<string, number>();
@@ -97,12 +105,13 @@ export async function saveReceipt(input: ReceiptInput, session: Session, receipt
 
   const payload = {
     clientId: new Types.ObjectId(input.clientId), date: input.date, method: input.method, amountCents,
-    account: input.account || "", reference: input.reference || "", notes: input.notes || "",
+    account: input.account || "", accountId: new Types.ObjectId(input.accountId), reference: input.reference || "", notes: input.notes || "",
     allocations, invoiceId: allocations[0]?.invoiceId,
   };
   if (before) {
     await applyCollection(before.toObject(), -1);
     before.set(payload);
+    if (history) before.set("accountHistory", [...(before.accountHistory || []), history]);
     if (!allocations.length) before.set("invoiceId", undefined);
     await before.save();
     await applyCollection(before.toObject(), 1);

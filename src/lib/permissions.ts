@@ -8,7 +8,7 @@ export type UserPermissions = { view: ViewSection[]; edit: Entity[]; seen?: View
  * gente. Quien tiene permisos guardados de antes no las tiene en su lista: se le
  * dan con lo que corresponde a su rol hasta que se editen sus permisos.
  */
-const ADDED_LATER: ViewSection[] = ["assets"];
+const ADDED_LATER: ViewSection[] = ["assets", "accounts", "accounting"];
 export type PermissionSubject = Role | { role: Role; permissions?: Partial<UserPermissions> };
 
 const writeAccess: Record<Entity, Role[]> = {
@@ -27,6 +27,8 @@ const writeAccess: Record<Entity, Role[]> = {
   cash: ["gerencia", "administracion"],
   tasks: ["gerencia", "arquitecto", "auxiliar", "administracion", "compras", "ventas"],
   assets: ["gerencia", "compras", "administracion"],
+  // El catálogo de cuentas lo mantienen administración y el contador: el resto lo elige, no lo escribe.
+  accounts: ["gerencia", "administracion", "contador"],
 };
 
 export function defaultPermissionsForRole(role: Role): UserPermissions {

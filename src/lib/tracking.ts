@@ -1,7 +1,7 @@
 import type { Types } from "mongoose";
 import { Client, Collection, Invoice, Quote, Work } from "./models";
 import { collectionAllocations } from "./balances";
-import { invoiceLabel } from "./invoice-labels";
+import { invoiceLabel, VOID_INVOICE_STATUSES } from "./invoice-labels";
 import { excludedFromTotals } from "./trash";
 import { companyOf, type CompanyKey } from "./companies";
 
@@ -25,16 +25,29 @@ export type TrackingRow = {
   invoices: TrackingInvoice[];
   receipts: TrackingReceipt[];
   quotedCents: number; invoicedCents: number; collectedCents: number; balanceCents: number; toInvoiceCents: number;
+  /** Certificados aprobados de sus obras, y lo certificado que todavía no se facturó (habilitado para facturar). */
+  certifiedCents: number; enabledToInvoiceCents: number;
+  /** % facturado y % cobrado sobre lo cotizado, y % cobrado sobre lo facturado. */
+  invoicedPct: number | null; collectedPct: number | null; collectedOfInvoicedPct: number | null;
   state: TrackingState;
 };
 
 const iso = (value: unknown) => value ? new Date(value as Date).toISOString() : null;
 
+/** Anticipos no aplicados: lo cobrado a cuenta (recibos sin factura), que todavía no se imputó a ninguna. */
+export async function unappliedAdvances() {
+  const [row] = await Collection.aggregate([
+    { $match: { invoiceId: { $in: [null] }, $or: [{ allocations: { $exists: false } }, { allocations: { $size: 0 } }] } },
+    { $group: { _id: null, total: { $sum: "$amountCents" }, count: { $sum: 1 } } },
+  ]);
+  return { cents: Number(row?.total || 0), count: Number(row?.count || 0) };
+}
+
 export async function trackingRows(): Promise<TrackingRow[]> {
   const excluded = await excludedFromTotals();
   const [invoices, works, collections] = await Promise.all([
-    Invoice.find({ _id: { $nin: excluded.invoices }, status: { $ne: "anulada" } }).sort({ issueDate: 1 }).lean() as Promise<Lean[]>,
-    Work.find({ _id: { $nin: excluded.works } }).select("code name clientId quoteId").lean() as Promise<Lean[]>,
+    Invoice.find({ _id: { $nin: excluded.invoices }, status: { $nin: VOID_INVOICE_STATUSES } }).sort({ issueDate: 1 }).lean() as Promise<Lean[]>,
+    Work.find({ _id: { $nin: excluded.works } }).select("code name clientId quoteId certificates.amountCents certificates.approved certificates.invoiced").lean() as Promise<Lean[]>,
     Collection.find({}).select("number date amountCents invoiceId allocations").sort({ date: 1 }).lean() as Promise<Lean[]>,
   ]);
   const workById = new Map(works.map(work => [String(work._id), work]));
@@ -66,7 +79,8 @@ export async function trackingRows(): Promise<TrackingRow[]> {
       key: `q:${quote._id}`,
       quote: { _id: String(quote._id), number: String(quote.number || ""), title: String(quote.title || ""), status: String(quote.status || ""), amountCents: Number(quote.amountCents || 0), company: companyOf(quote.company).key },
       client: client(quote.clientId), works: quoteWorks.map(workRef), invoices: [], receipts: [],
-      quotedCents: Number(quote.amountCents || 0), invoicedCents: 0, collectedCents: 0, balanceCents: 0, toInvoiceCents: 0, state: "sin_facturar",
+      quotedCents: Number(quote.amountCents || 0), invoicedCents: 0, collectedCents: 0, balanceCents: 0, toInvoiceCents: 0,
+      certifiedCents: 0, enabledToInvoiceCents: 0, invoicedPct: null, collectedPct: null, collectedOfInvoicedPct: null, state: "sin_facturar",
     });
   }
   for (const invoice of invoices) {
@@ -75,7 +89,8 @@ export async function trackingRows(): Promise<TrackingRow[]> {
     const key = quoteId && rows.has(`q:${quoteId}`) ? `q:${quoteId}` : work ? `w:${work._id}` : `c:${invoice.clientId}`;
     let row = rows.get(key);
     if (!row) {
-      row = { key, quote: null, client: client(invoice.clientId), works: work ? [workRef(work)] : [], invoices: [], receipts: [], quotedCents: 0, invoicedCents: 0, collectedCents: 0, balanceCents: 0, toInvoiceCents: 0, state: "sin_facturar" };
+      row = { key, quote: null, client: client(invoice.clientId), works: work ? [workRef(work)] : [], invoices: [], receipts: [], quotedCents: 0, invoicedCents: 0, collectedCents: 0, balanceCents: 0, toInvoiceCents: 0,
+        certifiedCents: 0, enabledToInvoiceCents: 0, invoicedPct: null, collectedPct: null, collectedOfInvoicedPct: null, state: "sin_facturar" };
       rows.set(key, row);
     }
     if (work && !row.works.some(existing => existing._id === String(work._id))) row.works.push(workRef(work));
@@ -92,6 +107,12 @@ export async function trackingRows(): Promise<TrackingRow[]> {
     const balanceCents = Math.max(0, invoicedCents - collectedCents);
     const toInvoiceCents = row.quote ? Math.max(0, row.quotedCents - invoicedCents) : 0;
     const state: TrackingState = balanceCents > 0 ? "por_cobrar" : !invoicedCents ? "sin_facturar" : toInvoiceCents > 0 ? "facturado_parcial" : "completa";
-    return { ...row, invoicedCents, collectedCents, balanceCents, toInvoiceCents, state };
+    // Certificado: lo aprobado en los certificados de sus obras. Lo aprobado sin facturar es lo habilitado para facturar ya.
+    const certificates = row.works.flatMap(work => (workById.get(work._id)?.certificates as Array<{ amountCents?: number; approved?: boolean; invoiced?: boolean }> | undefined) || []).filter(certificate => certificate.approved);
+    const certifiedCents = certificates.reduce((total, certificate) => total + Number(certificate.amountCents || 0), 0);
+    const enabledToInvoiceCents = certificates.filter(certificate => !certificate.invoiced).reduce((total, certificate) => total + Number(certificate.amountCents || 0), 0);
+    const pct = (part: number, whole: number) => whole > 0 ? Math.round(part / whole * 1000) / 10 : null;
+    return { ...row, invoicedCents, collectedCents, balanceCents, toInvoiceCents, certifiedCents, enabledToInvoiceCents,
+      invoicedPct: pct(invoicedCents, row.quotedCents), collectedPct: pct(collectedCents, row.quotedCents), collectedOfInvoicedPct: pct(collectedCents, invoicedCents), state };
   });
 }

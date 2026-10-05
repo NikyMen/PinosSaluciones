@@ -39,6 +39,7 @@ vi.mock("@/lib/auth", () => ({ requireSession: async () => session, getSession: 
 const { Client, Expense, Notification, Purchase, Quote, StockItem, Work } = await import("../src/lib/models");
 const movements = await import("../src/app/api/stock/[id]/movements/route");
 const receive = await import("../src/app/api/purchases/[id]/receive/route");
+const transferReceive = await import("../src/app/api/transfers/[id]/receive/route");
 
 let server: MongoMemoryServer;
 const call = async (response: Response) => ({ status: response.status, body: await response.json() });
@@ -58,7 +59,7 @@ afterAll(async () => {
 });
 
 describe("movimientos entre depósitos (API)", () => {
-  it("entrada, pase al Salón, salida a obra repartida con dos remitos, y ajuste por depósito", async () => {
+  it("entrada al Central, transferencia en tránsito al Salón, salida a obra repartida con dos remitos, y ajuste por depósito", async () => {
     const client = await Client.create({ name: "Consorcio", cuit: "30-12345678-9" });
     const quote = await Quote.create({ number: "COT-748", clientId: client._id, title: "Pintura", amountCents: 1000, status: "convertida" });
     const work = await Work.create({ code: "OB-1", name: "Fachada", clientId: client._id, quoteId: quote._id, budgetCents: 1000, status: "en_curso" });
@@ -67,13 +68,22 @@ describe("movimientos entre depósitos (API)", () => {
     const id = String(item._id);
     const move = async (body: unknown) => call(await movements.POST(post(body), params({ id })));
 
-    const entry = await move({ kind: "ingreso", warehouse: "central", quantity: 10, unitCostCents: 120_000 });
+    // Toda compra entra al Central: al Salón no se puede cargar una entrada.
+    expect((await move({ kind: "ingreso", warehouse: "salon", quantity: 1, unitCostCents: 1 })).status).toBe(400);
+    const entry = await move({ kind: "ingreso", warehouse: "central", owner: "constructora", quantity: 10, unitCostCents: 120_000 });
     expect(entry.status).toBe(201);
     expect(entry.body.item).toMatchObject({ qty_central: 20, qty_salon: 0, quantity: 20, avgCostCents: 110_000 });
+    // Lo de antes queda sin dueño; lo que entra es de la empresa que compró.
+    expect(entry.body.item.owners.central).toEqual({ constructora: 10, sin_asignar: 10 });
 
+    // La transferencia sale del Central y queda en tránsito hasta que el Salón la recibe.
     const transfer = await move({ kind: "transferencia", from: "central", to: "salon", quantity: 5 });
-    expect(transfer.body.item).toMatchObject({ qty_central: 15, qty_salon: 5, quantity: 20, avgCostCents: 110_000 });
+    expect(transfer.body.item).toMatchObject({ qty_central: 15, qty_salon: 0, transitQty: 5, quantity: 20, avgCostCents: 110_000 });
     expect(transfer.body.movements[0]).toMatchObject({ kind: "transferencia", warehouse: "central", toWarehouse: "salon", remito: "R-1" });
+    const received = await call(await transferReceive.POST(post({}), params({ id: transfer.body.transfer._id })));
+    expect(received.body).toMatchObject({ status: "recibida", number: "R-1" });
+    expect(await StockItem.findById(id).lean()).toMatchObject({ qty_central: 15, qty_salon: 5, transitQty: 0, quantity: 20 });
+    expect((await call(await transferReceive.POST(post({}), params({ id: transfer.body.transfer._id })))).status).toBe(409);
 
     // Pedido de 18: 15 del Central y 3 del Salón, cada uno con su remito y su gasto en la obra.
     const out = await move({ kind: "egreso", workId: String(work._id), parts: [{ warehouse: "central", quantity: 15 }, { warehouse: "salon", quantity: 3 }] });
@@ -95,25 +105,27 @@ describe("movimientos entre depósitos (API)", () => {
     expect(counted.body.movements[0]).toMatchObject({ kind: "ajuste", warehouse: "salon", quantity: 2 });
   });
 
-  it("una orden de compra pasa al depósito elegido una sola vez; lo que no estaba se da de alta", async () => {
+  it("una orden de compra entra al Depósito Central una sola vez, a nombre de la empresa que compró; lo que no estaba se da de alta", async () => {
     await StockItem.create({ name: "TECHOS 5000 PU · Balde 20 KG", sku: "5000PU20", unit: "balde", quantity: 2, qty_central: 2, qty_salon: 0, avgCostCents: 190_000, valueCents: 380_000 });
     const purchase = await Purchase.create({
-      number: "OC-9", description: "Pedido", amountCents: 0, requestedDate: new Date(), stage: "orden", status: "aprobada", deliverTo: "salon",
+      number: "OC-9", company: "constructora", description: "Pedido", amountCents: 0, requestedDate: new Date(), stage: "orden", status: "aprobada", deliverTo: "central",
       items: [
         { code: "5000PU20", name: "TECHOS 5000 PU", presentation: "Balde 20 KG", quantity: 2, listPriceCents: 234_556_00, discountPct: 15, unitCents: 199_373_00, totalCents: 398_746_00 },
         { code: "1117C", name: "PROTEX MEMBRANA PVC", presentation: "Rollo 41 M2", minSale: "M2", quantity: 41.5, listPriceCents: 52_395_00, discountPct: 15, unitCents: 44_536_00, totalCents: 1_848_244_00 },
       ],
     });
     const id = String(purchase._id);
-    const done = await call(await receive.POST(post({ warehouse: "salon" }), params({ id })));
+    // Al Salón no: la compra entra al Central y de ahí se transfiere.
+    expect((await call(await receive.POST(post({ warehouse: "salon" }), params({ id })))).status).toBe(400);
+    const done = await call(await receive.POST(post({}), params({ id })));
     expect(done.status).toBe(201);
-    expect(done.body).toMatchObject({ number: "OC-9", warehouse: "salon", created: 1 });
+    expect(done.body).toMatchObject({ number: "OC-9", warehouse: "central", created: 1 });
 
     const techos = await StockItem.findOne({ sku: "5000PU20" }).lean() as Record<string, number>;
-    expect(techos).toMatchObject({ qty_central: 2, qty_salon: 2, quantity: 4 });
+    expect(techos).toMatchObject({ qty_central: 4, qty_salon: 0, quantity: 4 });
     const membrane = await StockItem.findOne({ sku: "1117C" }).lean() as Record<string, unknown>;
-    expect(membrane).toMatchObject({ name: "PROTEX MEMBRANA PVC · Rollo 41 M2", unit: "m2", qty_salon: 41.5, avgCostCents: 44_536_00 });
-    expect(await Purchase.findById(id).lean()).toMatchObject({ status: "recibida", stage: "recepcion", stockedWarehouse: "salon" });
+    expect(membrane).toMatchObject({ name: "PROTEX MEMBRANA PVC · Rollo 41 M2", unit: "m2", qty_central: 41.5, avgCostCents: 44_536_00, owners: { central: { constructora: 41.5 } } });
+    expect(await Purchase.findById(id).lean()).toMatchObject({ status: "recibida", stage: "recepcion", stockedWarehouse: "central" });
 
     const again = await call(await receive.POST(post({ warehouse: "central" }), params({ id })));
     expect(again.status).toBe(409);

@@ -8,7 +8,11 @@ import { canDelete, canRead, canWrite } from "@/lib/permissions";
 import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { canSeeTask, resolveTaskAssignee } from "@/lib/tasks";
-import { applyCollection, applyExpensePayment } from "@/lib/balances";
+import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balances";
+import { beforeUpdate } from "@/lib/document-rules";
+import { releaseRemitos } from "@/lib/sales-remitos";
+import { releaseForQuote, reserveForQuote } from "@/lib/reservations";
+import { VOID_INVOICE_STATUSES } from "@/lib/invoice-labels";
 import { prepareInvoice } from "@/lib/invoice-service";
 import { prepareWorkerChanges } from "@/lib/worker-files";
 import { isTrashEntity } from "@/lib/trash";
@@ -47,14 +51,21 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     if (entity === "tasks") await resolveTaskAssignee(session, changes, false);
     if (entity === "invoices") await prepareInvoice(changes, before as Record<string, unknown>);
     if (entity === "workers") await prepareWorkerChanges(changes, id);
+    const extra = await beforeUpdate(entity, before as Record<string, unknown>, changes, session);
     if (entity === "workers" && (changes.firstName || changes.lastName)) {
       changes.name = composeWorkerName({ ...before as Record<string, unknown>, ...changes });
     }
-    const item = await model.findByIdAndUpdate(id, { $set: changes }, { new: true, runValidators: true }).lean();
+    const item = await model.findByIdAndUpdate(id, { $set: changes, ...extra }, { returnDocument: "after", runValidators: true }).lean();
     if (entity === "quotes" && item && (before as Record<string, unknown>).status !== (item as Record<string, unknown>).status) {
       const { Quote } = await import("@/lib/models");
       await Quote.updateOne({ _id: id }, { $push: { history: { action: `Estado: ${(item as Record<string, unknown>).status}`, at: new Date(), userId: session.userId } } });
+      // Aprobada: reserva lo disponible y pasa el faltante a Compras. Si se cae, la reserva se libera.
+      const status = String((item as Record<string, unknown>).status);
+      if (status === "aprobada") await reserveForQuote(id, session);
+      else if (status !== "convertida") await releaseForQuote(id, session);
     }
+    // Una factura anulada libera sus remitos: vuelven a estar pendientes de facturar.
+    if (entity === "invoices" && item && !VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status)) && String((item as Record<string, unknown>).status) === "anulada") await releaseRemitos(id);
     // La lectura de uso pudo cambiar a mano: lo que vence por km u horas se recalcula y avisa.
     if (entity === "assets" && item && "currentReading" in changes) await refreshAssetSchedule(id);
     if (entity === "collections" && item) {
@@ -62,8 +73,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       await applyCollection(item as Record<string, unknown>, 1);
     }
     if (entity === "payments" && item) {
-      await applyExpensePayment((before as Record<string, unknown>).expenseId, -Number((before as Record<string, unknown>).amountCents || 0));
-      await applyExpensePayment((item as Record<string, unknown>).expenseId, Number((item as Record<string, unknown>).amountCents || 0));
+      await applyExpensePayment((before as Record<string, unknown>).expenseId, -paidByPayment(before as Record<string, unknown>));
+      await applyExpensePayment((item as Record<string, unknown>).expenseId, paidByPayment(item as Record<string, unknown>));
     }
     const action = entity === "tasks" && (before as Record<string, unknown>).status !== (item as Record<string, unknown> | null)?.status
       ? "status_change"
@@ -88,8 +99,9 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
       await StockTrash.create({ entity, item: before, name, deletedById: session.userId, deletedByName: session.name });
     }
     await model.findByIdAndDelete(id);
+    if (entity === "invoices") await releaseRemitos(id);
     if (entity === "collections") await applyCollection(before as Record<string, unknown>, -1);
-    if (entity === "payments") await applyExpensePayment((before as Record<string, unknown>).expenseId, -Number((before as Record<string, unknown>).amountCents || 0));
+    if (entity === "payments") await applyExpensePayment((before as Record<string, unknown>).expenseId, -paidByPayment(before as Record<string, unknown>));
     await audit(session, "delete", entity, id, before, null, request.headers.get("x-forwarded-for") || undefined);
     return Response.json({ ok: true });
   } catch (error) { return apiError(error); }

@@ -7,6 +7,8 @@ import { date, money, todayIso } from "@/lib/format";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
 import type { PendingInvoice, ReceiptPdfData } from "@/lib/receipt-service";
 import { companyOf } from "@/lib/companies";
+import { DEFAULT_ACCOUNTS } from "@/lib/account-catalog";
+import { useLedgerAccounts } from "@/components/ledger-account";
 
 type Receipt = Record<string, unknown> & { _id: string };
 
@@ -29,6 +31,11 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
   const [receiptDate, setReceiptDate] = useState(receipt?.date ? new Date(String(receipt.date)).toISOString().slice(0, 10) : todayIso());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // La cuenta del plan (CI) del cobro. Uno nuevo arranca en "CI - CERTIFICADOS".
+  const accounts = useLedgerAccounts("ingreso");
+  const [accountId, setAccountId] = useState(String(receipt?.accountId || ""));
+  const chosenAccount = accountId || accounts.find(account => account.label === DEFAULT_ACCOUNTS.collection)?.value || "";
+  const accountChanged = Boolean(receipt?.accountId) && chosenAccount !== String(receipt?.accountId || "");
 
   useEffect(() => {
     if (!clientId) return;
@@ -66,6 +73,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
     if (!receiptDate) return setError("Poné la fecha del recibo");
     if (over) return setError(`A la ${over.label} le quedan ${money(over.balanceCents)} por cobrar`);
     if (totalCents <= 0) return setError("Poné cuánto se cobra de cada factura, o el importe si es un pago a cuenta");
+    if (!chosenAccount) return setError("Elegí la cuenta del plan a la que se imputa el cobro");
     const form = new FormData(event.currentTarget);
     setBusy(true); setError("");
     const response = await fetch(receipt ? `/api/receipts/${receipt._id}` : "/api/receipts", {
@@ -73,6 +81,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
       body: JSON.stringify({
         clientId, date: receiptDate, method, allocations, amountCents: allocations.length ? undefined : totalCents,
         account: String(form.get("account") || ""), reference: String(form.get("reference") || ""), notes: String(form.get("notes") || ""),
+        accountId: chosenAccount, accountChangeReason: String(form.get("accountChangeReason") || ""),
       }),
     });
     const result = await response.json();
@@ -97,7 +106,9 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
             <label><span>Medio de pago *</span><select value={method} onChange={event => setMethod(event.target.value)}>
               {Object.entries(methodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select></label>
-            <label><span>Cuenta / caja</span><input name="account" defaultValue={String(receipt?.account || "")} placeholder="Banco, caja…" /></label>
+            <label><span>Caja / banco</span><input name="account" defaultValue={String(receipt?.account || "")} placeholder="Banco, caja…" /></label>
+            <label><span>Cuenta del plan *<em className="field-hint">Ingresos: solo cuentas CI</em></span><SearchSelect name="accountId" options={accounts} value={chosenAccount} onChange={setAccountId} required placeholder="Elegí la cuenta…" /></label>
+            {accountChanged && <label className="wide"><span>Motivo del cambio de cuenta *<em className="field-hint">Queda en el historial de la imputación</em></span><input name="accountChangeReason" required /></label>}
             <label><span>Referencia</span><input name="reference" defaultValue={String(receipt?.reference || "")} placeholder="N° de transferencia, de cheque…" /></label>
           </div>
 

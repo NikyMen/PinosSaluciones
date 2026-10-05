@@ -36,11 +36,13 @@ export const entities = [
   "cash",
   "tasks",
   "assets",
+  "accounts",
 ] as const;
 
 export type Entity = (typeof entities)[number];
 
-export const viewSections = ["dashboard", ...entities, "calendario", "reports"] as const;
+// "accounting" es Contabilidad: el libro IVA y los movimientos por cuenta. Solo se mira, no se edita.
+export const viewSections = ["dashboard", ...entities, "calendario", "reports", "accounting"] as const;
 
 export type ViewSection = (typeof viewSections)[number];
 
@@ -48,18 +50,19 @@ export const entityLabels: Record<Entity, string> = {
   clients: "Clientes",
   quotes: "Cotizaciones",
   works: "Obras",
-  workers: "Personal asignado",
+  workers: "Personal",
   suppliers: "Proveedores",
   stock: "Stock",
-  purchases: "Órdenes de compra",
-  expenses: "Compras y gastos",
-  invoices: "Facturación",
+  purchases: "Solicitudes y órdenes de compra",
+  expenses: "Facturas de compra y gastos",
+  invoices: "Facturas de venta",
   collections: "Cobranzas",
-  payments: "Pagos",
+  payments: "Órdenes de pago y pagos",
   checks: "Cheques",
   cash: "Caja y bancos",
   tasks: "Tareas y pendientes",
   assets: "Bienes de uso",
+  accounts: "Plan de cuentas",
 };
 
 export const viewSectionLabels: Record<ViewSection, string> = {
@@ -67,4 +70,5 @@ export const viewSectionLabels: Record<ViewSection, string> = {
   ...entityLabels,
   calendario: "Calendario",
   reports: "iA y Reportes",
+  accounting: "Contabilidad",
 };

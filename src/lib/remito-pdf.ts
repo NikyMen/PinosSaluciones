@@ -12,7 +12,7 @@ import { warehouseLabel } from "./warehouses";
 export type RemitoData = {
   number: string;
   date: string;
-  kind: "egreso" | "transferencia";
+  kind: "egreso" | "transferencia" | "venta" | "devolucion";
   fromWarehouse: string;
   /** A dónde va: "Obra OB-99 · Fachada" o el depósito de destino. */
   destination: string;
@@ -23,6 +23,8 @@ export type RemitoData = {
 };
 
 const { margin: MARGIN, width: WIDTH, bottom: BOTTOM } = PAGE;
+const titles: Record<RemitoData["kind"], string> = { egreso: "Remito de entrega", transferencia: "Remito de transferencia", venta: "Remito al cliente", devolucion: "Remito de devolución" };
+const destinationTitles: Record<RemitoData["kind"], string> = { egreso: "SE ENTREGA EN", transferencia: "VA AL DEPÓSITO", venta: "CLIENTE", devolucion: "DEVUELVE EL CLIENTE" };
 const INNER = WIDTH - MARGIN * 2;
 
 export function buildRemitoPdf(doc: jsPDF, data: RemitoData, meta: { author: string; logo?: string }) {
@@ -32,7 +34,7 @@ export function buildRemitoPdf(doc: jsPDF, data: RemitoData, meta: { author: str
   let page = 1;
 
   const header = () => drawLetterhead(doc, {
-    title: data.kind === "egreso" ? "Remito de entrega" : "Remito de transferencia", number: `N° ${data.number}`, logo: meta.logo,
+    title: titles[data.kind], number: `N° ${data.number}`, logo: meta.logo,
     lines: [`Fecha: ${date(data.date)}`, "Documento no válido como factura"],
   });
   let y = header();
@@ -52,8 +54,8 @@ export function buildRemitoPdf(doc: jsPDF, data: RemitoData, meta: { author: str
     doc.text(plain(detail), x, boxTop + 20);
   };
   block(MARGIN + 5, "SALE DE", data.fromWarehouse, "Depósito de origen");
-  block(WIDTH / 2 + 6, data.kind === "egreso" ? "SE ENTREGA EN" : "VA AL DEPÓSITO", data.destination,
-    data.kind === "egreso" ? `Cotización: ${data.quoteNumber || "-"}` : "Pase interno entre depósitos");
+  block(WIDTH / 2 + 6, destinationTitles[data.kind], data.destination,
+    data.kind === "egreso" ? `Cotización: ${data.quoteNumber || "-"}` : data.kind === "venta" ? "La factura referencia este remito" : data.kind === "devolucion" ? "Vuelve al Salón de Ventas" : "Pase interno entre depósitos");
   y = boxTop + 36;
 
   // Los materiales, sin precios.
@@ -105,13 +107,13 @@ export function buildRemitoPdf(doc: jsPDF, data: RemitoData, meta: { author: str
 
 /** Los datos del remito a partir de un movimiento de stock y su material. */
 export function remitoFromMovement(movement: Record<string, unknown>, item: { name: string; unit: string; sku?: string }): RemitoData {
-  const kind = movement.kind === "transferencia" ? "transferencia" : "egreso";
+  const kind: RemitoData["kind"] = movement.kind === "transferencia" || movement.kind === "recepcion" ? "transferencia" : movement.kind === "venta" ? "venta" : movement.kind === "devolucion" ? "devolucion" : "egreso";
   return {
     number: String(movement.remito || ""),
     date: String(movement.date || movement.createdAt || new Date().toISOString()),
     kind,
     fromWarehouse: warehouseLabel(String(movement.warehouse || "central")),
-    destination: kind === "transferencia" ? warehouseLabel(String(movement.toWarehouse || "")) : String(movement.destinationLabel || movement.note || "Obra"),
+    destination: kind === "transferencia" ? warehouseLabel(String(movement.toWarehouse || "")) : String(movement.destinationLabel || movement.note || (kind === "egreso" ? "Obra" : "Cliente")),
     quoteNumber: movement.quoteNumber ? String(movement.quoteNumber) : undefined,
     items: [{ code: item.sku, name: item.name, unit: item.unit, quantity: Math.abs(Number(movement.quantity || 0)) }],
     note: kind === "transferencia" ? String(movement.note || "") : "",

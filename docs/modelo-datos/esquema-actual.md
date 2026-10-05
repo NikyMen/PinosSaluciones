@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-09-25 · 20 colecciones.
+Generado el 2026-10-05 · 26 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -43,6 +43,7 @@ Colección `quotes` · entidad `quotes`
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
 | `number` | texto | sí | único |
+| `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
 | `clientId` | referencia | sí | apunta a **Client** |
 | `title` | texto | sí | — |
 | `description` | texto | — | — |
@@ -111,7 +112,7 @@ Colección `works` · entidad `works`
 | `clientId` | referencia | sí | apunta a **Client** |
 | `quoteId` | referencia | — | apunta a **Quote** |
 | `managerId` | referencia | — | apunta a **User** |
-| `status` | texto | — | valores: `planificada` · `en_curso` · `pausada` · `terminada` · `cancelada` · por defecto `"planificada"` |
+| `status` | texto | — | valores: `planificada` · `en_curso` · `pausada` · `terminada` · `cerrada` · `cancelada` · por defecto `"planificada"` |
 | `startDate` | fecha | — | — |
 | `endDate` | fecha | — | — |
 | `budgetCents` | número | — | mínimo 0 · por defecto `0` |
@@ -182,13 +183,17 @@ Colección `works` · entidad `works`
 | `labor.hourlyRateCents` | número | — | — |
 | `labor.costCents` | número | — | — |
 | `labor.manualCost` | sí/no | — | por defecto `false` |
+| `labor.workTypeId` | referencia | — | apunta a **WorkType** |
+| `labor.workType` | texto | — | — |
+| `labor.unit` | texto | — | — |
+| `labor.importKey` | texto | — | — |
 | `labor.note` | texto | — | — |
 | `labor.loadedByName` | texto | — | — |
 | `labor.createdAt` | fecha | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
-### Personal asignado
+### Personal
 
 Colección `workers` · entidad `workers`
 
@@ -197,7 +202,18 @@ Colección `workers` · entidad `workers`
 | `name` | texto | — | — |
 | `firstName` | texto | sí | — |
 | `lastName` | texto | sí | — |
-| `dni` | texto | sí | — |
+| `fileNumber` | número | — | — |
+| `activeSince` | fecha | — | — |
+| `leftAt` | fecha | — | — |
+| `leaveReason` | texto | — | — |
+| `fileHistory` | lista de objetos | — | — |
+| `fileHistory.fileNumber` | número | — | — |
+| `fileHistory.from` | fecha | — | — |
+| `fileHistory.to` | fecha | — | — |
+| `fileHistory.reason` | texto | — | — |
+| `position` | texto | — | — |
+| `workType` | texto | — | — |
+| `dni` | texto | — | — |
 | `phone` | texto | — | — |
 | `category` | texto | — | valores: `capataz` · `oficial` · `medio_oficial` · `ayudante` · `especialista` · por defecto `"oficial"` |
 | `rateMode` | texto | — | valores: `jornada` · `hora` · por defecto `"jornada"` |
@@ -216,6 +232,7 @@ Colección `suppliers` · entidad `suppliers`
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
 | `name` | texto | sí | — |
+| `cuit` | texto | — | — |
 | `contactName` | texto | — | — |
 | `email` | texto | — | — |
 | `phone` | texto | — | — |
@@ -235,6 +252,7 @@ Colección `stockitems` · entidad `stock`
 |---|---|:--:|---|
 | `name` | texto | sí | — |
 | `sku` | texto | — | — |
+| `barcode` | texto | — | — |
 | `category` | texto | — | valores: `materiales` · `herramientas` · `seguridad` · `consumibles` · `otros` · por defecto `"materiales"` |
 | `unit` | texto | — | valores: `unidad` · `kg` · `litro` · `metro` · `m2` · `m3` · `bolsa` · `balde` · `rollo` · por defecto `"unidad"` |
 | `quantity` | número | — | por defecto `0` |
@@ -243,6 +261,10 @@ Colección `stockitems` · entidad `stock`
 | `min_central` | número | — | mínimo 0 |
 | `qty_salon` | número | — | — |
 | `min_salon` | número | — | mínimo 0 |
+| `owners` | libre | — | — |
+| `transitQty` | número | — | mínimo 0 · por defecto `0` |
+| `unusableQty` | número | — | mínimo 0 · por defecto `0` |
+| `reservedQty` | número | — | mínimo 0 · por defecto `0` |
 | `avgCostCents` | número | — | mínimo 0 · por defecto `0` |
 | `valueCents` | número | — | mínimo 0 · por defecto `0` |
 | `supplierId` | referencia | — | apunta a **Supplier** |
@@ -250,7 +272,7 @@ Colección `stockitems` · entidad `stock`
 | `notes` | texto | — | — |
 | `active` | sí/no | — | por defecto `true` |
 | `movements` | lista de objetos | — | — |
-| `movements.kind` | texto | sí | valores: `ingreso` · `egreso` · `transferencia` · `ajuste` |
+| `movements.kind` | texto | sí | valores: `ingreso` · `egreso` · `transferencia` · `recepcion` · `ajuste` · `venta` · `devolucion` · `no_utilizable` |
 | `movements.quantity` | número | sí | — |
 | `movements.warehouse` | texto | — | valores: `central` · `salon` |
 | `movements.toWarehouse` | texto | — | valores: `central` · `salon` |
@@ -268,19 +290,31 @@ Colección `stockitems` · entidad `stock`
 | `movements.userName` | texto | — | — |
 | `movements.purchaseId` | referencia | — | apunta a **Purchase** |
 | `movements.expenseId` | referencia | — | apunta a **Expense** |
+| `movements.ticket` | texto | — | — |
+| `movements.owner` | texto | — | valores: `tvp` · `constructora` · `sin_asignar` |
+| `movements.ownerParts` | lista de objetos | — | — |
+| `movements.ownerParts.owner` | texto | — | valores: `tvp` · `constructora` · `sin_asignar` |
+| `movements.ownerParts.quantity` | número | — | — |
+| `movements.transferId` | referencia | — | apunta a **StockTransfer** |
+| `movements.salesRemitoId` | referencia | — | apunta a **SalesRemito** |
+| `movements.clientId` | referencia | — | apunta a **Client** |
 | `movements.createdAt` | fecha | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
-### Órdenes de compra
+### Solicitudes y órdenes de compra
 
 Colección `purchases` · entidad `purchases`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
 | `number` | texto | sí | único |
+| `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
 | `supplierId` | referencia | — | apunta a **Supplier** |
 | `workId` | referencia | — | apunta a **Work** |
+| `quoteId` | referencia | — | apunta a **Quote** |
+| `neededBy` | fecha | — | — |
+| `priority` | texto | — | valores: `alta` · `media` · `baja` · por defecto `"media"` |
 | `description` | texto | sí | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `stage` | texto | — | valores: `solicitud` · `orden` · `recepcion` · por defecto `"solicitud"` |
@@ -300,6 +334,13 @@ Colección `purchases` · entidad `purchases`
 | `items.discountPct` | número | — | por defecto `0` |
 | `items.unitCents` | número | — | mínimo 0 · por defecto `0` |
 | `items.totalCents` | número | — | mínimo 0 · por defecto `0` |
+| `requestLines` | lista de objetos | — | — |
+| `requestLines.stockItemId` | referencia | — | apunta a **StockItem** |
+| `requestLines.name` | texto | — | — |
+| `requestLines.unit` | texto | — | — |
+| `requestLines.neededQty` | número | — | — |
+| `requestLines.reservedQty` | número | — | — |
+| `requestLines.shortageQty` | número | — | — |
 | `subtotalCents` | número | — | — |
 | `vatCents` | número | — | — |
 | `notes` | texto | — | — |
@@ -315,7 +356,7 @@ Colección `purchases` · entidad `purchases`
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
-### Compras y gastos
+### Facturas de compra y gastos
 
 Colección `expenses` · entidad `expenses`
 
@@ -324,6 +365,14 @@ Colección `expenses` · entidad `expenses`
 | `number` | texto | — | — |
 | `supplierId` | referencia | — | apunta a **Supplier** |
 | `workId` | referencia | — | apunta a **Work** |
+| `company` | texto | — | valores: `tvp` · `constructora` |
+| `voucherType` | texto | — | valores: `factura_a` · `factura_c` · `factura_x` |
+| `netCents` | número | — | — |
+| `vatPct` | número | — | — |
+| `vatCents` | número | — | — |
+| `purchaseId` | referencia | — | apunta a **Purchase** |
+| `receiptRef` | texto | — | — |
+| `accountId` | referencia | — | apunta a **Account** |
 | `description` | texto | sí | — |
 | `category` | texto | sí | valores: `materiales` · `transporte` · `combustible` · `servicios` · `costo_indirecto` · `gasto_fijo` · `mano_obra` |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
@@ -335,23 +384,33 @@ Colección `expenses` · entidad `expenses`
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
-### Facturación
+### Facturas de venta
 
 Colección `invoices` · entidad `invoices`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
+| `voucherType` | texto | — | valores: `factura_a` · `factura_b` · `factura_x` · `factura_c` |
+| `pointOfSale` | texto | — | — |
 | `number` | texto | sí | — |
 | `clientId` | referencia | sí | apunta a **Client** |
+| `quoteId` | referencia | — | apunta a **Quote** |
 | `workId` | referencia | — | apunta a **Work** |
 | `certificateNumber` | texto | — | — |
 | `description` | texto | — | — |
 | `issueDate` | fecha | sí | — |
 | `dueDate` | fecha | — | — |
+| `netCents` | número | — | — |
+| `vatPct` | número | — | — |
+| `vatCents` | número | — | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `collectedCents` | número | — | mínimo 0 · por defecto `0` |
-| `status` | texto | — | valores: `pendiente` · `parcial` · `cobrada` · `anulada` · por defecto `"pendiente"` |
+| `status` | texto | — | valores: `pendiente` · `parcial` · `cobrada` · `anulada` · `sustituida` · por defecto `"pendiente"` |
 | `attachment` | texto | — | — |
+| `replacesId` | referencia | — | apunta a **Invoice** |
+| `replacedById` | referencia | — | apunta a **Invoice** |
+| `remitoIds` | lista | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -361,31 +420,59 @@ Colección `collections` · entidad `collections`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `number` | texto | — | — |
 | `clientId` | referencia | sí | apunta a **Client** |
 | `invoiceId` | referencia | — | apunta a **Invoice** |
+| `allocations` | lista de objetos | — | — |
+| `allocations.invoiceId` | referencia | sí | apunta a **Invoice** |
+| `allocations.amountCents` | número | sí | mínimo 0 |
 | `date` | fecha | sí | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
+| `userName` | texto | — | — |
 | `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `retencion` · `otro` |
 | `account` | texto | — | — |
 | `reference` | texto | — | — |
 | `notes` | texto | — | — |
+| `accountId` | referencia | — | apunta a **Account** |
+| `accountHistory` | lista de objetos | — | — |
+| `accountHistory.fromId` | referencia | — | apunta a **Account** |
+| `accountHistory.fromName` | texto | — | — |
+| `accountHistory.toId` | referencia | — | apunta a **Account** |
+| `accountHistory.toName` | texto | — | — |
+| `accountHistory.reason` | texto | — | — |
+| `accountHistory.userName` | texto | — | — |
+| `accountHistory.at` | fecha | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
-### Pagos
+### Órdenes de pago y pagos
 
 Colección `payments` · entidad `payments`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `number` | texto | — | — |
+| `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
 | `supplierId` | referencia | — | apunta a **Supplier** |
 | `expenseId` | referencia | — | apunta a **Expense** |
+| `status` | texto | — | valores: `emitida` · `pagada` · `anulada` · por defecto `"pagada"` |
 | `date` | fecha | sí | — |
+| `dueDate` | fecha | — | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
+| `retentionsCents` | número | — | mínimo 0 · por defecto `0` |
 | `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `otro` |
 | `account` | texto | — | — |
 | `reference` | texto | — | — |
 | `notes` | texto | — | — |
+| `accountId` | referencia | — | apunta a **Account** |
+| `accountHistory` | lista de objetos | — | — |
+| `accountHistory.fromId` | referencia | — | apunta a **Account** |
+| `accountHistory.fromName` | texto | — | — |
+| `accountHistory.toId` | referencia | — | apunta a **Account** |
+| `accountHistory.toName` | texto | — | — |
+| `accountHistory.reason` | texto | — | — |
+| `accountHistory.userName` | texto | — | — |
+| `accountHistory.at` | fecha | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -416,8 +503,21 @@ Colección `cashmovements` · entidad `cash`
 | `date` | fecha | sí | — |
 | `direction` | texto | sí | valores: `ingreso` · `egreso` |
 | `account` | texto | sí | — |
-| `category` | texto | sí | — |
+| `category` | texto | — | — |
 | `description` | texto | sí | — |
+| `accountId` | referencia | — | apunta a **Account** |
+| `accountHistory` | lista de objetos | — | — |
+| `accountHistory.fromId` | referencia | — | apunta a **Account** |
+| `accountHistory.fromName` | texto | — | — |
+| `accountHistory.toId` | referencia | — | apunta a **Account** |
+| `accountHistory.toName` | texto | — | — |
+| `accountHistory.reason` | texto | — | — |
+| `accountHistory.userName` | texto | — | — |
+| `accountHistory.at` | fecha | — | — |
+| `company` | texto | — | valores: `tvp` · `constructora` |
+| `workId` | referencia | — | apunta a **Work** |
+| `costCenter` | texto | — | — |
+| `transferId` | texto | — | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `reference` | texto | — | — |
 | `reconciled` | sí/no | — | por defecto `false` |
@@ -440,6 +540,76 @@ Colección `tasks` · entidad `tasks`
 | `assigneeName` | texto | — | — |
 | `relatedType` | texto | — | — |
 | `relatedId` | referencia | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### Bienes de uso
+
+Colección `assets` · entidad `assets`
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `name` | texto | sí | — |
+| `sector` | texto | — | valores: `albanileria` · `altura` · `pintura` · `aislamiento` · `general` · por defecto `"general"` |
+| `category` | texto | — | valores: `vehiculo` · `maquinaria` · `herramienta` · `equipo` · `informatica` · `inmueble` · `otro` · por defecto `"vehiculo"` |
+| `brand` | texto | — | — |
+| `model` | texto | — | — |
+| `identifier` | texto | — | — |
+| `year` | número | — | — |
+| `purchaseDate` | fecha | — | — |
+| `valueCents` | número | — | mínimo 0 · por defecto `0` |
+| `responsible` | texto | — | — |
+| `location` | texto | — | — |
+| `status` | texto | — | valores: `activo` · `en_reparacion` · `fuera_de_servicio` · `baja` · por defecto `"activo"` |
+| `meterUnit` | texto | — | valores: `km` · `horas` · `ninguno` · por defecto `"ninguno"` |
+| `currentReading` | número | — | mínimo 0 |
+| `readingDate` | fecha | — | — |
+| `notes` | texto | — | — |
+| `attachment` | texto | — | — |
+| `maintenance` | lista de objetos | — | — |
+| `maintenance.date` | fecha | sí | — |
+| `maintenance.kind` | texto | — | valores: `service` · `preventivo` · `reparacion` · `inspeccion` · `otro` · por defecto `"service"` |
+| `maintenance.description` | texto | sí | — |
+| `maintenance.costCents` | número | — | mínimo 0 · por defecto `0` |
+| `maintenance.reading` | número | — | — |
+| `maintenance.provider` | texto | — | — |
+| `maintenance.notes` | texto | — | — |
+| `maintenance.expenseId` | referencia | — | apunta a **Expense** |
+| `maintenance.planId` | referencia | — | — |
+| `maintenance.userId` | referencia | — | apunta a **User** |
+| `maintenance.userName` | texto | — | — |
+| `maintenance.createdAt` | fecha | — | — |
+| `plans` | lista de objetos | — | — |
+| `plans.title` | texto | sí | — |
+| `plans.dueDate` | fecha | — | — |
+| `plans.dueReading` | número | — | — |
+| `plans.intervalMonths` | número | — | — |
+| `plans.intervalReading` | número | — | — |
+| `plans.notes` | texto | — | — |
+| `plans.status` | texto | — | valores: `pendiente` · `hecho` · `cancelado` · por defecto `"pendiente"` |
+| `plans.doneAt` | fecha | — | — |
+| `plans.doneByName` | texto | — | — |
+| `plans.maintenanceId` | referencia | — | — |
+| `plans.createdByName` | texto | — | — |
+| `plans.createdAt` | fecha | — | — |
+| `plans.updatedAt` | fecha | — | — |
+| `nextDueDate` | fecha | — | — |
+| `nextDueTitle` | texto | — | — |
+| `nextDueReading` | número | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### Plan de cuentas
+
+Colección `accounts` · entidad `accounts`
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `code` | texto | sí | valores: `BB` · `CC` · `CE` · `CI` · `GGD` · `GGI` · `IMP` · `OP` |
+| `name` | texto | sí | único |
+| `direction` | texto | sí | valores: `ingreso` · `egreso` |
+| `active` | sí/no | — | por defecto `true` |
+| `notes` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -466,6 +636,7 @@ Usuarios del sistema y sus permisos. Colección `users`.
 | `permissions` | objeto | — | — |
 | `permissions.view` | lista | — | — |
 | `permissions.edit` | lista | — | — |
+| `permissions.seen` | lista | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -488,7 +659,7 @@ Registro de auditoría: quién cambió qué y cuándo. Colección `auditlogs`.
 
 ### Counter
 
-Contadores para numeración correlativa (hoy: cotizaciones). Colección `counters`.
+Contadores para numeración correlativa: cotizaciones, órdenes de compra, recibos, remitos, órdenes de pago y caja. Colección `counters`.
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
@@ -647,3 +818,103 @@ Cada producto de una lista de precios, sin IVA. El buscador de precios recorre l
 | `measureQty` | número | — | — |
 | `measureUnit` | texto | — | — |
 | `searchText` | texto | — | — |
+
+### VoucherBook
+
+Talonarios: qué comprobantes (A, B, C, X) usa cada empresa para vender y comprar, y en qué punto de venta. La X lleva acá su numeración interna. Colección `voucherbooks`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `company` | texto | sí | valores: `tvp` · `constructora` |
+| `scope` | texto | sí | valores: `venta` · `compra` |
+| `voucherType` | texto | sí | valores: `factura_a` · `factura_b` · `factura_c` · `factura_x` |
+| `pointOfSale` | texto | — | por defecto `"0001"` |
+| `fiscal` | sí/no | — | por defecto `true` |
+| `lastNumber` | número | — | mínimo 0 · por defecto `0` |
+| `active` | sí/no | — | por defecto `true` |
+| `notes` | texto | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### StockTransfer
+
+Transferencias entre depósitos: salen con remito, quedan en tránsito y el destino confirma lo recibido (con las diferencias). Colección `stocktransfers`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `number` | texto | sí | único |
+| `from` | texto | sí | valores: `central` · `salon` |
+| `to` | texto | sí | valores: `central` · `salon` |
+| `status` | texto | — | valores: `en_transito` · `recibida` · `con_diferencias` · `anulada` · por defecto `"en_transito"` |
+| `lines` | lista de objetos | — | — |
+| `lines.stockItemId` | referencia | sí | apunta a **StockItem** |
+| `lines.name` | texto | — | — |
+| `lines.unit` | texto | — | — |
+| `lines.quantity` | número | — | — |
+| `lines.ownerParts` | lista de objetos | — | — |
+| `lines.ownerParts.owner` | texto | — | valores: `tvp` · `constructora` · `sin_asignar` |
+| `lines.ownerParts.quantity` | número | — | — |
+| `lines.receivedQty` | número | — | — |
+| `lines.damagedQty` | número | — | — |
+| `lines.missingQty` | número | — | — |
+| `lines.note` | texto | — | — |
+| `note` | texto | — | — |
+| `receptionNote` | texto | — | — |
+| `sentAt` | fecha | — | — |
+| `sentByName` | texto | — | — |
+| `receivedAt` | fecha | — | — |
+| `receivedByName` | texto | — | — |
+| `quoteId` | referencia | — | apunta a **Quote** |
+| `salesRemitoId` | referencia | — | apunta a **SalesRemito** |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### SalesRemito
+
+Remitos de venta al cliente desde el Salón (y devoluciones). Descuentan el stock; la factura los referencia. Colección `salesremitos`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `number` | texto | sí | único |
+| `kind` | texto | — | valores: `salida` · `devolucion` · por defecto `"salida"` |
+| `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
+| `clientId` | referencia | sí | apunta a **Client** |
+| `quoteId` | referencia | — | apunta a **Quote** |
+| `warehouse` | texto | — | valores: `central` · `salon` · por defecto `"salon"` |
+| `date` | fecha | sí | — |
+| `lines` | lista de objetos | — | — |
+| `lines.stockItemId` | referencia | sí | apunta a **StockItem** |
+| `lines.name` | texto | — | — |
+| `lines.unit` | texto | — | — |
+| `lines.quantity` | número | — | — |
+| `lines.unitPriceCents` | número | — | mínimo 0 · por defecto `0` |
+| `lines.totalCents` | número | — | mínimo 0 · por defecto `0` |
+| `lines.unitCostCents` | número | — | — |
+| `lines.ownerParts` | lista de objetos | — | — |
+| `lines.ownerParts.owner` | texto | — | valores: `tvp` · `constructora` · `sin_asignar` |
+| `lines.ownerParts.quantity` | número | — | — |
+| `totalCents` | número | — | mínimo 0 · por defecto `0` |
+| `status` | texto | — | valores: `pendiente` · `facturado` · `anulado` · por defecto `"pendiente"` |
+| `invoiceIds` | lista | — | por defecto `[]` |
+| `returnsId` | referencia | — | apunta a **SalesRemito** |
+| `note` | texto | — | — |
+| `userId` | referencia | — | apunta a **User** |
+| `userName` | texto | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### StockReservation
+
+Reservas de stock de una cotización aprobada. Las consumen las salidas a su obra; se liberan si la cotización se cae. Colección `stockreservations`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `stockItemId` | referencia | sí | apunta a **StockItem** |
+| `quoteId` | referencia | sí | apunta a **Quote** |
+| `workId` | referencia | — | apunta a **Work** |
+| `quantity` | número | sí | mínimo 0 |
+| `consumedQty` | número | — | mínimo 0 · por defecto `0` |
+| `status` | texto | — | valores: `activa` · `consumida` · `liberada` · por defecto `"activa"` |
+| `userName` | texto | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
