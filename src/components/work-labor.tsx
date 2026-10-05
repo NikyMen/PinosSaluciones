@@ -25,7 +25,7 @@ export type LaborEntry = {
 /** Una fila de la liquidación: lo que hay que pagarle a una persona en el período. */
 type Settlement = { workerId: string; name: string; dni: string; category: string; days: number; hours: number; totalCents: number };
 
-export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = false, onChanged }: {
+export function WorkLabor({ work, assigned: assignedProp, labor: laborProp, canEdit, canCreateWorker = false, onChanged }: {
   work: { _id: string; code: string; name: string }; assigned: AssignedWorker[]; labor: LaborEntry[]; canEdit: boolean;
   /** Si además puede cargar el legajo: habilita "Nuevo integrante". */ canCreateWorker?: boolean;
   onChanged: (work: unknown) => void;
@@ -35,6 +35,8 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
   // Las tarifas por tipo de trabajo, y el tipo habitual de cada persona del legajo.
   const [workTypes, setWorkTypes] = useState<WorkTypeRow[]>([]);
   const [habitual, setHabitual] = useState<Record<string, string>>({});
+  // Nombre de cada persona según el legajo, para los asignados y partes que se guardaron sin él.
+  const [names, setNames] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -52,7 +54,11 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
     void fetch("/api/records/workers?limit=100")
       .then(response => response.ok ? response.json() : { items: [] })
       // Los dados de baja no se asignan a obras.
-      .then((result: { items?: Array<Record<string, unknown>> }) => { setHabitual(Object.fromEntries((result.items || []).map(row => [String(row._id), String(row.workType || "")]))); return result; })
+      .then((result: { items?: Array<Record<string, unknown>> }) => {
+        setHabitual(Object.fromEntries((result.items || []).map(row => [String(row._id), String(row.workType || "")])));
+        setNames(Object.fromEntries((result.items || []).map(row => [String(row._id), String(row.name || [row.lastName, row.firstName].filter(Boolean).join(", "))])));
+        return result;
+      })
       .then((result: { items?: Array<Record<string, unknown>> }) => setCatalog((result.items || []).filter(row => row.active !== false).map(row => ({
         value: String(row._id), label: String(row.name || `${row.lastName}, ${row.firstName}`),
         hint: [row.fileNumber && `Legajo ${row.fileNumber}`, row.dni && `DNI ${row.dni}`, row.workType || titleCase(String(row.category || ""))].filter(Boolean).join(" · "),
@@ -62,6 +68,15 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
       .then((result: { items?: WorkTypeRow[] }) => setWorkTypes((result.items || []).filter(type => type.active)))
       .catch(() => setWorkTypes([]));
   }, []);
+
+  // Lo importado de la planilla antes del 30/09 quedó sin nombre: se completa con el legajo.
+  const nameOf = (workerId: unknown, saved?: string) => saved || names[String(workerId || "")] || "Sin nombre";
+  const assigned = useMemo(() => assignedProp.map(worker => ({ ...worker, name: nameOf(worker.workerId, worker.name) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [assignedProp, names]);
+  const labor = useMemo(() => laborProp.map(entry => ({ ...entry, person: nameOf(entry.workerId, entry.person) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [laborProp, names]);
 
   const assignedIds = new Set(assigned.map(worker => String(worker.workerId)));
   const available = catalog.filter(option => !assignedIds.has(option.value));
@@ -302,8 +317,8 @@ export function WorkLabor({ work, assigned, labor, canEdit, canCreateWorker = fa
 
 function round2(value: number) { return Math.round(value * 100) / 100; }
 
-function initials(name: string) {
-  return name.split(/[\s,]+/).filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase();
+function initials(name?: string) {
+  return (name || "").split(/[\s,]+/).filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
 

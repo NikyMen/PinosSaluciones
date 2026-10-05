@@ -317,12 +317,12 @@ export async function importPayroll(parsed: ParsedPayroll, sites: Record<string,
       if (loaded.has(key)) { summary.skipped++; continue; }
       const worker = workerFor.get(row.fileNumber ? `l${row.fileNumber}` : nameKey(row.fullName))!;
       if (!work.assignedWorkers.some((assigned: { workerId?: unknown }) => String(assigned.workerId) === String(worker._id))) {
-        work.assignedWorkers.push({ workerId: worker._id, name: worker.name, dni: worker.dni, phone: worker.phone, category: worker.category, rateMode: "hora", assignedByName: session.name });
+        work.assignedWorkers.push({ workerId: worker._id, name: worker.name || composeWorkerName(worker), dni: worker.dni, phone: worker.phone, category: worker.category, rateMode: "hora", assignedByName: session.name });
       }
       const type = typeByName.get(normalize(row.workType));
       const rate = row.quantity ? Math.round(row.totalCents / row.quantity) : Number(type?.rateCents || 0);
       work.labor.push({
-        workerId: worker._id, person: worker.name, date: row.date, mode: "hora",
+        workerId: worker._id, person: worker.name || composeWorkerName(worker), date: row.date, mode: "hora",
         hours: row.quantity, days: Math.round((row.quantity / 8) * 100) / 100, hourlyRateCents: rate, dailyRateCents: rate * 8,
         costCents: row.totalCents, manualCost: Boolean(type?.rateCents) && Math.abs(Math.round(row.quantity * Number(type?.rateCents)) - row.totalCents) > 1,
         workTypeId: type?._id, workType: row.workType, unit: guessUnit(row.workType), importKey: key,
