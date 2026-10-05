@@ -4,6 +4,8 @@
 
 Es el documento que **sí** ve el cliente. Todo el costeo del [[cotizador-cascada]] queda del lado interno.
 
+**Implementado** en `src/lib/quote-pdf.ts` (botón PDF en cada cotización). Por ahora los precios van con IVA incluido, como en la pestaña Precio del cotizador, sin el desglose neto / IVA ni el descuento por línea.
+
 ## Estructura
 
 **1. Encabezado**

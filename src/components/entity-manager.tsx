@@ -19,6 +19,7 @@ import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/compone
 import { buildInvoicePdf } from "@/lib/invoice-pdf";
 import { readPdfLogo } from "@/lib/pdf-brand";
 import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-order-pdf";
+import { downloadQuotePdf, quotePdfData } from "@/lib/quote-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
 import { InvoiceFields } from "@/components/invoice-fields";
 import { WorkerStatusModal } from "@/components/worker-status-modal";
@@ -283,6 +284,17 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity, canEdit]);
 
+  /** La cotización para el cliente. El listado no trae los ítems: se pide entera, con su cliente. */
+  async function downloadQuote(item: Item) {
+    try {
+      const [quote, client] = await Promise.all([
+        fetch(`/api/records/quotes/${item._id}`).then(response => response.ok ? response.json() : Promise.reject(new Error("quote"))),
+        item.clientId ? fetch(`/api/records/clients/${String(item.clientId)}`).then(response => response.ok ? response.json() : null).catch(() => null) : null,
+      ]);
+      await downloadQuotePdf(quotePdfData(quote, client || relations.clients?.find(row => row._id === String(item.clientId || ""))));
+    } catch { setError("No se pudo generar el PDF de la cotización"); }
+  }
+
   async function downloadReceipt(item: Item) {
     const response = await fetch(`/api/receipts/${item._id}`);
     if (!response.ok) return setError("No se pudo armar el recibo");
@@ -451,6 +463,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
+          {entity === "quotes" && <button className="row-action-wide" title="Descargar la cotización en PDF para mandarla o imprimirla" onClick={() => { void downloadQuote(item); }}><Download size={15} /> PDF</button>}
           {entity === "suppliers" && <Link className="row-action-wide" title="Subir y ver las listas de precios del proveedor" href={`/app/suppliers/${item._id}`}><FileSpreadsheet size={15} /> Listas de precios</Link>}
           {entity === "purchases" && Array.isArray(item.items) && item.items.length > 0 && <button className="row-action-wide" title="Descargar la orden de compra en PDF para mandársela al proveedor"
             onClick={() => { void downloadPurchaseOrderPdf(purchaseOrderPdfData(item, relations.suppliers?.find(row => row._id === String(item.supplierId || "")), relations.works?.find(row => row._id === String(item.workId || "")))).catch(() => setError("No se pudo generar el PDF de la orden")); }}>

@@ -208,3 +208,33 @@ describe("el catalogo de gastos generales",()=>{
     expect(concepts.filter(concept=>concept.formula).map(concept=>concept.formula)).toContain("mes_hombre");
   });
 });
+
+describe("el PDF de la cotizacion para el cliente",()=>{
+  it("lleva los items al precio de la cascada y el total cierra con la suma",async()=>{
+    const { quotePdfData }=await import("../src/lib/quote-pdf");
+    const items=[...costoDirecto(1000,500),{code:"2.1.",name:"Pintura",unit:"m2",qty:10,composition:[{rubro:"MAT" as const,name:"Latex",unit:"lts",coefPerUnit:0.4,unitPriceCents:pesos(100)}]}];
+    const data=quotePdfData({number:"COT-7",title:"Fachada",amountCents:1,items,cascade:{},createdAt:"2026-10-01T00:00:00.000Z"},{name:"Consorcio",cuit:"30-1",phones:["3794"]});
+    const cascada=computeCascade({items});
+    expect(data.items.map(item=>item.totalCents)).toEqual(cascada.items.map(item=>item.priceCents));
+    expect(data.totalCents).toBe(data.items.reduce((total,item)=>total+item.totalCents,0));
+    expect(data.client.phone).toBe("3794");
+  });
+
+  it("una cotizacion sin costear sale con un renglon por el importe cargado",async()=>{
+    const { quotePdfData }=await import("../src/lib/quote-pdf");
+    const data=quotePdfData({number:"COT-2",title:"CASINO",amountCents:100_000},null);
+    expect(data.items).toHaveLength(1);
+    expect(data.totalCents).toBe(100_000);
+  });
+
+  it("pasa de pagina con muchos items y memoria descriptiva larga",async()=>{
+    const { jsPDF }=await import("jspdf");
+    const { buildQuotePdf }=await import("../src/lib/quote-pdf");
+    const doc=new jsPDF();
+    const detail="Preparacion de superficie, imprimacion y dos manos de terminacion. ".repeat(6);
+    const filename=buildQuotePdf(doc,{number:"COT-3",version:2,date:"2026-10-01T00:00:00.000Z",validUntil:"2026-10-15T00:00:00.000Z",title:"Pintura a nivel",description:"Objeto de la obra.\nPlazo: 30 dias.",client:{name:"Cliente"},
+      items:Array.from({length:30},(_,index)=>({code:`${index+1}.1.`,name:`Item ${index}`,detail,unit:"m2",quantity:100,unitCents:150_000,totalCents:15_000_000})),totalCents:450_000_000},{author:"Comercial"});
+    expect(filename).toBe("cotizacion-COT-3-v2.pdf");
+    expect(doc.getNumberOfPages()).toBeGreaterThan(1);
+  });
+});

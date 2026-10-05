@@ -17,6 +17,7 @@ Modelos de referencia: [[../modelo-datos/cotizador-cascada]] · [[../modelo-dato
 | COT-8 | **Descuento especial** (% o monto), con registro de quién lo autorizó | P1 | pendiente |
 | COT-10 | **Elegir empresa emisora** — ⚠️ ver P1 en el acta | ? | bloqueado |
 | COT-11 | **Ítems jerárquicos** (1, 1.1, 1.2…) en vez de un único importe | P0 | ✅ hecho |
+| COT-12 | **PDF al cliente** para imprimir o mandar, con un botón en cada cotización | P0 | ✅ hecho |
 
 ## Cómo quedó implementado
 
@@ -30,6 +31,7 @@ Modelos de referencia: [[../modelo-datos/cotizador-cascada]] · [[../modelo-dato
 | COT-9 | `expireQuotes()` en `scripts/worker.mjs`, corre cada 5 minutos |
 | COT-11 | `quote.items[]` con su `composition[]` de insumos en `src/lib/models.ts`. El coeficiente se puede cargar derecho (`0,4`) o como lo piensa la gente (`80/5250`): lo resuelve `parseCoef()` |
 | COT-7 | `computeCascade()` en `src/lib/cascada.ts` — función pura, los 9 escalones y el coeficiente `k`. Pantalla en `/app/quotes/[id]`, se guarda por `PUT /api/quotes/[id]/cascada` |
+| COT-12 | Botón **PDF** en cada fila del listado. `src/lib/quote-pdf.ts` arma el papel en el navegador con el membrete de la empresa de la cotización: cliente, descripción, ítems con su memoria descriptiva, precios con IVA incluido (los de la cascada), total en letras, validez y firmas. Nunca muestra insumos, gastos ni porcentajes. Una cotización sin costear sale con un renglón por el importe cargado |
 
 ### Decisión tomada al implementar COT-9
 
