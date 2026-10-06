@@ -2,7 +2,7 @@ import type { Types } from "mongoose";
 import { Account, CashMovement, Client, Collection, Expense, Invoice, Payment, Supplier } from "./models";
 import { ensureAccountCatalog } from "./account-service";
 import { accountDirection, type AccountCode } from "./account-catalog";
-import { invoiceLabel, isFiscalVoucher, voucherLabels, VOID_INVOICE_STATUSES } from "./invoice-labels";
+import { invoiceLabel, isFiscalVoucher, voucherLabels, VOID_INVOICE_STATUSES, isCreditNote } from "./invoice-labels";
 import { collectionAllocations, effectivePayments } from "./balances";
 import { companyOf, type CompanyKey } from "./companies";
 import { excludedFromTotals } from "./trash";
@@ -57,7 +57,10 @@ export async function ivaBook({ from, to, company }: Period): Promise<IvaBook> {
   const fiscalExpenses = expenses.filter(expense => isFiscalVoucher(expense.voucherType));
   const sales = fiscalInvoices.map(invoice => {
     const client = clientById.get(String(invoice.clientId));
-    return { _id: String(invoice._id), date: iso(invoice.issueDate), voucher: voucherLabels[String(invoice.voucherType || "factura_a")] || "Factura", number: invoiceLabel({ number: invoice.number }), party: String(client?.name || "—"), cuit: String(client?.cuit || ""), company: companyOf(invoice.company).key, ...split(invoice) };
+    const amounts = split(invoice);
+    // La nota de crédito resta: neto, IVA y total en negativo.
+    const sign = isCreditNote(invoice.voucherType) ? -1 : 1;
+    return { _id: String(invoice._id), date: iso(invoice.issueDate), voucher: voucherLabels[String(invoice.voucherType || "factura_a")] || "Factura", number: invoiceLabel({ number: invoice.number }), party: String(client?.name || "—"), cuit: String(client?.cuit || ""), company: companyOf(invoice.company).key, netCents: sign * amounts.netCents, vatCents: sign * amounts.vatCents, totalCents: sign * amounts.totalCents };
   });
   const purchases = fiscalExpenses.map(expense => {
     const supplier = supplierById.get(String(expense.supplierId));

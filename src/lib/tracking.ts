@@ -1,7 +1,7 @@
 import type { Types } from "mongoose";
 import { Client, Collection, Invoice, Quote, Work } from "./models";
 import { collectionAllocations } from "./balances";
-import { invoiceLabel, VOID_INVOICE_STATUSES } from "./invoice-labels";
+import { invoiceLabel, VOID_INVOICE_STATUSES, signedAmount } from "./invoice-labels";
 import { excludedFromTotals } from "./trash";
 import { companyOf, type CompanyKey } from "./companies";
 
@@ -94,7 +94,7 @@ export async function trackingRows(): Promise<TrackingRow[]> {
       rows.set(key, row);
     }
     if (work && !row.works.some(existing => existing._id === String(work._id))) row.works.push(workRef(work));
-    row.invoices.push({ _id: String(invoice._id), company: companyOf(invoice.company).key, label: invoiceLabel(invoice), issueDate: iso(invoice.issueDate), amountCents: Number(invoice.amountCents || 0), collectedCents: Number(invoice.collectedCents || 0), status: String(invoice.status || "") });
+    row.invoices.push({ _id: String(invoice._id), company: companyOf(invoice.company).key, label: invoiceLabel(invoice), issueDate: iso(invoice.issueDate), amountCents: signedAmount(invoice), collectedCents: Number(invoice.collectedCents || 0), status: String(invoice.status || "") });
     for (const receipt of receiptsByInvoice.get(String(invoice._id)) || []) {
       const same = row.receipts.find(existing => existing._id === receipt._id);
       if (same) same.amountCents += receipt.amountCents; else row.receipts.push({ ...receipt });

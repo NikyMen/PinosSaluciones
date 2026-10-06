@@ -8,7 +8,7 @@ import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
 import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balances";
-import { checkSubstitution, completeSubstitution, emitInvoiceInArca, prepareInvoice } from "@/lib/invoice-service";
+import { applyCreditNote, checkNote, checkSubstitution, completeSubstitution, emitInvoiceInArca, prepareInvoice } from "@/lib/invoice-service";
 import { beforeCreate } from "@/lib/document-rules";
 import { attachRemitos, checkRemitosForInvoice } from "@/lib/sales-remitos";
 import { ensureAccountCatalog } from "@/lib/account-service";
@@ -90,6 +90,8 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     // La factura referencia los remitos de venta que factura: no vuelve a descontar stock.
     if (entity === "invoices") await checkRemitosForInvoice(data);
     if (entity === "invoices") await prepareInvoice(data);
+    // Una nota de débito o de crédito: con su factura asociada, del mismo cliente y la misma letra.
+    if (entity === "invoices") await checkNote(data);
     if (entity === "collections") { if (!data.number) data.number = await nextReceiptNumber(); data.userName = session.name; }
     // Emitir en ARCA: primero se revisa que la factura se pueda guardar, después se pide el CAE.
     const emitInArca = entity === "invoices" && data.arcaEmit === true;
@@ -107,6 +109,8 @@ export async function POST(request: Request, context: RouteContext<"/api/records
 
     if (replaced) await completeSubstitution(replaced, item);
     if (entity === "invoices" && Array.isArray(data.remitoIds)) await attachRemitos(item._id, data.remitoIds, replaced?._id);
+    // La nota de crédito descuenta su importe de lo que se debe de la factura asociada.
+    if (entity === "invoices") await applyCreditNote(item.toObject(), 1);
     if (entity === "collections") await applyCollection(item, 1);
     if (entity === "payments") await applyExpensePayment(item.expenseId, paidByPayment(item));
     if (entity === "invoices" && item.workId && item.certificateNumber) await closeCertificate(String(item.workId), String(item.certificateNumber));

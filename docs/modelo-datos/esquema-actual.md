@@ -392,7 +392,7 @@ Colección `invoices` · entidad `invoices`
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
 | `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
-| `voucherType` | texto | — | valores: `factura_a` · `factura_b` · `factura_x` · `factura_c` |
+| `voucherType` | texto | — | valores: `factura_a` · `nota_debito_a` · `nota_credito_a` · `factura_b` · `nota_debito_b` · `nota_credito_b` · `factura_x` · `factura_c` |
 | `pointOfSale` | texto | — | — |
 | `number` | texto | sí | — |
 | `clientId` | referencia | sí | apunta a **Client** |
@@ -407,11 +407,12 @@ Colección `invoices` · entidad `invoices`
 | `vatCents` | número | — | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `collectedCents` | número | — | mínimo 0 · por defecto `0` |
-| `status` | texto | — | valores: `pendiente` · `parcial` · `cobrada` · `anulada` · `sustituida` · por defecto `"pendiente"` |
+| `status` | texto | — | valores: `pendiente` · `parcial` · `cobrada` · `aplicada` · `anulada` · `sustituida` · por defecto `"pendiente"` |
 | `attachment` | texto | — | — |
 | `replacesId` | referencia | — | apunta a **Invoice** |
 | `replacedById` | referencia | — | apunta a **Invoice** |
 | `remitoIds` | lista | — | — |
+| `associatedInvoiceId` | referencia | — | apunta a **Invoice** |
 | `cae` | texto | — | — |
 | `caeDueDate` | fecha | — | — |
 | `arcaEnvironment` | texto | — | valores: `produccion` · `homologacion` |
@@ -831,7 +832,7 @@ Talonarios: qué comprobantes (A, B, C, X) usa cada empresa para vender y compra
 |---|---|:--:|---|
 | `company` | texto | sí | valores: `tvp` · `constructora` |
 | `scope` | texto | sí | valores: `venta` · `compra` |
-| `voucherType` | texto | sí | valores: `factura_a` · `factura_b` · `factura_c` · `factura_x` |
+| `voucherType` | texto | sí | valores: `factura_a` · `nota_debito_a` · `nota_credito_a` · `factura_b` · `nota_debito_b` · `nota_credito_b` · `factura_c` · `factura_x` |
 | `pointOfSale` | texto | — | por defecto `"0001"` |
 | `fiscal` | sí/no | — | por defecto `true` |
 | `lastNumber` | número | — | mínimo 0 · por defecto `0` |

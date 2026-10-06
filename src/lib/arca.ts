@@ -5,7 +5,8 @@ import path from "node:path";
 import { ArcaTicket } from "./models";
 import { COMPANIES, type CompanyKey } from "./companies";
 import { HttpError } from "./api";
-import { ARCA_VOUCHER_CODE, VAT_CONDITIONS, type VatCondition } from "./fiscal";
+import { ARCA_VOUCHER_CODE, VAT_CONDITIONS, type ArcaVoucherType, type VatCondition } from "./fiscal";
+import { formatVoucherNumber, voucherLabels } from "./invoice-labels";
 import { voucherBooks } from "./voucher-books";
 
 /*
@@ -29,8 +30,8 @@ const URLS: Record<ArcaEnvironment, { wsaa: string; wsfe: string }> = {
 
 /** Los códigos de ARCA de los comprobantes que emiten las empresas (las dos son responsables inscriptas). */
 export const ARCA_VOUCHER_CODES = [
-  { code: 1, label: "Factura A" }, { code: 6, label: "Factura B" },
-  { code: 3, label: "Nota de crédito A" }, { code: 8, label: "Nota de crédito B" },
+  { code: 1, label: "Factura A" }, { code: 2, label: "Nota de Débito A" }, { code: 3, label: "Nota de Crédito A" },
+  { code: 6, label: "Factura B" }, { code: 7, label: "Nota de Débito B" }, { code: 8, label: "Nota de Crédito B" },
 ] as const;
 
 export function arcaEnvironment(): ArcaEnvironment {
@@ -160,6 +161,19 @@ export async function arcaPointsOfSale(company: CompanyKey) {
   }));
 }
 
+/**
+ * El número que sigue en ARCA para ese comprobante de la empresa, en el punto de
+ * venta por el que se emite. Sirve para mostrarlo antes de emitir.
+ */
+export async function arcaNextNumber(company: CompanyKey, voucherType: ArcaVoucherType) {
+  const enabled = (await arcaPointsOfSale(company)).filter(point => !point.blocked && !point.closed).map(point => point.number);
+  const baseType = voucherType.endsWith("_b") ? "factura_b" : "factura_a";
+  const book = await arcaBookFor(company, baseType, enabled);
+  if (!book) throw new HttpError(`${COMPANIES[company].short} no tiene un talonario de ${voucherLabels[baseType]} en un punto de venta de web services de ARCA (${enabled.map(number => String(number).padStart(4, "0")).join(", ") || "ninguno"}). Se agrega en Configuración > Empresas y comprobantes.`);
+  const last = await arcaLastNumber(company, Number(book.pointOfSale), ARCA_VOUCHER_CODE[voucherType]);
+  return { pointOfSale: book.pointOfSale, last, next: formatVoucherNumber(book.pointOfSale, last + 1) };
+}
+
 /** El último número que ARCA autorizó en ese punto de venta para ese tipo de comprobante (0 si nunca se usó). */
 export async function arcaLastNumber(company: CompanyKey, pointOfSale: number, voucherCode: number) {
   const response = await wsfe(company, "FECompUltimoAutorizado", `<ar:PtoVta>${pointOfSale}</ar:PtoVta><ar:CbteTipo>${voucherCode}</ar:CbteTipo>`);
@@ -211,17 +225,19 @@ export async function arcaStatus(company: CompanyKey): Promise<ArcaStatus> {
  * número: el que sigue al último autorizado en ese punto de venta y tipo.
  */
 
-/** A un responsable inscripto o monotributista se le hace A; al resto, B. */
-const VOUCHER_RECEIVERS: Record<"factura_a" | "factura_b", VatCondition[]> = {
-  factura_a: ["responsable_inscripto", "monotributo"],
-  factura_b: ["exento", "consumidor_final", "no_alcanzado"],
+/** A un responsable inscripto o monotributista se le hace A (y sus notas); al resto, B. */
+const RECEIVERS_BY_LETTER: Record<"a" | "b", VatCondition[]> = {
+  a: ["responsable_inscripto", "monotributo"],
+  b: ["exento", "consumidor_final", "no_alcanzado"],
 };
 
 /** El código de ARCA de cada alícuota de IVA. */
 const VAT_RATE_IDS: Record<string, number> = { "0": 3, "2.5": 9, "5": 8, "10.5": 4, "21": 5, "27": 6 };
 
 export type CaeRequest = {
-  voucherType: "factura_a" | "factura_b"; pointOfSale: number; number: number;
+  voucherType: ArcaVoucherType; pointOfSale: number; number: number;
+  /** Una nota de débito o de crédito: la factura a la que corresponde (ARCA la pide). */
+  associated?: { voucherCode: number; pointOfSale: number; number: number; cuit: string; date: Date };
   /** 1 productos (se factura un remito), 2 servicios (obra, certificado). */
   concept: 1 | 2;
   clientCuit: string; vatCondition: VatCondition;
@@ -239,9 +255,12 @@ const pesos = (cents: number) => (cents / 100).toFixed(2);
 /** Revisa que la factura se pueda emitir y arma el detalle de FECAESolicitar. */
 export function buildCaeRequest(request: CaeRequest) {
   const { voucherType, vatCondition } = request;
-  if (!VOUCHER_RECEIVERS[voucherType].includes(vatCondition)) {
-    throw new HttpError(`A un cliente ${VAT_CONDITIONS[vatCondition].label} no se le hace ${voucherType === "factura_a" ? "Factura A" : "Factura B"}: corresponde ${voucherType === "factura_a" ? "Factura B" : "Factura A"}`);
+  const letter = voucherType.endsWith("_b") ? "b" : "a";
+  if (!RECEIVERS_BY_LETTER[letter].includes(vatCondition)) {
+    throw new HttpError(`A un cliente ${VAT_CONDITIONS[vatCondition].label} no se le hace ${voucherLabels[voucherType]}: corresponde la letra ${letter === "a" ? "B" : "A"}`);
   }
+  const isNote = voucherType.startsWith("nota_");
+  if (isNote && !request.associated) throw new HttpError(`La ${voucherLabels[voucherType]} va asociada a una factura`);
   const cuit = request.clientCuit.replace(/\D/g, "");
   if (cuit.length !== 11) throw new HttpError("El cliente no tiene un CUIT válido cargado: ARCA lo pide para emitir");
   if (request.netCents <= 0) throw new HttpError("Para emitir en ARCA cargá el neto gravado de la factura");
@@ -263,6 +282,7 @@ export function buildCaeRequest(request: CaeRequest) {
     + `<ar:CbteDesde>${request.number}</ar:CbteDesde><ar:CbteHasta>${request.number}</ar:CbteHasta><ar:CbteFch>${arcaDate(issue)}</ar:CbteFch>`
     + `<ar:ImpTotal>${pesos(request.amountCents)}</ar:ImpTotal><ar:ImpTotConc>0.00</ar:ImpTotConc><ar:ImpNeto>${pesos(request.netCents)}</ar:ImpNeto><ar:ImpOpEx>0.00</ar:ImpOpEx><ar:ImpTrib>0.00</ar:ImpTrib><ar:ImpIVA>${pesos(request.vatCents)}</ar:ImpIVA>`
     + `${service}<ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIVAReceptorId>${VAT_CONDITIONS[vatCondition].id}</ar:CondicionIVAReceptorId>`
+    + (isNote && request.associated ? `<ar:CbtesAsoc><ar:CbteAsoc><ar:Tipo>${request.associated.voucherCode}</ar:Tipo><ar:PtoVta>${request.associated.pointOfSale}</ar:PtoVta><ar:Nro>${request.associated.number}</ar:Nro><ar:Cuit>${request.associated.cuit.replace(/\D/g, "")}</ar:Cuit><ar:CbteFch>${arcaDate(request.associated.date)}</ar:CbteFch></ar:CbteAsoc></ar:CbtesAsoc>` : "")
     + `<ar:Iva><ar:AlicIva><ar:Id>${rateId}</ar:Id><ar:BaseImp>${pesos(request.netCents)}</ar:BaseImp><ar:Importe>${pesos(request.vatCents)}</ar:Importe></ar:AlicIva></ar:Iva>`
     + `</ar:FECAEDetRequest></ar:FeDetReq></ar:FeCAEReq>`;
 }
@@ -286,10 +306,11 @@ const emitting = new Map<string, Promise<unknown>>();
  * pide el CAE. Devuelve el número que asignó ARCA y el CAE. Si ARCA la
  * rechaza, no queda nada emitido.
  */
-export async function arcaEmitInvoice(company: CompanyKey, request: Omit<CaeRequest, "number">) {
+export async function arcaEmitInvoice(company: CompanyKey, { expectedNumber, ...request }: Omit<CaeRequest, "number"> & { expectedNumber?: number }) {
   const key = `${company}:${request.pointOfSale}:${request.voucherType}`;
   const run = (emitting.get(key) || Promise.resolve()).catch(() => undefined).then(async () => {
     const number = await arcaLastNumber(company, request.pointOfSale, ARCA_VOUCHER_CODE[request.voucherType]) + 1;
+    if (expectedNumber && expectedNumber !== number) throw new HttpError(`El número que sigue en ARCA es el ${formatVoucherNumber(String(request.pointOfSale), number)}, no el ${formatVoucherNumber(String(request.pointOfSale), expectedNumber)}: alguien emitió otro mientras tanto. Revisalo y guardá de nuevo.`, 409);
     const body = buildCaeRequest({ ...request, number });
     const response = await wsfe(company, "FECAESolicitar", body);
     return { number, ...readCaeResponse(response) };

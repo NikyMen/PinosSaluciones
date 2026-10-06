@@ -7,7 +7,7 @@ import { canViewSection } from "@/lib/permissions";
 import { taskScope } from "@/lib/tasks";
 import { excludedFromTotals } from "@/lib/trash";
 import { displayedProgress } from "@/lib/inspections";
-import { VOID_INVOICE_STATUSES } from "@/lib/invoice-labels";
+import { VOID_INVOICE_STATUSES, SIGNED_AMOUNT } from "@/lib/invoice-labels";
 import { effectivePayments } from "@/lib/balances";
 
 type TotalRow = { total?: number };
@@ -95,11 +95,11 @@ export async function GET(request: Request) {
       ]),
       Invoice.aggregate([
         { $match: { ...notTrashed.invoice, status: { $nin: VOID_INVOICE_STATUSES }, issueDate: { $gte: from, $lte: to } } },
-        { $group: { _id: null, total: { $sum: "$amountCents" } } },
+        { $group: { _id: null, total: { $sum: SIGNED_AMOUNT } } },
       ]),
       Invoice.aggregate([
         { $match: { ...notTrashed.invoice, status: { $nin: VOID_INVOICE_STATUSES }, issueDate: { $gte: previousFrom, $lte: previousTo } } },
-        { $group: { _id: null, total: { $sum: "$amountCents" } } },
+        { $group: { _id: null, total: { $sum: SIGNED_AMOUNT } } },
       ]),
       Expense.aggregate([
         { $match: { ...notTrashed.expense, status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
@@ -138,7 +138,7 @@ export async function GET(request: Request) {
       ]),
       Invoice.aggregate([
         { $match: { ...notTrashed.invoice, status: { $nin: VOID_INVOICE_STATUSES }, issueDate: { $gte: from, $lte: to } } },
-        { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate", timezone } }, value: { $sum: "$amountCents" } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate", timezone } }, value: { $sum: SIGNED_AMOUNT } } },
       ]),
       Collection.aggregate([
         { $match: { ...notTrashed.collection, date: { $gte: from, $lte: to } } },

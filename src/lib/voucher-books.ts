@@ -1,6 +1,6 @@
 import { Invoice, VoucherBook } from "./models";
 import { COMPANY_KEYS, type CompanyKey } from "./companies";
-import { formatVoucherNumber, isFiscalVoucher, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES, voucherLabels, type VoucherType } from "./invoice-labels";
+import { baseInvoiceType, formatVoucherNumber, isFiscalVoucher, isNote, PURCHASE_VOUCHER_TYPES, voucherLabels, type VoucherType } from "./invoice-labels";
 import { HttpError } from "./api";
 
 /*
@@ -15,7 +15,7 @@ export type VoucherBookRow = { _id: string; company: CompanyKey; scope: "venta" 
 export async function ensureVoucherBooks() {
   if (await VoucherBook.exists({})) return;
   const defaults = COMPANY_KEYS.flatMap(company => [
-    ...SALES_VOUCHER_TYPES.map(voucherType => ({ company, scope: "venta", voucherType })),
+    ...(["factura_a", "factura_b", "factura_x"] as const).map(voucherType => ({ company, scope: "venta", voucherType })),
     ...PURCHASE_VOUCHER_TYPES.map(voucherType => ({ company, scope: "compra", voucherType })),
   ]);
   await VoucherBook.bulkWrite(defaults.map(book => ({
@@ -71,6 +71,7 @@ export async function takeInternalNumber(company: CompanyKey, pointOfSale = "000
 export async function checkVoucherEnabled(company: CompanyKey, scope: "venta" | "compra", voucherType: unknown) {
   if (!voucherType) return;
   await ensureVoucherBooks();
-  const enabled = await VoucherBook.exists({ company, scope, voucherType, active: true });
+  // Una nota de débito o de crédito va con el talonario de la factura de su letra.
+  const enabled = await VoucherBook.exists({ company, scope, voucherType: isNote(voucherType) ? baseInvoiceType(voucherType) : voucherType, active: true });
   if (!enabled) throw new HttpError(`La empresa no tiene habilitada la ${voucherLabels[String(voucherType)] || String(voucherType)} para ${scope === "venta" ? "vender" : "comprar"}. Se habilita en Configuración > Empresas y comprobantes.`);
 }

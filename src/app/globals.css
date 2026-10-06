@@ -2050,6 +2050,10 @@ td > .company-badge:first-child { margin-left: 0; }
 .config-arca-head small { display: block; color: var(--muted); font-size: .68rem; }
 .config-arca .notice { margin: 0; }
 .invoice-arca-choice { display: contents; }
+.number-lock { display: flex; gap: 6px; }
+.number-lock input { flex: 1; min-width: 0; }
+.number-lock input.locked { color: var(--muted); background: #f4f6f9; }
+.number-lock .secondary-btn { min-height: 0; padding: 0 12px; }
 .config-arca-emits { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: .74rem; }
 .config-arca-missing { color: var(--danger); }
 .audit-diff { margin: 0; padding-left: 15px; font-size: .66rem; }

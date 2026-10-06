@@ -105,7 +105,7 @@ describe("Factura X", () => {
   it("se numera sola desde su talonario, por empresa, y no va al libro IVA", async () => {
     const client = await Client.create({ name: "Cliente X", cuit: "20-22222222-2" });
     const draft = (await call(await draftRoute.GET(new Request("http://test/api/invoices/draft")))).body;
-    expect(draft.types.tvp).toEqual(["factura_a", "factura_b", "factura_x"]);
+    expect(draft.types.tvp).toEqual(["factura_a", "nota_debito_a", "nota_credito_a", "factura_b", "nota_debito_b", "nota_credito_b", "factura_x"]);
     expect(draft.numbers.tvp.factura_x).toBe("X-0001-00000001");
 
     const x1 = await post("invoices", { company: "tvp", voucherType: "factura_x", number: "lo que sea", clientId: String(client._id), issueDate: "2026-10-05", netCents: 50_000_00, vatPct: 0, status: "pendiente" });

@@ -18,10 +18,12 @@ export const VAT_CONDITION_KEYS = Object.keys(VAT_CONDITIONS) as VatCondition[];
 /** Sin la condición cargada en el cliente: la A va a un responsable inscripto y la B a un consumidor final. */
 export function vatConditionFor(voucherType: unknown, condition: unknown): VatCondition {
   if (typeof condition === "string" && condition in VAT_CONDITIONS) return condition as VatCondition;
-  return voucherType === "factura_b" ? "consumidor_final" : "responsable_inscripto";
+  return String(voucherType || "").endsWith("_b") ? "consumidor_final" : "responsable_inscripto";
 }
 
-export const ARCA_VOUCHER_CODE = { factura_a: 1, factura_b: 6 } as const;
+/** Los códigos de ARCA de cada comprobante de venta. */
+export const ARCA_VOUCHER_CODE = { factura_a: 1, nota_debito_a: 2, nota_credito_a: 3, factura_b: 6, nota_debito_b: 7, nota_credito_b: 8 } as const;
+export type ArcaVoucherType = keyof typeof ARCA_VOUCHER_CODE;
 
 /** El link del QR que va en la factura impresa (especificación de ARCA, RG 4892). */
 export function arcaQrUrl(data: { issueDate: string; companyCuit: string; pointOfSale: number; voucherCode: number; number: number; amountCents: number; clientCuit: string; cae: string }) {

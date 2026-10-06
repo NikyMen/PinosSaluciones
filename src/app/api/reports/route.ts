@@ -4,7 +4,7 @@ import { CashMovement, Collection, Payment, Invoice, Expense, Work } from "@/lib
 import { apiError } from "@/lib/api";
 import { canViewSection } from "@/lib/permissions";
 import { excludedFromTotals } from "@/lib/trash";
-import { VOID_INVOICE_STATUSES } from "@/lib/invoice-labels";
+import { VOID_INVOICE_STATUSES, SIGNED_AMOUNT } from "@/lib/invoice-labels";
 import { effectivePayments } from "@/lib/balances";
 
 export async function GET(request: Request) {
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
       Payment.aggregate([{ $match: { expenseId: { $nin: excluded.expenses }, ...effectivePayments, date: { $gte: from, $lte: to } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }, { $sort: { _id: 1 } }]),
       CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "ingreso", transferId: { $exists: false } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
       CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "egreso", transferId: { $exists: false } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
-      Invoice.aggregate([{ $match: { _id: { $nin: excluded.invoices }, issueDate: { $gte: from, $lte: to }, status: { $nin: VOID_INVOICE_STATUSES } } }, { $group: { _id: "$workId", revenue: { $sum: "$amountCents" } } }]),
+      Invoice.aggregate([{ $match: { _id: { $nin: excluded.invoices }, issueDate: { $gte: from, $lte: to }, status: { $nin: VOID_INVOICE_STATUSES } } }, { $group: { _id: "$workId", revenue: { $sum: SIGNED_AMOUNT } } }]),
       Expense.aggregate([{ $match: { _id: { $nin: excluded.expenses }, issueDate: { $gte: from, $lte: to }, status: { $ne: "anulado" } } }, { $group: { _id: "$workId", cost: { $sum: "$amountCents" } } }]),
       Work.find({ _id: { $nin: excluded.works } }).select("name budgetCents").lean(),
     ]);

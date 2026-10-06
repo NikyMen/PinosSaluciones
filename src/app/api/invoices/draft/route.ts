@@ -7,7 +7,7 @@ import { apiError } from "@/lib/api";
 import { todayIso } from "@/lib/format";
 import { COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { peekInternalNumber, suggestFiscalNumber, voucherBooks } from "@/lib/voucher-books";
-import type { VoucherType } from "@/lib/invoice-labels";
+import { baseInvoiceType, isNote, SALES_VOUCHER_TYPES, type VoucherType } from "@/lib/invoice-labels";
 import { arcaCredentials } from "@/lib/arca";
 
 /**
@@ -29,15 +29,19 @@ export async function GET(request: Request) {
     const remitoIds = (url.searchParams.get("remitos") || "").split(",").filter(isValidObjectId);
 
     const books = (await voucherBooks({ scope: "venta", active: true }));
-    const types = Object.fromEntries(COMPANY_KEYS.map(company => [company, [...new Set(books.filter(book => book.company === company).map(book => book.voucherType))]])) as Record<CompanyKey, VoucherType[]>;
+    // Con la Factura A habilitada van también sus notas de débito y crédito (lo mismo con la B), en el orden de siempre.
+    const types = Object.fromEntries(COMPANY_KEYS.map(company => {
+      const enabled = new Set(books.filter(book => book.company === company).map(book => book.voucherType as string));
+      return [company, SALES_VOUCHER_TYPES.filter(type => enabled.has(type) || (isNote(type) && enabled.has(baseInvoiceType(type))))];
+    })) as Record<CompanyKey, VoucherType[]>;
     const numbers = Object.fromEntries(await Promise.all(COMPANY_KEYS.map(async company => {
       const byType = await Promise.all(types[company].map(async type => {
-        const book = books.find(candidate => candidate.company === company && candidate.voucherType === type);
+        const book = books.find(candidate => candidate.company === company && candidate.voucherType === baseInvoiceType(type));
         return [type, type === "factura_x" ? await peekInternalNumber(company, book?.pointOfSale) : await suggestFiscalNumber(company, type, book?.pointOfSale)] as const;
       }));
       return [company, Object.fromEntries(byType)] as const;
     })));
-    const pointsOfSale = Object.fromEntries(COMPANY_KEYS.map(company => [company, Object.fromEntries(types[company].map(type => [type, books.find(book => book.company === company && book.voucherType === type)?.pointOfSale || "0001"]))]));
+    const pointsOfSale = Object.fromEntries(COMPANY_KEYS.map(company => [company, Object.fromEntries(types[company].map(type => [type, books.find(book => book.company === company && book.voucherType === baseInvoiceType(type))?.pointOfSale || "0001"]))]));
 
     const firstType = types.tvp.includes("factura_a") ? "factura_a" : types.tvp[0] || "factura_a";
     // Las empresas con certificado de ARCA en el servidor: sus A y B se emiten desde acá, con CAE.

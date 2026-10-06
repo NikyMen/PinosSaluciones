@@ -1,18 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Lock, LockOpen } from "lucide-react";
 import type { Field } from "@/lib/entity-config";
 import { money } from "@/lib/format";
 import { MoneyInput, SearchSelect } from "@/components/fields";
 import { COMPANIES, COMPANY_KEYS, companyOf, type CompanyKey } from "@/lib/companies";
 import { FormField, type FieldProps } from "@/components/record-form";
-import { voucherLabels } from "@/lib/invoice-labels";
+import { isCreditNote, isNote, voucherLabels } from "@/lib/invoice-labels";
 
 type Item = Record<string, unknown> & { _id: string };
 
 const VAT_RATES = [21, 10.5, 27, 0];
 const groups = [
-  { title: "Comprobante", description: "A y B se emiten en ARCA con CAE (o se carga la que salió de Tango). La X es interna y se numera sola", keys: ["company", "voucherType", "number", "issueDate", "dueDate"] },
+  { title: "Comprobante", description: "Facturas y notas A y B se emiten en ARCA con CAE (o se carga la que salió de Tango). La X es interna y se numera sola", keys: ["company", "voucherType", "number", "associatedInvoiceId", "issueDate", "dueDate"] },
   { title: "A qué corresponde", description: "La cotización completa sola el cliente y la obra", keys: ["quoteId", "clientId", "workId", "certificateNumber"] },
 ];
 
@@ -48,11 +49,65 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
   const canEmit = !editing && !isX && Boolean(arca[company]);
   const [emit, setEmit] = useState(true);
   const emitting = canEmit && emit;
+  // El número viene bloqueado: el que sigue en ARCA (o en lo cargado, si es de Tango). "Editar" lo libera.
+  const [numberLocked, setNumberLocked] = useState(true);
+  const [numberHint, setNumberHint] = useState("");
+  const [numberError, setNumberError] = useState("");
+  // Una nota de débito o de crédito va asociada a una factura del mismo cliente y la misma letra.
+  const note = isNote(voucherType);
+  const clientField = field("clientId");
+  const clientId = (clientField ? fieldProps(clientField).relationValue : "") || String(source.clientId || "");
+  const [associatedId, setAssociatedId] = useState(() => String(source.associatedInvoiceId || ""));
+  const [associable, setAssociable] = useState<Array<{ _id: string; label: string; pendingCents: number }> | null>(null);
+
+  // Al emitir en ARCA, el número es el que sigue allá: se consulta cada vez que cambia la empresa o el comprobante.
+  useEffect(() => {
+    if (!emitting) return;
+    let active = true;
+    fetch(`/api/arca/next?empresa=${company}&tipo=${voucherType}`)
+      .then(async response => ({ ok: response.ok, body: await response.json() }))
+      .then(({ ok, body }) => {
+        if (!active) return;
+        if (!ok) { setNumberError(body.error || "No se pudo consultar el número en ARCA"); setNumberHint(""); setNumber(current => numberLocked ? "" : current); return; }
+        setNumberError("");
+        setNumber(current => numberLocked ? body.next : current);
+        setNumberHint(body.last ? `Último autorizado en ARCA: ${String(body.next).replace(/\d+$/, digits => String(body.last).padStart(digits.length, "0"))}` : "El primero de este punto de venta en ARCA");
+      })
+      .catch(() => { if (active) setNumberError("No se pudo consultar el número en ARCA"); });
+    return () => { active = false; };
+    // El número bloqueado se reemplaza; si se editó, se respeta lo tipeado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emitting, company, voucherType]);
+
+  useEffect(() => {
+    if (!note || !clientId) return;
+    let active = true;
+    const keep = editing?.associatedInvoiceId ? `&incluir=${String(editing.associatedInvoiceId)}` : "";
+    fetch(`/api/invoices/associable?cliente=${clientId}&empresa=${company}&tipo=${voucherType}${keep}`)
+      .then(response => response.ok ? response.json() : { items: [] })
+      .then(body => { if (active) setAssociable(body.items || []); })
+      .catch(() => { if (active) setAssociable([]); });
+    return () => { active = false; };
+  }, [note, clientId, company, voucherType, editing?.associatedInvoiceId]);
   // Los tipos que la empresa tiene habilitados en sus talonarios; al editar, también el que ya tiene.
   const typeOptions = [...new Set([...(enabled[company] || ["factura_a", "factura_b", "factura_x"]), ...(editing?.voucherType ? [String(editing.voucherType)] : [])])];
 
   function suggest(nextCompany: string, nextType: string) {
     if (!editing && (!numberTouched || nextType === "factura_x")) setNumber(suggested[nextCompany]?.[nextType] || "");
+    setAssociatedId("");
+  }
+
+  /** El número, bloqueado hasta que se toca "Editar". */
+  function numberInput(hint: string) {
+    return <label><span>Número *<em className="field-hint">{numberError || (numberLocked ? hint : emitting ? "Al emitir tiene que ser el que sigue en ARCA" : "Punto de venta y número")}</em></span>
+      <div className="number-lock">
+        <input name="number" required readOnly={numberLocked} value={number} placeholder="0001-00000123" className={numberLocked ? "locked" : ""}
+          onChange={event => { setNumber(event.target.value); setNumberTouched(true); }} />
+        <button type="button" className="secondary-btn" onClick={() => setNumberLocked(locked => !locked)} title={numberLocked ? "Cambiar el número a mano" : "Volver a bloquearlo"}>
+          {numberLocked ? <><Lock size={14} /> Editar</> : <><LockOpen size={14} /> Bloquear</>}
+        </button>
+      </div>
+      <input type="hidden" name="pointOfSale" value={number.match(/^(\d{1,5})-/)?.[1] || pointsOfSale[company]?.[voucherType] || ""} /></label>;
   }
 
   function chooseCompany(value: string) {
@@ -89,13 +144,19 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
         <option value="1">Emitir ahora en ARCA (con CAE)</option>
         <option value="">Ya la emití en Tango: cargo el número</option>
       </select></label>
-      {emitting
-        ? <label className="readonly-field"><span>Número<em className="field-hint">Lo asigna ARCA al emitir</em></span><output>{companyOf(company).short} · el que sigue en ARCA</output><input type="hidden" name="number" value="" /><input type="hidden" name="pointOfSale" value="" /></label>
-        : <label><span>Número *<em className="field-hint">El de la factura de Tango</em></span>
-          <input name="number" required value={number} placeholder="0001-00000123" onChange={event => { setNumber(event.target.value); setNumberTouched(true); }} /><input type="hidden" name="pointOfSale" value={number.match(/^(\d{1,5})-/)?.[1] || pointsOfSale[company]?.[voucherType] || ""} /></label>}
+      {numberInput(emitting ? numberHint || "Consultando el que sigue en ARCA…" : "El que sigue en lo cargado de Tango")}
     </div>;
-    if (key === "number") return <label key={key}><span>Número *<em className="field-hint">{editing ? "Punto de venta y número, como en Tango" : `El que sigue en ${companyOf(company).short}; cambialo si no es`}</em></span>
-      <input name="number" required value={number} placeholder="0001-00000123" onChange={event => { setNumber(event.target.value); setNumberTouched(true); }} /><input type="hidden" name="pointOfSale" value={number.match(/^(\d{1,5})-/)?.[1] || pointsOfSale[company]?.[voucherType] || ""} /></label>;
+    if (key === "number") return <div key={key} className="invoice-arca-choice">{numberInput(editing ? "Punto de venta y número" : `El que sigue en ${companyOf(company).short}`)}</div>;
+    if (key === "associatedInvoiceId") {
+      if (!note) return null;
+      if (editing?.cae || (editing && isCreditNote(voucherType))) return <label key={key} className="readonly-field"><span>Factura asociada<em className="field-hint">No se cambia</em></span>
+        <output>{associable?.find(option => option._id === associatedId)?.label || "—"}</output><input type="hidden" name="associatedInvoiceId" value={associatedId} /></label>;
+      return <label key={key}><span>Factura asociada *<em className="field-hint">{!clientId ? "Elegí primero el cliente" : isCreditNote(voucherType) ? "La nota descuenta de lo que se debe de esta factura" : "A la que corresponde la nota"}</em></span>
+        <select name="associatedInvoiceId" required value={associatedId} onChange={event => setAssociatedId(event.target.value)} disabled={!clientId}>
+          <option value="">{associable === null ? "—" : associable.length ? "Elegí la factura" : `El cliente no tiene ${isCreditNote(voucherType) ? "facturas con saldo" : "facturas"} de esta letra`}</option>
+          {(associable || []).map(option => <option key={option._id} value={option._id}>{option.label}{isCreditNote(voucherType) ? ` · debe ${money(option.pendingCents)}` : ""}</option>)}
+        </select></label>;
+    }
     return <FormField key={key} {...props(target)} autoFocus={autoFocus} />;
   }
 
@@ -118,7 +179,8 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
 
     {/* Los campos ocultos del formulario genérico: a qué X sustituye y qué remitos factura. */}
     {["replacesId", "remitoIds"].map(key => { const target = field(key); return target ? <FormField key={key} {...fieldProps(target)} /> : null; })}
-    {emitting && <p className="invoice-note">Al guardar se emite en ARCA: ARCA le da el número y el CAE, y la factura queda autorizada. Después no se puede borrar ni cambiar el cliente, la fecha o los importes; para anularla hace falta una nota de crédito.</p>}
+    {emitting && <p className="invoice-note">Al guardar se emite en ARCA: ARCA le da el número y el CAE, y el comprobante queda autorizado. Después no se puede borrar ni cambiar el cliente, la fecha o los importes; para anular una factura hace falta una nota de crédito.</p>}
+    {note && isCreditNote(voucherType) && <p className="invoice-note">La nota de crédito resta: baja lo que el cliente debe de la factura asociada, y resta en ventas, libro IVA y reportes.</p>}
     {Boolean(editing?.cae) && <p className="invoice-note">Emitida en ARCA ({editing?.arcaEnvironment === "homologacion" ? "homologación, de prueba" : "producción"}) · CAE {String(editing?.cae)}. Solo se puede cambiar lo que no es fiscal: obra, cotización, descripción y vencimiento.</p>}
     {Boolean(source.replacesId) && <p className="invoice-note">Sustituye a una Factura X: al guardar, la X queda como sustituida y lo que ya se cobró de ella pasa a esta factura.</p>}
 

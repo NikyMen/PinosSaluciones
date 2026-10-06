@@ -180,3 +180,42 @@ describe("empresa desde la cotización, sectores y datos bancarios", () => {
       .toEqual(["Datos para transferir a Constructora Pino S.R.L.: Banco Nación · CBU 0110000000000000000000 · Alias PINO.CONSTRUCTORA"]);
   });
 });
+
+describe("notas de débito y crédito", () => {
+  it("la nota de crédito descuenta de su factura, resta en el seguimiento y al borrarla devuelve el saldo", async () => {
+    const client = await Client.create({ name: "Consorcio Notas", cuit: "30-22222222-2" });
+    const invoice = await call(await recordsRoute.POST(json("POST", {
+      company: "constructora", voucherType: "factura_a", number: "0002-00000318", clientId: String(client._id),
+      issueDate: "2026-10-06", netCents: 1_000_00, vatPct: 21, status: "pendiente",
+    }), params({ entity: "invoices" })));
+    expect(invoice.status).toBe(201);
+
+    // Sin factura asociada no se carga; y no puede ser por más de lo que se debe.
+    const base = { company: "constructora", voucherType: "nota_credito_a", number: "0002-00000026", clientId: String(client._id), issueDate: "2026-10-07", vatPct: 21, status: "pendiente" };
+    expect((await call(await recordsRoute.POST(json("POST", { ...base, netCents: 100_00 }), params({ entity: "invoices" })))).body.error).toMatch(/Elegí a qué factura/);
+    expect((await call(await recordsRoute.POST(json("POST", { ...base, netCents: 2_000_00, associatedInvoiceId: invoice.body._id }), params({ entity: "invoices" })))).body.error).toMatch(/no puede ser por más/);
+
+    const note = await call(await recordsRoute.POST(json("POST", { ...base, netCents: 200_00, associatedInvoiceId: invoice.body._id }), params({ entity: "invoices" })));
+    expect(note.status).toBe(201);
+    expect(note.body).toMatchObject({ status: "aplicada", amountCents: 242_00, collectedCents: 242_00 });
+    expect(await Invoice.findById(invoice.body._id).lean()).toMatchObject({ collectedCents: 242_00, status: "parcial" });
+
+    // Una nota de crédito cargada no cambia sus importes, y su factura no se borra mientras la tenga.
+    expect((await call(await recordRoute.PATCH(json("PATCH", { netCents: 300_00 }), params({ entity: "invoices", id: note.body._id })))).body.error).toMatch(/borrala y cargala de nuevo/);
+    expect((await call(await recordRoute.DELETE(json("DELETE", {}), params({ entity: "invoices", id: invoice.body._id })))).body.error).toMatch(/Nota de Crédito A/);
+
+    // En el seguimiento la nota resta: queda debiendo la factura menos la nota.
+    const tracking = await call(await trackingRoute.GET());
+    const row = (tracking.body.items as Array<{ invoices: Array<{ _id: string; amountCents: number }>; invoicedCents: number; balanceCents: number }>).find(item => item.invoices.some(entry => entry._id === invoice.body._id))!;
+    expect(row.invoices.find(entry => entry._id === note.body._id)?.amountCents).toBe(-242_00);
+    expect(row).toMatchObject({ invoicedCents: 1_210_00 - 242_00, balanceCents: 1_210_00 - 242_00 });
+
+    expect((await recordRoute.DELETE(json("DELETE", {}), params({ entity: "invoices", id: note.body._id }))).status).toBe(200);
+    expect(await Invoice.findById(invoice.body._id).lean()).toMatchObject({ collectedCents: 0, status: "pendiente" });
+  });
+
+  it("el borrador ofrece las notas de la letra habilitada, en el orden de siempre", async () => {
+    const draft = await call(await draftRoute.GET(new Request("http://test/api/invoices/draft")));
+    expect(draft.body.types.constructora).toEqual(["factura_a", "nota_debito_a", "nota_credito_a", "factura_b", "nota_debito_b", "nota_credito_b", "factura_x"]);
+  });
+});

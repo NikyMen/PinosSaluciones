@@ -1,10 +1,11 @@
 import { Client, Collection, Invoice, Work } from "./models";
 import { HttpError } from "./api";
-import { formatVoucherNumber, isFiscalVoucher, voucherLabels, VOID_INVOICE_STATUSES } from "./invoice-labels";
+import { baseInvoiceType, formatVoucherNumber, invoiceLabel, isCreditNote, isFiscalVoucher, isNote, voucherLabels, VOID_INVOICE_STATUSES } from "./invoice-labels";
 import { arcaBookFor, arcaCredentials, arcaEmitInvoice, arcaEnvironment, arcaPointsOfSale } from "./arca";
 import { COMPANIES, companyOf } from "./companies";
-import { vatConditionFor } from "./fiscal";
+import { ARCA_VOUCHER_CODE, vatConditionFor, type ArcaVoucherType } from "./fiscal";
 import { applyInvoiceCollection } from "./balances";
+import { money } from "./format";
 
 export { invoiceLabel, voucherLabels, VOUCHER_TYPES } from "./invoice-labels";
 
@@ -35,6 +36,11 @@ export async function prepareInvoice(data: Record<string, unknown>, before: Reco
   }
 
   const status = String(data.status ?? before.status ?? "");
+  // La nota de crédito no se cobra: queda aplicada a su factura, por todo su importe.
+  if (isCreditNote(merged.voucherType)) {
+    if (!VOID_INVOICE_STATUSES.includes(status)) Object.assign(data, { status: "aplicada", collectedCents: Number(data.amountCents ?? before.amountCents ?? 0) });
+    return;
+  }
   if (!VOID_INVOICE_STATUSES.includes(status)) {
     const amount = Number(data.amountCents ?? before.amountCents ?? 0);
     const collected = Number(before.collectedCents ?? data.collectedCents ?? 0);
@@ -82,20 +88,31 @@ export async function completeSubstitution(original: Record<string, unknown>, re
  */
 export async function emitInvoiceInArca(data: Record<string, unknown>) {
   const company = companyOf(data.company).key;
-  const voucherType = data.voucherType;
-  if (voucherType !== "factura_a" && voucherType !== "factura_b") throw new HttpError("En ARCA se emiten la Factura A y la B; la X es interna");
+  const voucherType = data.voucherType as ArcaVoucherType;
+  if (!(String(voucherType) in ARCA_VOUCHER_CODE)) throw new HttpError("En ARCA se emiten las facturas y notas A y B; la X es interna");
   if (!arcaCredentials(company)) throw new HttpError(`${COMPANIES[company].short} no está conectada con ARCA: falta su certificado en el servidor`);
 
   const client = await Client.findById(data.clientId).select("name cuit vatCondition").lean<{ name: string; cuit?: string; vatCondition?: string }>();
   if (!client) throw new HttpError("El cliente no existe");
 
   const enabled = (await arcaPointsOfSale(company)).filter(point => !point.blocked && !point.closed).map(point => point.number);
-  const book = await arcaBookFor(company, voucherType, enabled);
-  if (!book) throw new HttpError(`${COMPANIES[company].short} no tiene un talonario de ${voucherLabels[voucherType]} en un punto de venta de web services de ARCA (${enabled.map(number => String(number).padStart(4, "0")).join(", ") || "ninguno"}). Se agrega en Configuración > Empresas y comprobantes.`);
+  const baseType = baseInvoiceType(voucherType) as "factura_a" | "factura_b";
+  const book = await arcaBookFor(company, baseType, enabled);
+  if (!book) throw new HttpError(`${COMPANIES[company].short} no tiene un talonario de ${voucherLabels[baseType]} en un punto de venta de web services de ARCA (${enabled.map(number => String(number).padStart(4, "0")).join(", ") || "ninguno"}). Se agrega en Configuración > Empresas y comprobantes.`);
 
   const pointOfSale = Number(book.pointOfSale);
+  // Una nota va con la factura a la que corresponde (checkNote ya la validó).
+  const associated = isNote(voucherType) ? await Invoice.findById(data.associatedInvoiceId).lean<Record<string, unknown>>() : null;
+  const associatedNumber = String(associated?.number || "").match(/^(\d{1,5})-(\d{1,8})$/);
+  if (associated && !associatedNumber) throw new HttpError(`La ${invoiceLabel(associated)} no tiene un número de ARCA (punto de venta y número): no se le puede asociar una nota`);
+  // El número que mostró el formulario: si ARCA ya va por otro (alguien emitió mientras tanto), se avisa.
+  const shown = String(data.number || "").match(/^(\d{1,5})-(\d{1,8})$/);
   const emitted = await arcaEmitInvoice(company, {
-    voucherType, pointOfSale,
+    voucherType, pointOfSale, expectedNumber: shown && Number(shown[1]) === pointOfSale ? Number(shown[2]) : undefined,
+    associated: associated && associatedNumber ? {
+      voucherCode: ARCA_VOUCHER_CODE[associated.voucherType as ArcaVoucherType] ?? 1, pointOfSale: Number(associatedNumber[1]), number: Number(associatedNumber[2]),
+      cuit: COMPANIES[company].cuit, date: new Date(associated.issueDate as Date),
+    } : undefined,
     concept: Array.isArray(data.remitoIds) && data.remitoIds.length ? 1 : 2,
     clientCuit: String(client.cuit || ""), vatCondition: vatConditionFor(voucherType, client.vatCondition),
     issueDate: new Date(data.issueDate as string | Date), dueDate: data.dueDate ? new Date(data.dueDate as string | Date) : undefined,
@@ -109,12 +126,45 @@ export async function emitInvoiceInArca(data: Record<string, unknown>) {
 }
 
 /** Lo que una factura con CAE ya no puede cambiar: está autorizada así en ARCA. */
-const FISCAL_FIELDS = ["company", "voucherType", "pointOfSale", "number", "clientId", "issueDate", "netCents", "vatPct", "vatCents", "amountCents"];
+const FISCAL_FIELDS = ["company", "voucherType", "pointOfSale", "number", "clientId", "issueDate", "netCents", "vatPct", "vatCents", "amountCents", "associatedInvoiceId"];
 
 export function checkFiscalChanges(before: Record<string, unknown>, changes: Record<string, unknown>) {
+  // Una nota de crédito cargada a mano tampoco cambia: ya descontó su importe de la factura. Se borra y se carga de nuevo.
+  if (!before.cae && isCreditNote(before.voucherType)) {
+    if (["amountCents", "netCents", "vatPct", "clientId", "company", "associatedInvoiceId"].some(key => key in changes && String(changes[key] ?? "") !== String(before[key] ?? ""))) throw new HttpError("La nota de crédito ya descontó su importe de la factura: para corregirla, borrala y cargala de nuevo.");
+    return;
+  }
   if (!before.cae) return;
   const changed = FISCAL_FIELDS.filter(key => key in changes && String(changes[key] ?? "") !== String(before[key] ?? "")
     && !(changes[key] instanceof Date && before[key] instanceof Date && changes[key].getTime() === before[key].getTime()));
   if (changes.status === "anulada" && before.status !== "anulada") throw new HttpError("La factura está emitida en ARCA con CAE: no se anula desde acá. Para anularla hace falta una nota de crédito.");
   if (changed.length) throw new HttpError("La factura ya está emitida en ARCA con CAE: el cliente, la fecha, el número y los importes no se cambian. Para corregirla hace falta una nota de crédito.");
+}
+
+/**
+ * Una nota de débito o de crédito va asociada a una factura (o nota de débito)
+ * del mismo cliente, la misma empresa y la misma letra. La de crédito no puede
+ * ser por más de lo que se debe de esa factura: el saldo a favor del cliente
+ * todavía no se maneja. Devuelve la factura asociada, o null si no es una nota.
+ */
+export async function checkNote(data: Record<string, unknown>) {
+  if (!isNote(data.voucherType)) { delete data.associatedInvoiceId; return null; }
+  if (!data.associatedInvoiceId) throw new HttpError(`Elegí a qué factura corresponde la ${voucherLabels[String(data.voucherType)]}`);
+  const associated = await Invoice.findById(data.associatedInvoiceId).lean<Record<string, unknown>>();
+  if (!associated) throw new HttpError("La factura asociada no existe");
+  if (String(associated.clientId) !== String(data.clientId)) throw new HttpError("La factura asociada es de otro cliente");
+  if (companyOf(associated.company).key !== companyOf(data.company).key) throw new HttpError("La factura asociada es de la otra empresa");
+  if (baseInvoiceType(associated.voucherType) !== baseInvoiceType(data.voucherType) || isCreditNote(associated.voucherType)) throw new HttpError(`La ${voucherLabels[String(data.voucherType)]} va asociada a una factura o nota de débito de la misma letra`);
+  if (VOID_INVOICE_STATUSES.includes(String(associated.status))) throw new HttpError("La factura asociada está anulada o sustituida");
+  if (isCreditNote(data.voucherType)) {
+    const pending = Number(associated.amountCents || 0) - Number(associated.collectedCents || 0);
+    if (Number(data.amountCents || 0) > pending) throw new HttpError(`A la ${invoiceLabel(associated)} le quedan ${money(Math.max(0, pending))} por cobrar: la nota de crédito no puede ser por más (el saldo a favor del cliente todavía no se maneja)`);
+  }
+  return associated;
+}
+
+/** Aplica (o, con -1, devuelve) el importe de una nota de crédito a la factura asociada. */
+export async function applyCreditNote(note: Record<string, unknown>, sign: 1 | -1) {
+  if (!isCreditNote(note.voucherType) || !note.associatedInvoiceId) return;
+  await applyInvoiceCollection(note.associatedInvoiceId, sign * Number(note.amountCents || 0));
 }

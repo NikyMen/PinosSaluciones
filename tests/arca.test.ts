@@ -55,17 +55,29 @@ describe("emisión con CAE", () => {
   });
 
   it("no emite una A a un consumidor final, sin neto o con el total que no cierra", () => {
-    expect(() => buildCaeRequest({ ...factura, vatCondition: "consumidor_final" })).toThrow(/corresponde Factura B/);
-    expect(() => buildCaeRequest({ ...factura, voucherType: "factura_b" })).toThrow(/corresponde Factura A/);
+    expect(() => buildCaeRequest({ ...factura, vatCondition: "consumidor_final" })).toThrow(/corresponde la letra B/);
+    expect(() => buildCaeRequest({ ...factura, voucherType: "factura_b" })).toThrow(/corresponde la letra A/);
     expect(() => buildCaeRequest({ ...factura, netCents: 0, vatCents: 0, amountCents: 0 })).toThrow(/neto/);
     expect(() => buildCaeRequest({ ...factura, amountCents: 1 })).toThrow(/total/);
     expect(() => buildCaeRequest({ ...factura, clientCuit: "123" })).toThrow(/CUIT/);
+  });
+
+  it("la nota de crédito va con su factura asociada, después de la condición de IVA y antes del IVA", () => {
+    expect(() => buildCaeRequest({ ...factura, voucherType: "nota_credito_a" })).toThrow(/asociada/);
+    const xml = buildCaeRequest({ ...factura, voucherType: "nota_credito_a", associated: { voucherCode: 1, pointOfSale: 2, number: 317, cuit: "30-71758997-8", date: new Date("2026-10-01") } });
+    expect(xmlTag(xml, "CbteTipo")).toBe("3");
+    const asoc = xmlTag(xml, "CbteAsoc");
+    expect([xmlTag(asoc, "Tipo"), xmlTag(asoc, "PtoVta"), xmlTag(asoc, "Nro"), xmlTag(asoc, "Cuit"), xmlTag(asoc, "CbteFch")]).toEqual(["1", "2", "317", "30717589978", "20261001"]);
+    expect(xml.indexOf("CondicionIVAReceptorId")).toBeLessThan(xml.indexOf("CbtesAsoc"));
+    expect(xml.indexOf("CbtesAsoc")).toBeLessThan(xml.indexOf("<ar:Iva>"));
+    expect(xmlTag(buildCaeRequest({ ...factura, voucherType: "nota_debito_b", vatCondition: "consumidor_final", associated: { voucherCode: 6, pointOfSale: 3, number: 1, cuit: "30-71758997-8", date: new Date("2026-10-01") } }), "CbteTipo")).toBe("7");
   });
 
   it("sin la condición cargada: A a responsable inscripto, B a consumidor final", () => {
     expect(vatConditionFor("factura_a", undefined)).toBe("responsable_inscripto");
     expect(vatConditionFor("factura_b", "")).toBe("consumidor_final");
     expect(vatConditionFor("factura_a", "monotributo")).toBe("monotributo");
+    expect(vatConditionFor("nota_credito_b", undefined)).toBe("consumidor_final");
   });
 
   it("lee el CAE aprobado y explica el rechazo", () => {

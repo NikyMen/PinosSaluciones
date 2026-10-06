@@ -1,18 +1,21 @@
 import type { jsPDF } from "jspdf";
 import { date } from "./format";
+import { invoiceLabel } from "./invoice-labels";
 import { plain, readPdfLogo } from "./pdf-brand";
 import { companyOf, type CompanyKey } from "./companies";
-import { ARCA_VOUCHER_CODE, arcaQrUrl, VAT_CONDITIONS, vatConditionFor } from "./fiscal";
+import { ARCA_VOUCHER_CODE, arcaQrUrl, VAT_CONDITIONS, vatConditionFor, type ArcaVoucherType } from "./fiscal";
 
 /**
- * La factura A o B emitida en ARCA, en PDF: el formato del comprobante
+ * La factura (o nota de débito o de crédito) A o B emitida en ARCA, en PDF: el formato del comprobante
  * electrónico (letra y código arriba al medio, emisor, receptor, detalle,
  * totales) con el CAE, su vencimiento y el QR de ARCA. La B muestra el IVA
  * contenido (Régimen de Transparencia Fiscal al Consumidor, Ley 27.743).
  */
 
 export type FiscalInvoicePdfData = {
-  company: CompanyKey; voucherType: "factura_a" | "factura_b"; number: string;
+  company: CompanyKey; voucherType: ArcaVoucherType; number: string;
+  /** En una nota: la factura a la que corresponde ("Factura A 0003-00000012 del 06/10/2026"). */
+  associated?: string;
   issueDate: string; dueDate?: string; description: string;
   netCents: number; vatPct: number; vatCents: number; amountCents: number;
   cae: string; caeDueDate: string; environment?: string;
@@ -23,9 +26,10 @@ export type FiscalInvoicePdfData = {
 
 const pesos = (cents: number) => plain((cents / 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
-export function fiscalInvoicePdfData(invoice: Record<string, unknown>, client?: Record<string, unknown> | null): FiscalInvoicePdfData {
+export function fiscalInvoicePdfData(invoice: Record<string, unknown>, client?: Record<string, unknown> | null, associated?: Record<string, unknown> | null): FiscalInvoicePdfData {
   return {
-    company: companyOf(invoice.company).key, voucherType: invoice.voucherType === "factura_b" ? "factura_b" : "factura_a",
+    company: companyOf(invoice.company).key, voucherType: String(invoice.voucherType) in ARCA_VOUCHER_CODE ? invoice.voucherType as ArcaVoucherType : "factura_a",
+    associated: associated ? `${invoiceLabel(associated)} del ${date(String(associated.issueDate || ""))}` : undefined,
     number: String(invoice.number || ""), issueDate: String(invoice.issueDate || ""), dueDate: invoice.dueDate ? String(invoice.dueDate) : undefined,
     description: String(invoice.description || "Servicios"),
     netCents: Number(invoice.netCents || 0), vatPct: Number(invoice.vatPct ?? 21), vatCents: Number(invoice.vatCents || 0), amountCents: Number(invoice.amountCents || 0),
@@ -38,7 +42,8 @@ export function fiscalInvoicePdfData(invoice: Record<string, unknown>, client?: 
 /** Escribe la factura. Devuelve el nombre con el que conviene guardarla. */
 export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, meta: { logo?: string; qr: string }) {
   const company = companyOf(data.company);
-  const isA = data.voucherType === "factura_a";
+  const isA = !data.voucherType.endsWith("_b");
+  const title = data.voucherType.startsWith("nota_credito") ? "NOTA DE CRÉDITO" : data.voucherType.startsWith("nota_debito") ? "NOTA DE DÉBITO" : "FACTURA";
   const [pointOfSale, sequence] = data.number.split("-");
   const M = 10, W = 190;
   const kv = (label: string, value: string, x: number, y: number) => {
@@ -63,7 +68,7 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
   kv("Domicilio Comercial:", company.address, M + 3, 52);
   kv("Condición frente al IVA:", company.vat || "IVA Responsable Inscripto", M + 3, 58);
 
-  doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.text("FACTURA", 118, 26);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(title === "FACTURA" ? 18 : 15); doc.text(title, 118, 26);
   doc.setFontSize(9);
   kv("Punto de Venta:", `${pointOfSale}     Comp. Nro: ${sequence}`, 110, 40);
   kv("Fecha de Emisión:", date(data.issueDate), 110, 45.2);
@@ -89,6 +94,7 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
   kv("Condición frente al IVA:", VAT_CONDITIONS[vatConditionFor(data.voucherType, data.client.vatCondition)].label, M + 3, 88);
   kv("Domicilio:", (data.client.address || "-").slice(0, 50), 100, 88);
   kv("Condición de venta:", "Cuenta Corriente", M + 3, 94);
+  if (data.associated) kv("Comprobante asociado:", data.associated, 100, 94);
 
   // Detalle: un renglón con la descripción. La A discrimina el IVA; la B lo lleva incluido.
   const columns: Array<[string, number, number]> = isA
@@ -143,7 +149,7 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
     doc.restoreGraphicsState(); doc.setTextColor(0, 0, 0);
   }
 
-  return `factura-${isA ? "A" : "B"}-${data.number}.pdf`;
+  return `${title === "FACTURA" ? "factura" : title === "NOTA DE CRÉDITO" ? "nota-credito" : "nota-debito"}-${isA ? "A" : "B"}-${data.number}.pdf`;
 }
 
 /** Arma el PDF en el navegador, con el QR de ARCA, y lo descarga. */

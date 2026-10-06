@@ -5,13 +5,13 @@ import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { VoucherBook } from "@/lib/models";
 import { voucherBooks } from "@/lib/voucher-books";
-import { isFiscalVoucher, VOUCHER_TYPES } from "@/lib/invoice-labels";
+import { BOOK_VOUCHER_TYPES, isFiscalVoucher } from "@/lib/invoice-labels";
 
 const pointOfSale = z.string().trim().regex(/^\d{1,5}$/, "El punto de venta son hasta 5 números").transform(value => value.padStart(4, "0"));
 const bookSchema = z.object({
   company: z.enum(["tvp", "constructora"]),
   scope: z.enum(["venta", "compra"]),
-  voucherType: z.enum(VOUCHER_TYPES),
+  voucherType: z.enum(BOOK_VOUCHER_TYPES),
   pointOfSale,
   notes: z.string().trim().max(300).optional().default(""),
 });

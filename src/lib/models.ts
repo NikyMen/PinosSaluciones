@@ -698,6 +698,9 @@ const InvoiceSchema = new Schema({
   replacesId: { type: Schema.Types.ObjectId, ref: "Invoice" }, replacedById: { type: Schema.Types.ObjectId, ref: "Invoice" },
   // Los remitos de venta que factura. La factura no vuelve a mover stock: eso ya lo hizo el remito.
   remitoIds: { type: [{ type: Schema.Types.ObjectId, ref: "SalesRemito" }], default: undefined },
+  // Una nota de débito o de crédito, la factura a la que corresponde (ARCA la pide). La de crédito
+  // descuenta su importe de lo que se debe de esa factura y queda "aplicada".
+  associatedInvoiceId: { type: Schema.Types.ObjectId, ref: "Invoice" },
   // Emitida desde el sistema en ARCA: el CAE y su vencimiento. Con CAE, lo fiscal ya no se cambia
   // (para anularla hace falta una nota de crédito) y la factura no se borra.
   cae: String, caeDueDate: Date, arcaEnvironment: { type: String, enum: ["produccion", "homologacion"] },

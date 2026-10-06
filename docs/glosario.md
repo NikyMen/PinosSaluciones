@@ -160,6 +160,10 @@ salieron de Tango se pueden seguir cargando a mano.
 **CAE** — Código de Autorización Electrónico: el número que ARCA le da a una factura al
 autorizarla. Sin CAE la factura no tiene validez fiscal. Va impreso con su vencimiento y un QR.
 
+**Nota de crédito / Nota de débito** — Comprobantes que corrigen una factura ya emitida: la de crédito
+baja lo facturado (anula total o parcialmente), la de débito lo sube. Van siempre asociadas a una factura
+de la misma letra. En el sistema la de crédito resta en ventas, IVA y cuenta corriente.
+
 **Factura A / B / C** — Tipo de comprobante según la condición fiscal de quien
 compra. Determina si el IVA se discrimina o va incluido.
 
