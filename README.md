@@ -53,7 +53,7 @@ Producción corre en un VPS propio (el que resuelve `pinosoluciones.consultoriad
 - Nginx atiende el 80 y el 443 y hace proxy a `127.0.0.1:3515`; el certificado lo emite y renueva Certbot. La base de `deploy/pinosoluciones.nginx.conf` es el bloque `:80`: Certbot agrega solo el 443 y la redirección.
 - MongoDB 7 corre en Docker (container `mongodb`), escuchando solo en `127.0.0.1:27017`.
 - Los archivos subidos van a `/var/lib/pinos/uploads` (`UPLOAD_DIR`).
-- PM2 está instalado con pnpm global y en una sesión SSH sin terminal interactiva no está en el `PATH`: usar `/root/.local/share/pnpm/bin/pm2` o hacer antes `export PATH=/root/.local/share/pnpm:$PATH`.
+- PM2 está instalado con pnpm global y en una sesión SSH sin terminal interactiva no está en el `PATH`: usar `/root/.local/share/pnpm/bin/pm2` o hacer antes `export PATH=/root/.local/share/pnpm:/root/.local/share/pnpm/bin:$PATH` (pnpm está en la primera carpeta y pm2 en `bin`).
 
 ### Instalación desde cero
 
