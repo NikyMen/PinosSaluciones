@@ -1,6 +1,6 @@
 # Pinos Soluciones — ERP/CRM
 
-Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. No emite comprobantes fiscales ni se conecta con ARCA: las Factura A y B se emiten en Tango y se cargan acá; el comprobante interno X se numera en el sistema y queda fuera del libro IVA.
+Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. Todavía no emite comprobantes fiscales: las Factura A y B se emiten en Tango y se cargan acá (la conexión con ARCA, por ahora, solo consulta; ver [Factura electrónica (ARCA)](#factura-electrónica-arca)); el comprobante interno X se numera en el sistema y queda fuera del libro IVA.
 
 La barra lateral tiene trece módulos: Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión. Desde el menú del usuario (arriba a la derecha) cada persona puede pasar al menú de antes (**V1**: Tablero, Comercial, Obras, Compras y stock, Finanzas e iA y Reportes) o volver al de módulos (**V2**); la elección queda en la cookie `pino-nav` de ese navegador. El Calendario también está en ese menú. Qué hace cada parte de la especificación funcional v1.5 y qué falta: [`docs/requerimientos/especificacion-v1-5.md`](docs/requerimientos/especificacion-v1-5.md).
 
@@ -96,6 +96,41 @@ pnpm install --frozen-lockfile
 pnpm build
 pm2 reload ecosystem.config.cjs --update-env
 ```
+
+## Factura electrónica (ARCA)
+
+Cada empresa (Constructora Pino y Trabajos Verticales Pino) entra a los web services de ARCA con su propio certificado. En Configuración › Empresas y comprobantes, "Probar conexión" trae los puntos de venta de web services y el último número de cada comprobante. Solo consulta: no emite nada.
+
+- `ARCA_CERT_DIR`: carpeta **fuera del repo** (que es público) con `<empresa>.crt` y `<empresa>.key`, es decir `constructora.*` y `tvp.*`. Sin los dos archivos, la empresa figura como no conectada.
+- `ARCA_ENV`: `produccion` (por defecto) u `homologacion`, el ambiente de prueba, que necesita certificados emitidos ahí.
+- El servidor tiene que tener `openssl` (firma el pedido de acceso).
+
+Alta del certificado de una empresa, con la clave fiscal de esa empresa:
+
+1. Generar la clave y el pedido (CSR), con el CUIT sin guiones:
+
+   ```bash
+   openssl genrsa -out tvp.key 2048
+   openssl req -new -key tvp.key -subj "/C=AR/O=TRABAJOS VERTICALES PINO S.A.S./CN=pinosoluciones/serialNumber=CUIT 30716295636" -out tvp.csr
+   ```
+
+2. En ARCA, "Administración de Certificados Digitales": agregar el alias `pinosoluciones`, subir el `.csr` y descargar el certificado como `<empresa>.crt`.
+3. En "Administrador de Relaciones de Clave Fiscal": nueva relación con el servicio "Facturación Electrónica" (WSFE) y, como representante, el computador fiscal `pinosoluciones`.
+4. En "Administración de puntos de venta y domicilios": la empresa necesita un punto de venta de tipo "RECE / Factura electrónica - Web Services". Los de Factuweb o Controlador fiscal no sirven.
+5. Copiar `.crt` y `.key` a `ARCA_CERT_DIR` en el servidor (solo lectura para el usuario que corre PM2) y probar la conexión desde Configuración.
+
+ARCA da un ticket de acceso que dura 12 horas y no entrega otro para el mismo certificado mientras siga vigente. El sistema lo guarda en la base (colección `arcatickets`) y lo reusa. Si se prueba primero desde otra máquina con el mismo certificado (por ejemplo, en local), producción no puede entrar hasta que ese ticket venza.
+
+## Factura electrónica (ARCA)
+
+El sistema se conecta con ARCA por web services (WSAA + WSFEv1) con un certificado por empresa:
+
+- En ARCA, cada empresa tiene el alias `pinosoluciones` en *Administración de Certificados Digitales*, autorizado para el WebService *Facturación Electrónica* en el *Administrador de Relaciones*. Los certificados que usa Tango son otros y no se tocan.
+- La clave privada se genera fuera de ARCA (`openssl genrsa` + `openssl req` con `serialNumber=CUIT <cuit>` y `CN=pinosoluciones`); a ARCA se sube solo el `.csr`.
+- En el servidor, el `.crt` y la `.key` van en `/etc/pinos/arca/` como `constructora.crt`/`.key` y `tvp.crt`/`.key` (dueño root, permisos 600), y el `.env` tiene `ARCA_CERT_DIR=/etc/pinos/arca` y `ARCA_ENV=produccion`. Nunca en el repo.
+- El ticket de acceso dura 12 horas y se guarda en la colección `arcatickets`: ARCA no entrega otro mientras esté vigente.
+- Para probar: Configuración › Empresas y comprobantes › "Probar conexión" en cada empresa. Solo consulta (puntos de venta y último número de cada comprobante): no emite nada.
+- El servidor de WSFEv1 ofrece primero Diffie-Hellman de 1024 bits, que Node rechaza; `src/lib/arca.ts` pide solo cifrados ECDHE con AES-GCM o ChaCha20.
 
 ## Backups
 

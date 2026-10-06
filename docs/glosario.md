@@ -153,8 +153,9 @@ material.
 
 ## Administrativo
 
-**ARCA** — El organismo fiscal argentino, antes AFIP. El sistema **no** se integra
-con él: las facturas se emiten por afuera y se registran a mano.
+**ARCA** — El organismo fiscal argentino, antes AFIP. Las facturas todavía se emiten
+por afuera y se registran a mano. El sistema ya se conecta a sus web services con el
+certificado de cada empresa, pero por ahora solo consulta puntos de venta y últimos números.
 
 **Factura A / B / C** — Tipo de comprobante según la condición fiscal de quien
 compra. Determina si el IVA se discrimina o va incluido.

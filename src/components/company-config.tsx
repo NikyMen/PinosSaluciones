@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Plus, Warehouse } from "lucide-react";
+import { Building2, Plug, Plus, Warehouse } from "lucide-react";
 import { COMPANIES, COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { WAREHOUSES } from "@/lib/warehouses";
 import { formatVoucherNumber, voucherLabels, VOUCHER_TYPES } from "@/lib/invoice-labels";
 import type { VoucherBookRow } from "@/lib/voucher-books";
+import type { ArcaStatus } from "@/lib/arca";
 
 /**
  * Configuración de las dos empresas: sus datos, los talonarios de comprobantes
@@ -87,6 +88,7 @@ export function CompanyConfig() {
               </td>
             </tr>)}
           </tbody></table></div>}
+          <ArcaCheck company={key} />
         </section>;
       })}
     </div>
@@ -107,4 +109,45 @@ export function CompanyConfig() {
       <ul>{WAREHOUSES.map(warehouse => <li key={warehouse.key}><b>{warehouse.label}</b><span>{warehouse.key === "central" ? "Recibe las compras, guarda y prepara lo que va a obra o al salón" : "Recibe transferencias del Central y despacha al cliente con remito"}</span></li>)}</ul>
     </section>
   </>;
+}
+
+/**
+ * La conexión de la empresa con ARCA (factura electrónica). "Probar conexión"
+ * entra con el certificado de la empresa y trae sus puntos de venta de web
+ * services con el último número de cada comprobante. Solo consulta: no emite nada.
+ */
+function ArcaCheck({ company }: { company: CompanyKey }) {
+  const [status, setStatus] = useState<ArcaStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
+
+  async function check() {
+    setChecking(true); setError("");
+    const response = await fetch(`/api/arca/status?empresa=${company}`);
+    const body = await response.json();
+    setChecking(false);
+    if (!response.ok) return setError(body.error || "No se pudo consultar a ARCA");
+    setStatus(body.items[0]);
+  }
+
+  const environment = status?.environment === "homologacion" ? "homologación (prueba)" : "producción";
+  return <div className="config-arca">
+    <div className="config-arca-head">
+      <div><b><Plug size={15} /> ARCA · factura electrónica</b><small>Entra con el certificado de la empresa y consulta sus puntos de venta. No emite ningún comprobante.</small></div>
+      <button className="row-action-wide" disabled={checking} onClick={() => { void check(); }}>{checking ? "Consultando…" : "Probar conexión"}</button>
+    </div>
+    {error && <div className="notice error">{error}</div>}
+    {status && !status.configured && <div className="notice warning">El servidor no tiene cargado el certificado de ARCA de esta empresa.</div>}
+    {status?.configured && !status.ok && <div className="notice error">No conecta con ARCA ({environment}): {status.error}</div>}
+    {status?.ok && <>
+      <div className="notice success" role="status">Conectado con ARCA en {environment} · CUIT {status.cuit}{status.ticketExpiresAt ? ` · acceso válido hasta las ${new Date(status.ticketExpiresAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : ""}</div>
+      {status.pointsOfSale?.length ? <div className="table-scroll"><table><thead><tr><th>Punto de venta</th>{status.pointsOfSale[0].last.map(voucher => <th key={voucher.code}>{voucher.label}</th>)}<th>Estado</th></tr></thead><tbody>
+        {status.pointsOfSale.map(point => <tr key={point.number}>
+          <td data-label="Punto de venta"><b>{String(point.number).padStart(4, "0")}</b><small className="tracking-sub">{point.type}</small></td>
+          {point.last.map(voucher => <td key={voucher.code} data-label={voucher.label}>{voucher.number ? <>Último <b>{formatVoucherNumber(String(point.number), voucher.number)}</b></> : "Sin usar"}</td>)}
+          <td data-label="Estado"><span className={`badge ${point.blocked || point.closed ? "anulada" : "activo"}`}>{point.closed ? "Dado de baja" : point.blocked ? "Bloqueado" : "Habilitado"}</span></td>
+        </tr>)}
+      </tbody></table></div> : <div className="notice warning">La empresa no tiene puntos de venta de web services en ARCA.</div>}
+    </>}
+  </div>;
 }

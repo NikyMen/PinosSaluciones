@@ -791,6 +791,10 @@ const TaskSchema = new Schema({
   relatedType: String, relatedId: Schema.Types.ObjectId,
 }, options);
 
+// El ticket de acceso de ARCA (WSAA) por ambiente, CUIT y servicio ("produccion:30717589978:wsfe").
+// Dura 12 horas y ARCA no da otro mientras esté vigente: si se pierde, no se puede facturar hasta que venza.
+const ArcaTicketSchema = new Schema({ _id: String, token: { type: String, required: true }, sign: { type: String, required: true }, expiresAt: { type: Date, required: true } }, options);
+
 // Documento unico (_id fijo "main"), igual que CounterSchema. Las credenciales
 // de Google (client id/secret) van por variable de entorno, no acá: esto solo
 // guarda lo que cambia por uso (tokens, reglas de agenda).
@@ -886,6 +890,7 @@ export const Account = mongoose.models.Account || mongoose.model("Account", Acco
 export const VoucherBook = mongoose.models.VoucherBook || mongoose.model("VoucherBook", VoucherBookSchema);
 export const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
 export const CalendarSettings = mongoose.models.CalendarSettings || mongoose.model("CalendarSettings", CalendarSettingsSchema);
+export const ArcaTicket = mongoose.models.ArcaTicket || mongoose.model("ArcaTicket", ArcaTicketSchema);
 export const CalendarBooking = mongoose.models.CalendarBooking || mongoose.model("CalendarBooking", CalendarBookingSchema);
 
 // COT-1: numeración correlativa. La primera vez arranca desde el número más alto ya cargado

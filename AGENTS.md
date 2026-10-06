@@ -20,5 +20,6 @@ Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en V
 
 - Código en `/var/www/pino-soluciones`; PM2 corre `pinos-web` (puerto 3515) y `pinos-worker`; nginx + Certbot adelante; MongoDB en Docker (container `mongodb`).
 - En SSH no interactivo, `pm2` no está en el `PATH`: usar `/root/.local/share/pnpm/bin/pm2`.
+- Certificados de ARCA (factura electrónica) en `/etc/pinos/arca/` (`ARCA_CERT_DIR`), fuera del repo; ver la sección "Factura electrónica (ARCA)" del README.
 - No hay backup automático: antes de un deploy que toque datos, hacer el dump manual del README.
 - Antes de tocar datos, confirmá con `nslookup pinosoluciones.consultoriadigital.io` que estás en el servidor al que apunta el dominio. Hay una instancia vieja en otro VPS que no es producción.
