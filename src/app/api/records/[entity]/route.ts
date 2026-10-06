@@ -4,11 +4,11 @@ import { Notification, Task, Work, composeWorkerName, modelByEntity, nextPurchas
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
-import { apiError } from "@/lib/api";
+import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
 import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balances";
-import { checkSubstitution, completeSubstitution, prepareInvoice } from "@/lib/invoice-service";
+import { checkSubstitution, completeSubstitution, emitInvoiceInArca, prepareInvoice } from "@/lib/invoice-service";
 import { beforeCreate } from "@/lib/document-rules";
 import { attachRemitos, checkRemitosForInvoice } from "@/lib/sales-remitos";
 import { ensureAccountCatalog } from "@/lib/account-service";
@@ -91,7 +91,19 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     if (entity === "invoices") await checkRemitosForInvoice(data);
     if (entity === "invoices") await prepareInvoice(data);
     if (entity === "collections") { if (!data.number) data.number = await nextReceiptNumber(); data.userName = session.name; }
-    const item = await model.create(data as never);
+    // Emitir en ARCA: primero se revisa que la factura se pueda guardar, después se pide el CAE.
+    const emitInArca = entity === "invoices" && data.arcaEmit === true;
+    delete data.arcaEmit;
+    if (emitInArca) {
+      await new model({ ...data, number: data.number || "por-emitir" }).validate();
+      await emitInvoiceInArca(data);
+    }
+    const item = await model.create(data as never).catch(error => {
+      if (!emitInArca) throw error;
+      // Ya está autorizada en ARCA: que no se pierda el dato aunque no se haya podido guardar.
+      console.error("Factura emitida en ARCA que no se pudo guardar", { company: data.company, number: data.number, cae: data.cae, error });
+      throw new HttpError(`La factura quedó emitida en ARCA (${String(data.number)}, CAE ${String(data.cae)}) pero no se pudo guardar en el sistema. Cargala a mano con esos datos.`, 500);
+    });
 
     if (replaced) await completeSubstitution(replaced, item);
     if (entity === "invoices" && Array.isArray(data.remitoIds)) await attachRemitos(item._id, data.remitoIds, replaced?._id);

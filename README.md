@@ -1,6 +1,6 @@
 # Pinos Soluciones — ERP/CRM
 
-Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. Todavía no emite comprobantes fiscales: las Factura A y B se emiten en Tango y se cargan acá (la conexión con ARCA, por ahora, solo consulta; ver [Factura electrónica (ARCA)](#factura-electrónica-arca)); el comprobante interno X se numera en el sistema y queda fuera del libro IVA.
+Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. Emite las Factura A y B en ARCA con CAE (ver [Factura electrónica (ARCA)](#factura-electrónica-arca)); las que salieron de Tango se pueden cargar a mano. El comprobante interno X se numera en el sistema y queda fuera del libro IVA.
 
 La barra lateral tiene trece módulos: Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión. Desde el menú del usuario (arriba a la derecha) cada persona puede pasar al menú de antes (**V1**: Tablero, Comercial, Obras, Compras y stock, Finanzas e iA y Reportes) o volver al de módulos (**V2**); la elección queda en la cookie `pino-nav` de ese navegador. El Calendario también está en ese menú. Qué hace cada parte de la especificación funcional v1.5 y qué falta: [`docs/requerimientos/especificacion-v1-5.md`](docs/requerimientos/especificacion-v1-5.md).
 
@@ -129,7 +129,10 @@ El sistema se conecta con ARCA por web services (WSAA + WSFEv1) con un certifica
 - La clave privada se genera fuera de ARCA (`openssl genrsa` + `openssl req` con `serialNumber=CUIT <cuit>` y `CN=pinosoluciones`); a ARCA se sube solo el `.csr`.
 - En el servidor, el `.crt` y la `.key` van en `/etc/pinos/arca/` como `constructora.crt`/`.key` y `tvp.crt`/`.key` (dueño root, permisos 600), y el `.env` tiene `ARCA_CERT_DIR=/etc/pinos/arca` y `ARCA_ENV=produccion`. Nunca en el repo.
 - El ticket de acceso dura 12 horas y se guarda en la colección `arcatickets`: ARCA no entrega otro mientras esté vigente.
-- Para probar: Configuración › Empresas y comprobantes › "Probar conexión" en cada empresa. Solo consulta (puntos de venta y último número de cada comprobante): no emite nada.
+- Para probar la conexión: Configuración › Empresas y comprobantes › "Probar conexión" en cada empresa. Solo consulta (puntos de venta, último número de cada comprobante y por qué punto de venta se emite cada tipo): no emite nada.
+- Emisión: en Facturas de venta, una Factura A o B nueva de una empresa conectada se emite al guardar ("Emitir ahora en ARCA (con CAE)"): ARCA pone el número y el CAE. También se puede elegir "Ya la emití en Tango" y cargar el número a mano. El punto de venta es el del talonario habilitado de ese tipo (Configuración › Empresas y comprobantes) que ARCA tiene de alta para web services; sin ese talonario no se emite.
+- La condición frente al IVA del cliente va en su ficha; sin cargar, la A se emite a responsable inscripto y la B a consumidor final. Concepto: productos si factura remitos, servicios si no (con el mes de la factura como período).
+- Una factura con CAE no se borra, no se anula y no cambia cliente, fecha, número ni importes: para eso hace falta una nota de crédito (todavía se hace por fuera). Su PDF, con CAE y QR, sale del botón "Factura" de la lista.
 - El servidor de WSFEv1 ofrece primero Diffie-Hellman de 1024 bits, que Node rechaza; `src/lib/arca.ts` pide solo cifrados ECDHE con AES-GCM o ChaCha20.
 
 ## Backups

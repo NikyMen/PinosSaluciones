@@ -20,7 +20,7 @@ export const COMPANIES: Record<CompanyKey, Company> = {
   },
   constructora: {
     key: "constructora", legalName: "Constructora Pino S.R.L.", short: "Constructora Pino", brand: "Constructora Pino",
-    address: "Av. Maipú 1278 - 3400 - Corrientes", cuit: "30-71758997-8",
+    address: "Av. Maipú 1278 - 3400 - Corrientes", vat: "IVA Responsable Inscripto", cuit: "30-71758997-8",
     bank: "", account: "", cbu: "", alias: "",
   },
 };

@@ -153,9 +153,12 @@ material.
 
 ## Administrativo
 
-**ARCA** — El organismo fiscal argentino, antes AFIP. Las facturas todavía se emiten
-por afuera y se registran a mano. El sistema ya se conecta a sus web services con el
-certificado de cada empresa, pero por ahora solo consulta puntos de venta y últimos números.
+**ARCA** — El organismo fiscal argentino, antes AFIP. El sistema se conecta a sus web
+services con el certificado de cada empresa y emite las Facturas A y B con **CAE**; las que
+salieron de Tango se pueden seguir cargando a mano.
+
+**CAE** — Código de Autorización Electrónico: el número que ARCA le da a una factura al
+autorizarla. Sin CAE la factura no tiene validez fiscal. Va impreso con su vencimiento y un QR.
 
 **Factura A / B / C** — Tipo de comprobante según la condición fiscal de quien
 compra. Determina si el IVA se discrimina o va incluido.

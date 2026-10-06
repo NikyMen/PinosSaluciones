@@ -5,7 +5,7 @@ import { composeWorkerName, modelByEntity } from "@/lib/models";
 import { schemas } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canDelete, canRead, canWrite } from "@/lib/permissions";
-import { apiError } from "@/lib/api";
+import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { canSeeTask, resolveTaskAssignee } from "@/lib/tasks";
 import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balances";
@@ -13,7 +13,7 @@ import { beforeUpdate } from "@/lib/document-rules";
 import { releaseRemitos } from "@/lib/sales-remitos";
 import { releaseForQuote, reserveForQuote } from "@/lib/reservations";
 import { VOID_INVOICE_STATUSES } from "@/lib/invoice-labels";
-import { prepareInvoice } from "@/lib/invoice-service";
+import { checkFiscalChanges, prepareInvoice } from "@/lib/invoice-service";
 import { prepareWorkerChanges } from "@/lib/worker-files";
 import { isTrashEntity } from "@/lib/trash";
 import { refreshAssetSchedule } from "@/lib/asset-service";
@@ -49,6 +49,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     const sent = new Set(body && typeof body === "object" ? Object.keys(body) : []);
     const changes = Object.fromEntries(Object.entries(parsed.data as Record<string, unknown>).filter(([key]) => sent.has(key)));
     if (entity === "tasks") await resolveTaskAssignee(session, changes, false);
+    delete changes.arcaEmit;
+    if (entity === "invoices") checkFiscalChanges(before as Record<string, unknown>, changes);
     if (entity === "invoices") await prepareInvoice(changes, before as Record<string, unknown>);
     if (entity === "workers") await prepareWorkerChanges(changes, id);
     const extra = await beforeUpdate(entity, before as Record<string, unknown>, changes, session);
@@ -91,6 +93,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
+    if (entity === "invoices" && (before as Record<string, unknown>).cae) throw new HttpError("La factura está emitida en ARCA con CAE: no se borra. Para anularla hace falta una nota de crédito.");
     // Un material, una obra o un cliente no se pierden: van a la papelera con quién los borró y a qué hora.
     if (isTrashEntity(entity)) {
       const { StockTrash } = await import("@/lib/models");

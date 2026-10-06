@@ -148,6 +148,9 @@ function ArcaCheck({ company }: { company: CompanyKey }) {
           <td data-label="Estado"><span className={`badge ${point.blocked || point.closed ? "anulada" : "activo"}`}>{point.closed ? "Dado de baja" : point.blocked ? "Bloqueado" : "Habilitado"}</span></td>
         </tr>)}
       </tbody></table></div> : <div className="notice warning">La empresa no tiene puntos de venta de web services en ARCA.</div>}
+      {status.emitsFrom && <p className="config-arca-emits">{(["factura_a", "factura_b"] as const).map(type => <span key={type}>
+        {voucherLabels[type]}: {status.emitsFrom?.[type] ? <>se emite por el <b>{status.emitsFrom[type]}</b></> : <b className="config-arca-missing">falta un talonario habilitado en un punto de venta de esta tabla</b>}
+      </span>)}</p>}
     </>}
   </div>;
 }

@@ -2049,6 +2049,9 @@ td > .company-badge:first-child { margin-left: 0; }
 .config-arca-head b { display: flex; align-items: center; gap: 6px; color: var(--brand-navy-deep); font-size: .8rem; }
 .config-arca-head small { display: block; color: var(--muted); font-size: .68rem; }
 .config-arca .notice { margin: 0; }
+.invoice-arca-choice { display: contents; }
+.config-arca-emits { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: .74rem; }
+.config-arca-missing { color: var(--danger); }
 .audit-diff { margin: 0; padding-left: 15px; font-size: .66rem; }
 .audit-diff b { color: var(--brand-navy); }
 .audit-table td { vertical-align: top; }

@@ -5,6 +5,8 @@ import path from "node:path";
 import { ArcaTicket } from "./models";
 import { COMPANIES, type CompanyKey } from "./companies";
 import { HttpError } from "./api";
+import { ARCA_VOUCHER_CODE, VAT_CONDITIONS, type VatCondition } from "./fiscal";
+import { voucherBooks } from "./voucher-books";
 
 /*
  * Factura electrónica de ARCA (ex AFIP) por web services: WSAA para entrar y
@@ -164,10 +166,22 @@ export async function arcaLastNumber(company: CompanyKey, pointOfSale: number, v
   return Number(xmlTag(response, "CbteNro") || 0);
 }
 
+/**
+ * El talonario por el que se emite: el habilitado de esa empresa y ese tipo cuyo
+ * punto de venta ARCA tiene de alta para web services. El 0001 que se crea solo
+ * no lo es, así que nunca se emite por error en un punto de venta que no corresponde.
+ */
+export async function arcaBookFor(company: CompanyKey, voucherType: "factura_a" | "factura_b", enabledPoints: number[]) {
+  const books = await voucherBooks({ company, scope: "venta", voucherType, active: true });
+  return books.find(book => enabledPoints.includes(Number(book.pointOfSale))) || null;
+}
+
 export type ArcaStatus = {
   company: CompanyKey; cuit: string; environment: ArcaEnvironment; configured: boolean;
   ok?: boolean; error?: string; ticketExpiresAt?: string;
   pointsOfSale?: Array<{ number: number; type: string; blocked: boolean; closed: boolean; last: Array<{ code: number; label: string; number: number }> }>;
+  /** El punto de venta por el que se emite cada tipo, o null si falta el talonario. */
+  emitsFrom?: { factura_a: string | null; factura_b: string | null };
 };
 
 /**
@@ -184,8 +198,102 @@ export async function arcaStatus(company: CompanyKey): Promise<ArcaStatus> {
       ...point,
       last: await Promise.all(ARCA_VOUCHER_CODES.map(async voucher => ({ ...voucher, number: await arcaLastNumber(company, point.number, voucher.code) }))),
     })));
-    return { ...base, ok: true, ticketExpiresAt: new Date(ticket.expiresAt).toISOString(), pointsOfSale };
+    const enabled = points.filter(point => !point.blocked && !point.closed).map(point => point.number);
+    const [bookA, bookB] = await Promise.all([arcaBookFor(company, "factura_a", enabled), arcaBookFor(company, "factura_b", enabled)]);
+    return { ...base, ok: true, ticketExpiresAt: new Date(ticket.expiresAt).toISOString(), pointsOfSale, emitsFrom: { factura_a: bookA?.pointOfSale || null, factura_b: bookB?.pointOfSale || null } };
   } catch (error) {
     return { ...base, ok: false, error: error instanceof Error ? error.message : "No se pudo conectar con ARCA" };
   }
+}
+
+/*
+ * Emisión con CAE (FECAESolicitar). ARCA autoriza el comprobante y le da el
+ * número: el que sigue al último autorizado en ese punto de venta y tipo.
+ */
+
+/** A un responsable inscripto o monotributista se le hace A; al resto, B. */
+const VOUCHER_RECEIVERS: Record<"factura_a" | "factura_b", VatCondition[]> = {
+  factura_a: ["responsable_inscripto", "monotributo"],
+  factura_b: ["exento", "consumidor_final", "no_alcanzado"],
+};
+
+/** El código de ARCA de cada alícuota de IVA. */
+const VAT_RATE_IDS: Record<string, number> = { "0": 3, "2.5": 9, "5": 8, "10.5": 4, "21": 5, "27": 6 };
+
+export type CaeRequest = {
+  voucherType: "factura_a" | "factura_b"; pointOfSale: number; number: number;
+  /** 1 productos (se factura un remito), 2 servicios (obra, certificado). */
+  concept: 1 | 2;
+  clientCuit: string; vatCondition: VatCondition;
+  issueDate: Date; dueDate?: Date;
+  netCents: number; vatPct: number; vatCents: number; amountCents: number;
+};
+
+/** "20261006" a partir de una fecha del formulario (que llega como medianoche UTC). */
+export function arcaDate(value: Date) {
+  return value.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+const pesos = (cents: number) => (cents / 100).toFixed(2);
+
+/** Revisa que la factura se pueda emitir y arma el detalle de FECAESolicitar. */
+export function buildCaeRequest(request: CaeRequest) {
+  const { voucherType, vatCondition } = request;
+  if (!VOUCHER_RECEIVERS[voucherType].includes(vatCondition)) {
+    throw new HttpError(`A un cliente ${VAT_CONDITIONS[vatCondition].label} no se le hace ${voucherType === "factura_a" ? "Factura A" : "Factura B"}: corresponde ${voucherType === "factura_a" ? "Factura B" : "Factura A"}`);
+  }
+  const cuit = request.clientCuit.replace(/\D/g, "");
+  if (cuit.length !== 11) throw new HttpError("El cliente no tiene un CUIT válido cargado: ARCA lo pide para emitir");
+  if (request.netCents <= 0) throw new HttpError("Para emitir en ARCA cargá el neto gravado de la factura");
+  const rateId = VAT_RATE_IDS[String(request.vatPct)];
+  if (rateId === undefined) throw new HttpError(`ARCA no tiene la alícuota de IVA ${request.vatPct} %`);
+  if (request.netCents + request.vatCents !== request.amountCents) throw new HttpError("El total no es el neto más el IVA: revisá los importes");
+
+  // En servicios ARCA pide el período facturado y el vencimiento del pago: el mes de la factura.
+  const issue = request.issueDate;
+  const service = request.concept === 2 ? (() => {
+    const from = new Date(Date.UTC(issue.getUTCFullYear(), issue.getUTCMonth(), 1));
+    const to = new Date(Date.UTC(issue.getUTCFullYear(), issue.getUTCMonth() + 1, 0));
+    const due = request.dueDate && request.dueDate > issue ? request.dueDate : issue;
+    return `<ar:FchServDesde>${arcaDate(from)}</ar:FchServDesde><ar:FchServHasta>${arcaDate(to)}</ar:FchServHasta><ar:FchVtoPago>${arcaDate(due)}</ar:FchVtoPago>`;
+  })() : "";
+
+  return `<ar:FeCAEReq><ar:FeCabReq><ar:CantReg>1</ar:CantReg><ar:PtoVta>${request.pointOfSale}</ar:PtoVta><ar:CbteTipo>${ARCA_VOUCHER_CODE[voucherType]}</ar:CbteTipo></ar:FeCabReq>`
+    + `<ar:FeDetReq><ar:FECAEDetRequest><ar:Concepto>${request.concept}</ar:Concepto><ar:DocTipo>80</ar:DocTipo><ar:DocNro>${cuit}</ar:DocNro>`
+    + `<ar:CbteDesde>${request.number}</ar:CbteDesde><ar:CbteHasta>${request.number}</ar:CbteHasta><ar:CbteFch>${arcaDate(issue)}</ar:CbteFch>`
+    + `<ar:ImpTotal>${pesos(request.amountCents)}</ar:ImpTotal><ar:ImpTotConc>0.00</ar:ImpTotConc><ar:ImpNeto>${pesos(request.netCents)}</ar:ImpNeto><ar:ImpOpEx>0.00</ar:ImpOpEx><ar:ImpTrib>0.00</ar:ImpTrib><ar:ImpIVA>${pesos(request.vatCents)}</ar:ImpIVA>`
+    + `${service}<ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIVAReceptorId>${VAT_CONDITIONS[vatCondition].id}</ar:CondicionIVAReceptorId>`
+    + `<ar:Iva><ar:AlicIva><ar:Id>${rateId}</ar:Id><ar:BaseImp>${pesos(request.netCents)}</ar:BaseImp><ar:Importe>${pesos(request.vatCents)}</ar:Importe></ar:AlicIva></ar:Iva>`
+    + `</ar:FECAEDetRequest></ar:FeDetReq></ar:FeCAEReq>`;
+}
+
+/** El CAE y su vencimiento, o el motivo del rechazo, de la respuesta de FECAESolicitar. */
+export function readCaeResponse(xml: string) {
+  const detail = xmlTag(xml, "FECAEDetResponse");
+  const result = xmlTag(detail, "Resultado") || xmlTag(xml, "Resultado");
+  const observations = xmlTags(detail, "Obs").map(obs => `${xmlTag(obs, "Code")}: ${xmlUnescape(xmlTag(obs, "Msg"))}`);
+  const cae = xmlTag(detail, "CAE");
+  const due = xmlTag(detail, "CAEFchVto");
+  if (result !== "A" || !/^\d{14}$/.test(cae)) throw new HttpError(`ARCA rechazó la factura${observations.length ? `: ${observations.join(" · ")}` : ""}`, 422);
+  return { cae, caeDueDate: new Date(Date.UTC(Number(due.slice(0, 4)), Number(due.slice(4, 6)) - 1, Number(due.slice(6, 8)))), observations };
+}
+
+// Una emisión por vez en cada punto de venta y tipo: el número es el último + 1.
+const emitting = new Map<string, Promise<unknown>>();
+
+/**
+ * Emite la factura en ARCA: toma el número que sigue en el punto de venta y
+ * pide el CAE. Devuelve el número que asignó ARCA y el CAE. Si ARCA la
+ * rechaza, no queda nada emitido.
+ */
+export async function arcaEmitInvoice(company: CompanyKey, request: Omit<CaeRequest, "number">) {
+  const key = `${company}:${request.pointOfSale}:${request.voucherType}`;
+  const run = (emitting.get(key) || Promise.resolve()).catch(() => undefined).then(async () => {
+    const number = await arcaLastNumber(company, request.pointOfSale, ARCA_VOUCHER_CODE[request.voucherType]) + 1;
+    const body = buildCaeRequest({ ...request, number });
+    const response = await wsfe(company, "FECAESolicitar", body);
+    return { number, ...readCaeResponse(response) };
+  });
+  emitting.set(key, run);
+  try { return await run; } finally { if (emitting.get(key) === run) emitting.delete(key); }
 }

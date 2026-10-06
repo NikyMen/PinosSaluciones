@@ -4,6 +4,7 @@ import { CHECK_RESULTS, DEVIATIONS, INSPECTION_RUBROS, MATERIAL_CONDITIONS, ORDE
 import { WAREHOUSE_KEYS } from "./warehouses";
 import { ACCOUNT_CODES } from "./account-catalog";
 import { INVOICE_STATUSES, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES, VOUCHER_TYPES } from "./invoice-labels";
+import { VAT_CONDITION_KEYS } from "./fiscal";
 
 const options = { timestamps: true, strict: true } as const;
 const money = { type: Number, min: 0, default: 0 };
@@ -42,6 +43,8 @@ const ClientSchema = new Schema({
   // Un cliente puede tener varios telefonos (obra, administracion, celular del contacto).
   phones: { type: [String], default: [] },
   address: String, notes: String, active: { type: Boolean, default: true },
+  // Condición frente al IVA, para emitir en ARCA (A o B y el dato que pide la RG 5616). Ver src/lib/fiscal.ts.
+  vatCondition: { type: String, enum: VAT_CONDITION_KEYS },
 }, options);
 
 /*
@@ -675,8 +678,8 @@ const ExpenseSchema = new Schema({
   paidCents: money, attachment: String,
 }, options);
 
-// Las facturas se emiten en Tango y se cargan acá para seguir cada cotización
-// hasta su cobro. `number` es el comprobante completo (punto de venta y número).
+// Las facturas A y B se emiten en ARCA desde acá (con CAE) o, las de Tango, se cargan
+// a mano para seguir cada cotización hasta su cobro. `number` es el comprobante completo (punto de venta y número).
 // amountCents es el total; neto e IVA se guardan aparte cuando se cargan.
 const InvoiceSchema = new Schema({
   // Qué empresa del grupo la emitió. Las viejas, sin empresa, son de Trabajos Verticales Pino.
@@ -695,6 +698,9 @@ const InvoiceSchema = new Schema({
   replacesId: { type: Schema.Types.ObjectId, ref: "Invoice" }, replacedById: { type: Schema.Types.ObjectId, ref: "Invoice" },
   // Los remitos de venta que factura. La factura no vuelve a mover stock: eso ya lo hizo el remito.
   remitoIds: { type: [{ type: Schema.Types.ObjectId, ref: "SalesRemito" }], default: undefined },
+  // Emitida desde el sistema en ARCA: el CAE y su vencimiento. Con CAE, lo fiscal ya no se cambia
+  // (para anularla hace falta una nota de crédito) y la factura no se borra.
+  cae: String, caeDueDate: Date, arcaEnvironment: { type: String, enum: ["produccion", "homologacion"] },
 }, options);
 // El mismo número puede existir en las dos empresas, o en una A y una X: lo único es empresa + tipo + número (+ cliente, como antes).
 // El índice viejo (solo número y cliente) lo saca src/lib/db.ts al conectar.

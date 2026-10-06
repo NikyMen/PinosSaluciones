@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-10-05 · 26 colecciones.
+Generado el 2026-10-06 · 26 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -33,6 +33,7 @@ Colección `clients` · entidad `clients`
 | `address` | texto | — | — |
 | `notes` | texto | — | — |
 | `active` | sí/no | — | por defecto `true` |
+| `vatCondition` | texto | — | valores: `responsable_inscripto` · `monotributo` · `exento` · `consumidor_final` · `no_alcanzado` |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -411,6 +412,9 @@ Colección `invoices` · entidad `invoices`
 | `replacesId` | referencia | — | apunta a **Invoice** |
 | `replacedById` | referencia | — | apunta a **Invoice** |
 | `remitoIds` | lista | — | — |
+| `cae` | texto | — | — |
+| `caeDueDate` | fecha | — | — |
+| `arcaEnvironment` | texto | — | valores: `produccion` · `homologacion` |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 

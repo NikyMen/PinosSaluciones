@@ -17,6 +17,7 @@ import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-o
 import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
 import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
 import { buildInvoicePdf } from "@/lib/invoice-pdf";
+import { downloadFiscalInvoicePdf, fiscalInvoicePdfData } from "@/lib/fiscal-invoice-pdf";
 import { readPdfLogo } from "@/lib/pdf-brand";
 import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-order-pdf";
 import { downloadQuotePdf, quotePdfData } from "@/lib/quote-pdf";
@@ -26,7 +27,7 @@ import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { WorkTypesModal } from "@/components/work-types-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
-import { voucherLabels } from "@/lib/invoice-labels";
+import { invoiceLabel, voucherLabels } from "@/lib/invoice-labels";
 import { companyOf } from "@/lib/companies";
 import { AssetMaintenanceModal, NextDueCell, type AssetRecord } from "@/components/asset-maintenance";
 import { CashTransferModal } from "@/components/cash-transfer";
@@ -295,6 +296,13 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     } catch { setError("No se pudo generar el PDF de la cotización"); }
   }
 
+  /** La factura emitida en ARCA, con CAE y QR. El cliente se pide entero: hace falta su condición de IVA. */
+  async function downloadInvoice(item: Item) {
+    const client = item.clientId ? await fetch(`/api/records/clients/${String(item.clientId)}`).then(response => response.ok ? response.json() : null).catch(() => null) : null;
+    await downloadFiscalInvoicePdf(fiscalInvoicePdfData(item, client || relations.clients?.find(row => row._id === String(item.clientId || ""))))
+      .catch(() => setError("No se pudo generar el PDF de la factura"));
+  }
+
   async function downloadReceipt(item: Item) {
     const response = await fetch(`/api/receipts/${item._id}`);
     if (!response.ok) return setError("No se pudo armar el recibo");
@@ -358,8 +366,12 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(""); setSaving(true);
+    event.preventDefault();
     const form = new FormData(event.currentTarget); const body: Record<string, unknown> = {};
+    // Emitir en ARCA no tiene vuelta atrás: se confirma antes.
+    if (entity === "invoices" && !editing && form.get("arcaEmit") === "1"
+      && !confirm("Se va a emitir la factura en ARCA: queda autorizada con CAE y no se puede borrar ni cambiar los importes (para anularla hace falta una nota de crédito). ¿Emitir?")) return;
+    setError(""); setSaving(true);
     for (const field of formFields) {
       if (field.readOnly) continue;
       let value: unknown = form.get(field.key);
@@ -378,6 +390,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     const response = await fetch(url, { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const result = await response.json();
     if (!response.ok) { setSaving(false); return setError(fieldErrors(result) || result.error || "No se pudo guardar"); }
+    if (entity === "invoices" && !editing && result.cae) setNotice(`Factura emitida en ARCA: ${invoiceLabel(result)} · CAE ${String(result.cae)}. El PDF se baja con el botón "Factura" de la lista.`);
     setSaving(false); setModal(false); void load();
   }
 
@@ -480,6 +493,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
             : item.status !== "cancelada" && <button className="row-action-wide approve" title="Llegó la mercadería: sumarla al stock" onClick={() => setReceiveFor(item)}><PackagePlus size={15} /> Pasar a stock</button>)}
           {entity === "invoices" && canEdit && item.voucherType === "factura_x" && !item.replacedById && item.status !== "anulada" && <button className="row-action-wide" title="Reemplazar esta X por una Factura A o B: lo cobrado pasa a la fiscal y la X deja de contar" onClick={() => { void substitute(item); }}><FileSymlink size={15} /> Sustituir</button>}
           {entity === "expenses" && canEdit && Boolean(item.voucherType) && item.status !== "pagado" && item.status !== "anulado" && <Link className="row-action-wide approve" title="Emitir la orden de pago de esta factura" href={`/app/payments?factura=${item._id}`}><HandCoins size={15} /> Orden de pago</Link>}
+          {entity === "invoices" && Boolean(item.cae) && <button className="row-action-wide" title={`Descargar la factura emitida en ARCA (CAE ${String(item.cae)})`} onClick={() => { void downloadInvoice(item); }}><Download size={15} /> Factura</button>}
           {entity === "invoices" && canEdit && (item.status === "pendiente" || item.status === "parcial") && <button className="row-action-wide approve" title="Registrar un cobro de esta factura y hacer el recibo" onClick={() => setReceiptFor({ receipt: null, clientId: String(item.clientId || ""), invoiceId: item._id })}><HandCoins size={15} /> Cobrar</button>}
           {entity === "collections" && <button className="row-action-wide" title="Descargar el recibo en PDF" onClick={() => { void downloadReceipt(item); }}><Download size={15} /> Recibo</button>}
           {entity !== "tasks" && <button title="Ver historial de cambios" onClick={() => setHistoryFor({ _id: item._id, label: itemLabel(item) })}><History size={16} /></button>}

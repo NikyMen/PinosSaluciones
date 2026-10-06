@@ -41,7 +41,8 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
     await checkVoucherEnabled(company, "venta", data.voucherType);
     // La X es interna: el número sale de su talonario, nunca se tipea.
     if (data.voucherType === "factura_x") data.number = await takeInternalNumber(company, String(data.pointOfSale || "0001"));
-    else if (!String(data.number || "").trim()) throw new HttpError("Poné el número de la factura, como salió de Tango");
+    // Una A o B que se emite en ARCA recibe el número de ARCA; la que viene de Tango trae el suyo.
+    else if (data.arcaEmit !== true && !String(data.number || "").trim()) throw new HttpError("Poné el número de la factura, como salió de Tango");
   }
 }
 

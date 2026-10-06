@@ -12,7 +12,7 @@ type Item = Record<string, unknown> & { _id: string };
 
 const VAT_RATES = [21, 10.5, 27, 0];
 const groups = [
-  { title: "Comprobante", description: "A y B, tal como salieron de Tango. La X es interna y se numera sola", keys: ["company", "voucherType", "number", "issueDate", "dueDate"] },
+  { title: "Comprobante", description: "A y B se emiten en ARCA con CAE (o se carga la que salió de Tango). La X es interna y se numera sola", keys: ["company", "voucherType", "number", "issueDate", "dueDate"] },
   { title: "A qué corresponde", description: "La cotización completa sola el cliente y la obra", keys: ["quoteId", "clientId", "workId", "certificateNumber"] },
 ];
 
@@ -42,6 +42,12 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
   const suggested = (draft.numbers || {}) as Record<string, Record<string, string>>;
   const enabled = (draft.types || {}) as Record<string, string[]>;
   const pointsOfSale = (draft.pointsOfSale || {}) as Record<string, Record<string, string>>;
+  // Las A y B de una empresa conectada a ARCA se emiten al guardar: el número lo pone ARCA, con el CAE.
+  // También se puede cargar una que ya salió de Tango, con su número.
+  const arca = (draft.arca || {}) as Record<string, boolean>;
+  const canEmit = !editing && !isX && Boolean(arca[company]);
+  const [emit, setEmit] = useState(true);
+  const emitting = canEmit && emit;
   // Los tipos que la empresa tiene habilitados en sus talonarios; al editar, también el que ya tiene.
   const typeOptions = [...new Set([...(enabled[company] || ["factura_a", "factura_b", "factura_x"]), ...(editing?.voucherType ? [String(editing.voucherType)] : [])])];
 
@@ -75,6 +81,19 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
     // La X se numera sola desde su talonario: se muestra, no se tipea.
     if (key === "number" && isX) return <label key={key} className="readonly-field"><span>Número<em className="field-hint">{editing ? "Numeración interna" : "Lo pone el sistema al guardar"}</em></span>
       <output>{(number || "X-…").replace(/^X-/, "X ")}</output><input type="hidden" name="number" value={editing ? number : ""} /><input type="hidden" name="pointOfSale" value={pointsOfSale[company]?.factura_x || "0001"} /></label>;
+    // Emitida en ARCA: el número y el CAE quedan como están.
+    if (key === "number" && editing?.cae) return <label key={key} className="readonly-field"><span>Número<em className="field-hint">Emitida en ARCA</em></span>
+      <output>{number} · CAE {String(editing.cae)}</output><input type="hidden" name="number" value={number} /><input type="hidden" name="pointOfSale" value={String(editing.pointOfSale || "")} /></label>;
+    if (key === "number" && canEmit) return <div key={key} className="invoice-arca-choice">
+      <label><span>¿Cómo se emite? *</span><select name="arcaEmit" value={emit ? "1" : ""} onChange={event => setEmit(event.target.value === "1")}>
+        <option value="1">Emitir ahora en ARCA (con CAE)</option>
+        <option value="">Ya la emití en Tango: cargo el número</option>
+      </select></label>
+      {emitting
+        ? <label className="readonly-field"><span>Número<em className="field-hint">Lo asigna ARCA al emitir</em></span><output>{companyOf(company).short} · el que sigue en ARCA</output><input type="hidden" name="number" value="" /><input type="hidden" name="pointOfSale" value="" /></label>
+        : <label><span>Número *<em className="field-hint">El de la factura de Tango</em></span>
+          <input name="number" required value={number} placeholder="0001-00000123" onChange={event => { setNumber(event.target.value); setNumberTouched(true); }} /><input type="hidden" name="pointOfSale" value={number.match(/^(\d{1,5})-/)?.[1] || pointsOfSale[company]?.[voucherType] || ""} /></label>}
+    </div>;
     if (key === "number") return <label key={key}><span>Número *<em className="field-hint">{editing ? "Punto de venta y número, como en Tango" : `El que sigue en ${companyOf(company).short}; cambialo si no es`}</em></span>
       <input name="number" required value={number} placeholder="0001-00000123" onChange={event => { setNumber(event.target.value); setNumberTouched(true); }} /><input type="hidden" name="pointOfSale" value={number.match(/^(\d{1,5})-/)?.[1] || pointsOfSale[company]?.[voucherType] || ""} /></label>;
     return <FormField key={key} {...props(target)} autoFocus={autoFocus} />;
@@ -99,6 +118,8 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
 
     {/* Los campos ocultos del formulario genérico: a qué X sustituye y qué remitos factura. */}
     {["replacesId", "remitoIds"].map(key => { const target = field(key); return target ? <FormField key={key} {...fieldProps(target)} /> : null; })}
+    {emitting && <p className="invoice-note">Al guardar se emite en ARCA: ARCA le da el número y el CAE, y la factura queda autorizada. Después no se puede borrar ni cambiar el cliente, la fecha o los importes; para anularla hace falta una nota de crédito.</p>}
+    {Boolean(editing?.cae) && <p className="invoice-note">Emitida en ARCA ({editing?.arcaEnvironment === "homologacion" ? "homologación, de prueba" : "producción"}) · CAE {String(editing?.cae)}. Solo se puede cambiar lo que no es fiscal: obra, cotización, descripción y vencimiento.</p>}
     {Boolean(source.replacesId) && <p className="invoice-note">Sustituye a una Factura X: al guardar, la X queda como sustituida y lo que ya se cobró de ella pasa a esta factura.</p>}
 
     <fieldset><legend><b>Importes</b><small>{isX ? "La X no discrimina IVA: el total es el importe" : byTotal ? "Esta factura se cargó solo con el total" : "El IVA y el total salen del neto"}</small></legend><div className="form-grid">

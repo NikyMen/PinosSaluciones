@@ -8,6 +8,7 @@ import { todayIso } from "@/lib/format";
 import { COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { peekInternalNumber, suggestFiscalNumber, voucherBooks } from "@/lib/voucher-books";
 import type { VoucherType } from "@/lib/invoice-labels";
+import { arcaCredentials } from "@/lib/arca";
 
 /**
  * Los datos con los que se abre una factura nueva: qué comprobantes tiene
@@ -39,7 +40,9 @@ export async function GET(request: Request) {
     const pointsOfSale = Object.fromEntries(COMPANY_KEYS.map(company => [company, Object.fromEntries(types[company].map(type => [type, books.find(book => book.company === company && book.voucherType === type)?.pointOfSale || "0001"]))]));
 
     const firstType = types.tvp.includes("factura_a") ? "factura_a" : types.tvp[0] || "factura_a";
-    const draft: Record<string, unknown> = { company: "tvp", voucherType: firstType, number: numbers.tvp?.[firstType] || "", numbers, types, pointsOfSale, vatPct: 21 };
+    // Las empresas con certificado de ARCA en el servidor: sus A y B se emiten desde acá, con CAE.
+    const arca = Object.fromEntries(COMPANY_KEYS.map(company => [company, Boolean(arcaCredentials(company))]));
+    const draft: Record<string, unknown> = { company: "tvp", voucherType: firstType, number: numbers.tvp?.[firstType] || "", numbers, types, pointsOfSale, arca, vatPct: 21 };
     if (workId && certificateNumber && isValidObjectId(workId)) {
       const work = await Work.findById(workId, { code: 1, name: 1, clientId: 1, quoteId: 1, certificates: 1 }).lean<{ code: string; name: string; clientId?: unknown; quoteId?: unknown; certificates?: Array<{ number?: string; period?: string; percentage?: number; amountCents?: number }> }>();
       const certificate = work?.certificates?.find(item => String(item.number) === certificateNumber);
