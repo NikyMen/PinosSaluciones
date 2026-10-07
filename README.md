@@ -169,6 +169,6 @@ Cada módulo acepta `.xlsx` o `.csv` de hasta 2.000 filas y 5 MB. La primera fil
 - El worker genera tareas por facturas y cheques próximos a vencer.
 - Bitácora completa (usuario, fecha y hora, valor anterior y nuevo) en Seguridad › Bitácora de cambios, solo para gerencia.
 - Todo ingreso y egreso de plata (caja y bancos, recibos, pagos) se imputa a una cuenta del plan de cuentas. El catálogo y los talonarios de comprobantes se crean solos la primera vez; no hace falta correr nada al actualizar.
-- Toda compra entra al Depósito Central; al Salón de Ventas el material llega por transferencia (queda en tránsito hasta que se confirma la recepción).
+- Toda compra entra al Depósito Central, salvo la orden de compra pedida para entregar en el Salón de Ventas, que entra directo al Salón; la entrada manual desde Stock es siempre al Central, y al Salón el material llega por transferencia (queda en tránsito hasta que se confirma la recepción).
 - Para actualizar producción: ver [Actualizar producción](#actualizar-producción).
 - Comandos de calidad: `pnpm lint`, `pnpm test`, `pnpm build`.

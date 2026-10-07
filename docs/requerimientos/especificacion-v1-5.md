@@ -35,7 +35,7 @@ Leyenda: ✅ hecho · 🟡 parcial · ⏳ pendiente (o esperando una decisión d
 
 | Requisito | Estado | Cómo |
 |---|---|---|
-| Toda compra entra al Depósito Central | ✅ | La entrada de stock, la caja y "Pasar a stock" de una OC rechazan cualquier otro depósito |
+| Toda compra entra al Depósito Central | ✅ | La entrada manual de stock y la caja rechazan cualquier otro depósito; "Pasar a stock" de una OC pedida para el Salón de Ventas entra directo al Salón |
 | Central → Salón con estado "en tránsito" | ✅ | `src/lib/stock-transfers.ts`; pantalla Stock y logística › Transferencias |
 | Recepción confirmada en el Salón, con diferencias documentadas | ✅ | Por renglón: llegó bien, dañado (pasa a "no utilizable") y faltante |
 | La transferencia no es venta ni factura | ✅ | No toca plata ni costo |

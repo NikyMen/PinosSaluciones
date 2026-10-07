@@ -11,12 +11,12 @@ type Line = { code?: string; name: string; presentation?: string; quantity: numb
 type Result = { number: string; warehouse: WarehouseKey; created: number; items: Array<{ name: string; quantity: number; unit: string; isNew: boolean }> };
 
 /**
- * Llegó la mercadería de una orden de compra. Entra siempre al Depósito
- * Central, a nombre de la empresa que compró: es el único punto de recepción.
+ * Llegó la mercadería de una orden de compra. Entra al depósito donde se
+ * pidió entregar (el Central, o el Salón de Ventas), a nombre de la empresa que compró.
  */
 export function ReceivePurchaseModal({ purchase, onClose, onDone }: { purchase: Record<string, unknown> & { _id: string }; onClose: () => void; onDone: () => void }) {
   const deliverTo = String(purchase.deliverTo || "");
-  const warehouse: WarehouseKey = "central";
+  const warehouse: WarehouseKey = deliverTo === "salon" ? "salon" : "central";
   const owner = companyOf(purchase.company);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -46,7 +46,7 @@ export function ReceivePurchaseModal({ purchase, onClose, onDone }: { purchase: 
         <div className="modal-title-wrap"><span className="modal-heading-icon"><PackagePlus /></span><div>
           <p className="eyebrow">ORDEN {String(purchase.number || "")}</p>
           <h2 id="receive-modal-title">Pasar a stock</h2>
-          <small>Llegó la mercadería: entra al Depósito Central a nombre de {owner.short}</small>
+          <small>Llegó la mercadería: entra al {warehouseLabel(warehouse)} a nombre de {owner.short}</small>
         </div></div>
         <button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button>
       </header>
@@ -61,9 +61,9 @@ export function ReceivePurchaseModal({ purchase, onClose, onDone }: { purchase: 
           </div>
         </div> : <>
           <div className="receive-options">
-            <div className="active"><Warehouse size={18} /><span><b>Depósito Central</b><small>Único punto de recepción de compras · propietario {owner.legalName}</small></span></div>
+            <div className="active"><Warehouse size={18} /><span><b>{warehouseLabel(warehouse)}</b><small>Donde se pidió entregar · propietario {owner.legalName}</small></span></div>
           </div>
-          <p className="receive-note">Si el material va al Salón de Ventas, después se manda con una transferencia desde el Central.</p>
+          {warehouse === "central" && <p className="receive-note">Si el material va al Salón de Ventas, después se manda con una transferencia desde el Central.</p>}
           {deliverTo === "obra" && <p className="convert-warning"><span>La orden se pidió para entregar en la obra. Queda registrada en el Central y después se hace la salida a obra desde Stock: así sale con su remito y el costo va a la obra.</span></p>}
           <p className="eyebrow receive-list-title">ENTRAN {lines.length} {lines.length === 1 ? "PRODUCTO" : "PRODUCTOS"}</p>
           <ul className="receive-lines">{lines.map((line, index) => <li key={index}><b>{qty(line.quantity)}</b><span>{line.name}{line.presentation ? ` · ${line.presentation}` : ""}</span>{line.code && <small>{line.code}</small>}</li>)}</ul>

@@ -12,7 +12,7 @@ import type { Session } from "./auth";
  * Los movimientos de stock. Es lo único que cambia cuánto hay de un material
  * (punto 3.1: no se modifica stock directamente, todo cambio es un movimiento):
  *
- * - entrada (una compra): siempre al Depósito Central, a nombre de la empresa
+ * - entrada (una compra): al Depósito Central (o al Salón, si la orden se pidió para ahí), a nombre de la empresa
  *   que compró (CUIT propietario). Recalcula el costo promedio.
  * - salida a obra: resta de uno o de los dos depósitos (primero del Central),
  *   carga el costo a la obra, consume lo reservado para esa obra y deja un
@@ -79,15 +79,17 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
   let consumed: { workId: Types.ObjectId; quoteId?: Types.ObjectId; quantity: number } | null = null;
 
   if (input.kind === "ingreso") {
-    // Punto 2: toda compra entra primero al Depósito Central. Al Salón llega por transferencia.
-    if (input.warehouse && input.warehouse !== "central") throw new StockError("Toda compra entra al Depósito Central. Al Salón de Ventas el material llega con una transferencia desde el Central.");
+    // La entrada cargada a mano entra al Depósito Central; al Salón llega por transferencia.
+    // Solo una orden de compra pedida para el Salón puede entrar directo ahí.
+    const into: WarehouseKey = input.purchaseId && input.warehouse === "salon" ? "salon" : "central";
+    if (input.warehouse && input.warehouse !== into) throw new StockError("Toda compra entra al Depósito Central. Al Salón de Ventas el material llega con una transferencia desde el Central.");
     const owner: CompanyKey = isOwner(input.owner) ? input.owner : "tvp";
     const totalCents = Math.round(input.quantity * input.unitCostCents);
     // Promedio ponderado: mezcla lo que ya había (en todos lados) con lo que entra al precio nuevo.
     const newTotal = totalOf(levels) + transit + input.quantity;
     item.avgCostCents = newTotal > 0 ? Math.round((item.valueCents + totalCents) / newTotal) : 0;
-    levels.central = round(levels.central + input.quantity);
-    addOwners(owners, "central", [{ owner, quantity: input.quantity }]);
+    levels[into] = round(levels[into] + input.quantity);
+    addOwners(owners, into, [{ owner, quantity: input.quantity }]);
     let purchaseId = input.purchaseId;
     // La entrada cargada a mano desde Stock deja su orden de compra recibida; la que viene de una orden ya la tiene.
     if (!purchaseId) {
@@ -100,7 +102,7 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
       });
       purchaseId = String(purchase._id);
     }
-    created.push({ kind: "ingreso", quantity: input.quantity, warehouse: "central", owner, unitCostCents: input.unitCostCents, totalCents, supplierId: input.supplierId, purchaseId, reference: input.reference, note: input.note, ticket: input.ticket, ...who });
+    created.push({ kind: "ingreso", quantity: input.quantity, warehouse: into, owner, unitCostCents: input.unitCostCents, totalCents, supplierId: input.supplierId, purchaseId, reference: input.reference, note: input.note, ticket: input.ticket, ...who });
   }
 
   if (input.kind === "egreso") {
@@ -244,14 +246,15 @@ export class PurchaseStockError extends Error {}
 
 /**
  * Cuando llega la mercadería de una orden de compra, sus productos suman al
- * Depósito Central, a nombre de la empresa que compró. Cada producto se busca
+ * depósito donde se pidió entregar (el Central, o el Salón de Ventas), a nombre de la empresa que compró. Cada producto se busca
  * en el stock por su código; si no está, se da de alta. El costo que entra es
  * el precio con el descuento, sin IVA. Una orden se pasa una sola vez.
  */
 export async function receivePurchase(purchaseId: string, session: Session) {
-  const warehouse: WarehouseKey = "central";
   const purchase = await Purchase.findById(purchaseId);
   if (!purchase) throw new PurchaseStockError("Orden no encontrada");
+  // Entra donde se pidió entregar: el Salón de Ventas o, por defecto (y si se pidió en obra), el Central.
+  const warehouse: WarehouseKey = purchase.deliverTo === "salon" ? "salon" : "central";
   if (purchase.stockedAt) throw new PurchaseStockError(`La orden ${purchase.number} ya se pasó al stock (${warehouseLabel(purchase.stockedWarehouse)}).`);
   if (purchase.status === "cancelada") throw new PurchaseStockError("La orden está cancelada");
   const lines = (purchase.items || []) as Array<{ code?: string; name: string; presentation?: string; minSale?: string; quantity: number; unitCents: number }>;
