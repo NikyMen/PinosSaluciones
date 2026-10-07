@@ -16,6 +16,8 @@ import { companyOf, type CompanyKey } from "./companies";
 export type PurchaseOrderLine = {
   code?: string; name: string; presentation?: string; quantity: number;
   listPriceCents: number; discountPct: number; unitCents: number; totalCents: number;
+  /** Para el detalle de una orden cargada a mano: se parte en varias líneas en vez de cortarse. */
+  wrap?: boolean;
 };
 
 export type PurchaseOrderPdfData = {
@@ -162,7 +164,11 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
 
   data.items.forEach((item, index) => {
     const hasPresentation = Boolean(item.presentation);
-    const height = hasPresentation ? 10.5 : 7.4;
+    const nameWidth = col.qty - col.product - 16;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.2);
+    const nameLines = item.wrap ? (doc.splitTextToSize(plain(item.name), nameWidth) as string[]).slice(0, 12) : [clip(item.name, nameWidth)];
+    const height = (hasPresentation ? 10.5 : 7.4) + (nameLines.length - 1) * 4;
     ensure(height + 2, true);
     if (index % 2 === 1) {
       setFill([250, 251, 253]);
@@ -175,7 +181,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
     setColor(INK);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.2);
-    doc.text(clip(item.name, col.qty - col.product - 16), col.product, y);
+    nameLines.forEach((line, lineIndex) => doc.text(line, col.product, y + lineIndex * 4));
     doc.setFont("helvetica", "normal");
     doc.text(plain(qty(item.quantity)), col.qty, y, { align: "right" });
     doc.text(plain(money(item.listPriceCents)), col.list, y, { align: "right" });
@@ -187,7 +193,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
       setColor(MUTED);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7);
-      doc.text(clip(item.presentation!, col.qty - col.product - 16), col.product, y + 4);
+      doc.text(clip(item.presentation!, nameWidth), col.product, y + 4 + (nameLines.length - 1) * 4);
     }
     y += height;
   });
@@ -272,8 +278,19 @@ const isoOrUndefined = (value: unknown) => value ? new Date(String(value instanc
  * volver a bajarla): las fechas pueden venir como Date o como texto.
  */
 export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier: Loose, work: Loose, quoteNumber?: string): PurchaseOrderPdfData {
-  const items = (Array.isArray(purchase.items) ? purchase.items : []) as PurchaseOrderLine[];
-  const subtotalCents = Number(purchase.subtotalCents ?? items.reduce((total, item) => total + Number(item.totalCents || 0), 0));
+  let items = (Array.isArray(purchase.items) ? purchase.items : []) as PurchaseOrderLine[];
+  const amountCents = Number(purchase.amountCents || 0);
+  let subtotalCents = Number(purchase.subtotalCents ?? items.reduce((total, item) => total + Number(item.totalCents || 0), 0));
+  let vatCents = Number(purchase.vatCents ?? Math.round(subtotalCents * VAT_RATE));
+  if (!items.length) {
+    // Orden cargada a mano: sin renglones de producto, el detalle es el único renglón y el importe es el total.
+    subtotalCents = Math.round(amountCents / (1 + VAT_RATE));
+    vatCents = amountCents - subtotalCents;
+    items = [{
+      name: String(purchase.description || "Compra"), quantity: 1, wrap: true,
+      listPriceCents: subtotalCents, discountPct: 0, unitCents: subtotalCents, totalCents: subtotalCents,
+    }];
+  }
   return {
     company: companyOf(purchase.company).key,
     number: String(purchase.number || ""),
@@ -289,12 +306,12 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
     },
     work: work ? { code: String(work.code || ""), name: String(work.name || ""), quoteNumber: quoteNumber || String(purchase.quoteNumber || "") } : null,
     items: items.map(item => ({
-      code: item.code || "", name: item.name, presentation: item.presentation || "", quantity: Number(item.quantity || 0),
+      code: item.code || "", name: item.name, presentation: item.presentation || "", quantity: Number(item.quantity || 0), wrap: item.wrap,
       listPriceCents: Number(item.listPriceCents || 0), discountPct: Number(item.discountPct || 0), unitCents: Number(item.unitCents || 0), totalCents: Number(item.totalCents || 0),
     })),
     subtotalCents,
-    vatCents: Number(purchase.vatCents ?? Math.round(subtotalCents * VAT_RATE)),
-    totalCents: Number(purchase.amountCents || 0),
+    vatCents,
+    totalCents: amountCents,
   };
 }
 

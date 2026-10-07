@@ -482,7 +482,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
           {entity === "quotes" && <button className="row-action-wide" title="Descargar la cotización en PDF para mandarla o imprimirla" onClick={() => { void downloadQuote(item); }}><Download size={15} /> PDF</button>}
           {entity === "suppliers" && <Link className="row-action-wide" title="Subir y ver las listas de precios del proveedor" href={`/app/suppliers/${item._id}`}><FileSpreadsheet size={15} /> Listas de precios</Link>}
-          {entity === "purchases" && Array.isArray(item.items) && item.items.length > 0 && <button className="row-action-wide" title="Descargar la orden de compra en PDF para mandársela al proveedor"
+          {entity === "purchases" && <button className="row-action-wide" title="Descargar la orden de compra en PDF para mandársela al proveedor"
             onClick={() => { void downloadPurchaseOrderPdf(purchaseOrderPdfData(item, relations.suppliers?.find(row => row._id === String(item.supplierId || "")), relations.works?.find(row => row._id === String(item.workId || "")))).catch(() => setError("No se pudo generar el PDF de la orden")); }}>
             <Download size={15} /> PDF</button>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
