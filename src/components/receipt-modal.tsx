@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { HandCoins, X } from "lucide-react";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
+import { CashAccountSelect } from "@/components/cash-account-select";
 import { date, money, todayIso } from "@/lib/format";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
 import type { PendingInvoice, ReceiptPdfData } from "@/lib/receipt-service";
@@ -74,13 +75,14 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
     if (over) return setError(`A la ${over.label} le quedan ${money(over.balanceCents)} por cobrar`);
     if (totalCents <= 0) return setError("Poné cuánto se cobra de cada factura, o el importe si es un pago a cuenta");
     if (!chosenAccount) return setError("Elegí la cuenta del plan a la que se imputa el cobro");
+    if (!new FormData(event.currentTarget).get("cashAccountId")) return setError("Elegí la caja o cuenta donde entró la plata");
     const form = new FormData(event.currentTarget);
     setBusy(true); setError("");
     const response = await fetch(receipt ? `/api/receipts/${receipt._id}` : "/api/receipts", {
       method: receipt ? "PUT" : "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
         clientId, date: receiptDate, method, allocations, amountCents: allocations.length ? undefined : totalCents,
-        account: String(form.get("account") || ""), reference: String(form.get("reference") || ""), notes: String(form.get("notes") || ""),
+        cashAccountId: String(form.get("cashAccountId") || ""), reference: String(form.get("reference") || ""), notes: String(form.get("notes") || ""),
         accountId: chosenAccount, accountChangeReason: String(form.get("accountChangeReason") || ""),
       }),
     });
@@ -106,7 +108,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
             <label><span>Medio de pago *</span><select value={method} onChange={event => setMethod(event.target.value)}>
               {Object.entries(methodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select></label>
-            <label><span>Caja / banco</span><input name="account" defaultValue={String(receipt?.account || "")} placeholder="Banco, caja…" /></label>
+            <label><span>Caja / cuenta bancaria *<em className="field-hint">{receipt?.account && !receipt?.cashAccountId ? `Antes: ${String(receipt.account)}` : "Del maestro de Tesorería"}</em></span><CashAccountSelect name="cashAccountId" defaultValue={String(receipt?.cashAccountId || "")} required /></label>
             <label><span>Cuenta del plan *<em className="field-hint">Ingresos: solo cuentas CI</em></span><SearchSelect name="accountId" options={accounts} value={chosenAccount} onChange={setAccountId} required placeholder="Elegí la cuenta…" /></label>
             {accountChanged && <label className="wide"><span>Motivo del cambio de cuenta *<em className="field-hint">Queda en el historial de la imputación</em></span><input name="accountChangeReason" required /></label>}
             <label><span>Referencia</span><input name="reference" defaultValue={String(receipt?.reference || "")} placeholder="N° de transferencia, de cheque…" /></label>

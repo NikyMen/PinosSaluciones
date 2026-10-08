@@ -70,6 +70,7 @@ const groups: NavGroup[] = [
   ] },
   { id: "treasury", label: "Tesorería", icon: Landmark, items: [
     { href: "/app/cash", label: "Caja y bancos", icon: WalletCards, permission: "cash" },
+    { href: "/app/cashAccounts", label: "Cajas y cuentas bancarias", icon: Landmark, permission: "cashAccounts" },
     { href: "/app/checks", label: "Cheques", icon: Banknote, permission: "checks" },
     { href: "/app/payments", label: "Órdenes de pago y pagos", icon: CreditCard, permission: "payments" },
   ] },
@@ -121,6 +122,7 @@ const legacyGroups: NavGroup[] = [
     { href: "/app/collections", label: "Cobranzas y recibos", icon: HandCoins, permission: "collections" },
     { href: "/app/payments", label: "Pagos", icon: CreditCard, permission: "payments" },
     { href: "/app/cash", label: "Caja y bancos", icon: WalletCards, permission: "cash" },
+    { href: "/app/cashAccounts", label: "Cajas y cuentas bancarias", icon: Landmark, permission: "cashAccounts" },
     { href: "/app/checks", label: "Cheques", icon: Banknote, permission: "checks" },
     { href: "/app/accounts", label: "Plan de cuentas", icon: BookOpen, permission: "accounts" },
     { href: "/app/libro-iva", label: "Libro IVA", icon: BookText, permission: "accounting" },

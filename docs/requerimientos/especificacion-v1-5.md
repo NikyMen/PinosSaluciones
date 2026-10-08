@@ -126,7 +126,8 @@ con mantenimiento) sigue igual. ⏳ material alternativo, costo para finalizar, 
 | Todo ingreso y egreso con cuenta obligatoria | ✅ | Caja y bancos, recibos y pagos no se guardan sin cuenta |
 | Ingreso solo a CI; egreso a CE, CC, GGD, GGI, IMP, OP o BB | ✅ | Validado en el servidor |
 | Sin cuenta libre ni inactiva | ✅ | Se elige del catálogo; las desactivadas no se ofrecen ni se aceptan |
-| Movimiento entre cuentas propias vinculado | ✅ | Botón en Caja y bancos: egreso CE + ingreso CI con el mismo identificador |
+| Movimiento entre cuentas propias vinculado | ✅ | Botón en Caja y bancos: egreso CE + ingreso CI con el mismo identificador, entre dos cuentas del maestro; no suma a ingresos ni egresos |
+| Maestro de cajas y cuentas bancarias (requerimiento v4, 4.1) | ✅ | Tesorería › Cajas y cuentas bancarias: cada movimiento elige una cuenta activa de su empresa; saldo inicial sólo de Gerencia |
 | Cambio de cuenta con usuario, fecha, anterior, nueva y motivo | ✅ | `accountHistory` en cada movimiento |
 | Reportes por código y cuenta | ✅ | Contabilidad › Movimientos por cuenta |
 | Control de duplicados de movimientos entre cuentas | ✅ | Avisa y pide confirmar |

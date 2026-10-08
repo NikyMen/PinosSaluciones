@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-10-08 · 26 colecciones.
+Generado el 2026-10-08 · 27 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -452,6 +452,7 @@ Colección `collections` · entidad `collections`
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `userName` | texto | — | — |
 | `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `retencion` · `otro` |
+| `cashAccountId` | referencia | — | apunta a **CashAccount** |
 | `account` | texto | — | — |
 | `reference` | texto | — | — |
 | `notes` | texto | — | — |
@@ -483,6 +484,7 @@ Colección `payments` · entidad `payments`
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `retentionsCents` | número | — | mínimo 0 · por defecto `0` |
 | `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `otro` |
+| `cashAccountId` | referencia | — | apunta a **CashAccount** |
 | `account` | texto | — | — |
 | `reference` | texto | — | — |
 | `notes` | texto | — | — |
@@ -524,6 +526,7 @@ Colección `cashmovements` · entidad `cash`
 |---|---|:--:|---|
 | `date` | fecha | sí | — |
 | `direction` | texto | sí | valores: `ingreso` · `egreso` |
+| `cashAccountId` | referencia | — | apunta a **CashAccount** |
 | `account` | texto | sí | — |
 | `category` | texto | — | — |
 | `description` | texto | sí | — |
@@ -631,6 +634,28 @@ Colección `accounts` · entidad `accounts`
 | `name` | texto | sí | único |
 | `direction` | texto | sí | valores: `ingreso` · `egreso` |
 | `active` | sí/no | — | por defecto `true` |
+| `notes` | texto | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### Cajas y cuentas bancarias
+
+Colección `cashaccounts` · entidad `cashAccounts`
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `company` | texto | sí | valores: `tvp` · `constructora` |
+| `name` | texto | sí | — |
+| `nameKey` | texto | sí | único |
+| `type` | texto | sí | valores: `caja` · `cuenta_corriente` · `caja_ahorro` · `cuenta_dolares` · `otra` |
+| `bank` | texto | — | — |
+| `currency` | texto | — | valores: `ARS` · `USD` · por defecto `"ARS"` |
+| `cbu` | texto | — | — |
+| `alias` | texto | — | — |
+| `internalId` | texto | — | — |
+| `active` | sí/no | — | por defecto `true` |
+| `openingBalanceCents` | número | — | por defecto `0` |
+| `openingDate` | fecha | — | — |
 | `notes` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |

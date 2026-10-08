@@ -74,7 +74,8 @@ export async function ivaBook({ from, to, company }: Period): Promise<IvaBook> {
 
 export type LedgerMovement = { _id: string; source: "caja" | "recibo" | "pago"; date: string; description: string; cashAccount: string; direction: "ingreso" | "egreso"; amountCents: number; company: CompanyKey | ""; transferId?: string; href: string };
 export type LedgerLine = { accountId: string; code: AccountCode; name: string; direction: "ingreso" | "egreso"; inCents: number; outCents: number; count: number };
-export type LedgerSummary = { lines: LedgerLine[]; byCode: Array<{ code: AccountCode; inCents: number; outCents: number }>; unassigned: { count: number; inCents: number; outCents: number }; totals: { inCents: number; outCents: number } };
+/** `totals` deja afuera los pases entre cuentas propias (`transfers`): mueven la plata de lugar, no son ingreso ni egreso. */
+export type LedgerSummary = { lines: LedgerLine[]; byCode: Array<{ code: AccountCode; inCents: number; outCents: number }>; unassigned: { count: number; inCents: number; outCents: number }; transfers: { count: number; inCents: number; outCents: number }; totals: { inCents: number; outCents: number } };
 
 /** Todos los movimientos de plata del período, cada uno con su cuenta del plan (o sin cuenta, si es de antes). */
 export async function ledgerMovements({ from, to, company }: Period, accountId?: string): Promise<Array<LedgerMovement & { accountId: string }>> {
@@ -127,7 +128,12 @@ export async function ledgerSummary(period: Period): Promise<LedgerSummary> {
   const accountById = new Map(accounts.map(account => [String(account._id), account]));
   const lines = new Map<string, LedgerLine>();
   const unassigned = { count: 0, inCents: 0, outCents: 0 };
+  const transfers = { count: 0, inCents: 0, outCents: 0 };
   for (const movement of movements) {
+    if (movement.transferId) {
+      transfers.count++;
+      if (movement.direction === "ingreso") transfers.inCents += movement.amountCents; else transfers.outCents += movement.amountCents;
+    }
     const account = accountById.get(movement.accountId);
     if (!account) {
       unassigned.count++;
@@ -147,6 +153,6 @@ export async function ledgerSummary(period: Period): Promise<LedgerSummary> {
     entry.inCents += line.inCents; entry.outCents += line.outCents;
     codes.set(line.code, entry);
   }
-  const totals = sorted.reduce((total, line) => ({ inCents: total.inCents + line.inCents, outCents: total.outCents + line.outCents }), { inCents: unassigned.inCents, outCents: unassigned.outCents });
-  return { lines: sorted, byCode: [...codes.values()], unassigned, totals };
+  const totals = sorted.reduce((total, line) => ({ inCents: total.inCents + line.inCents, outCents: total.outCents + line.outCents }), { inCents: unassigned.inCents - transfers.inCents, outCents: unassigned.outCents - transfers.outCents });
+  return { lines: sorted, byCode: [...codes.values()], unassigned, transfers, totals };
 }

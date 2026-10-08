@@ -8,6 +8,7 @@ import { checkVoucherEnabled, takeInternalNumber } from "./voucher-books";
 import { companyOf } from "./companies";
 import { nextPaymentOrderNumber } from "./balances";
 import { netFromGross } from "./net-amounts";
+import { prepareCashAccount, prepareCashAccountRecord } from "./cash-accounts";
 import type { Entity } from "./constants";
 import type { Session } from "./auth";
 
@@ -28,7 +29,7 @@ function ledgerDirection(entity: Entity, record: Record<string, unknown>): "ingr
 /** Un ingreso o un egreso de plata no se guarda sin cuenta. Una factura de compra la lleva si se la imputa. */
 const ledgerRequired = new Set<Entity>(["cash", "payments", "collections"]);
 
-export async function beforeCreate(entity: Entity, data: Record<string, unknown>) {
+export async function beforeCreate(entity: Entity, data: Record<string, unknown>, session?: Session) {
   delete data.accountChangeReason;
   if (entity === "accounts") data.direction = accountDirection(data.code);
 
@@ -38,6 +39,9 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
   if (entity === "payments" && !data.number) data.number = await nextPaymentOrderNumber();
   if (entity === "expenses") await prepareExpense(data);
   prepareNetAmounts(entity, data);
+  // La caja o cuenta sale del maestro: no se crea escribiendo un nombre.
+  if (entity === "cash" || entity === "collections" || entity === "payments") await prepareCashAccount(entity, data);
+  if (entity === "cashAccounts") await prepareCashAccountRecord(data, null, session?.role || "");
   if (entity === "invoices") {
     const company = companyOf(data.company).key;
     await checkVoucherEnabled(company, "venta", data.voucherType);
@@ -62,6 +66,8 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
 
   if (entity === "expenses") await prepareExpense(changes, before);
   prepareNetAmounts(entity, changes, before);
+  if (entity === "cash" || entity === "collections" || entity === "payments") await prepareCashAccount(entity, changes, before);
+  if (entity === "cashAccounts") await prepareCashAccountRecord(changes, before, session.role);
   if (entity === "works" && changes.status === "cerrada" && before.status !== "cerrada") await checkWorkCanClose(String(before._id));
   if (entity === "invoices") {
     if ("voucherType" in changes || "company" in changes) await checkVoucherEnabled(companyOf(merged.company).key, "venta", merged.voucherType);

@@ -6,7 +6,7 @@ import { defaultPermissionsForRole } from "../src/lib/permissions";
 const session = { userId: new Types.ObjectId().toHexString(), name: "Administración de prueba", email: "admin@test.local", role: "gerencia" as const, permissions: defaultPermissionsForRole("gerencia") };
 vi.mock("@/lib/auth", () => ({ requireSession: async () => session, getSession: async () => session, isOwnerEmail: () => false }));
 
-const { Client, Quote, Work, Invoice, Collection, Account } = await import("../src/lib/models");
+const { Client, Quote, Work, Invoice, Collection, Account, CashAccount } = await import("../src/lib/models");
 const recordsRoute = await import("../src/app/api/records/[entity]/route");
 const recordRoute = await import("../src/app/api/records/[entity]/[id]/route");
 const receiptsRoute = await import("../src/app/api/receipts/route");
@@ -18,6 +18,9 @@ const { buildReceiptPdf } = await import("../src/lib/receipt-pdf");
 let server: MongoMemoryServer;
 // Todo cobro se imputa a una cuenta CI del plan.
 let ciAccount = "";
+// Cada cobro entra a una caja o cuenta del maestro, de la empresa de sus facturas.
+let cashTvp = "";
+let cashConstructora = "";
 const params = <T extends Record<string, string>>(value: T) => ({ params: Promise.resolve(value) });
 const call = async (response: Response) => ({ status: response.status, body: await response.json() });
 const json = (method: string, body: unknown) => new Request("http://test", { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -30,6 +33,8 @@ beforeAll(async () => {
   const { ensureAccountCatalog } = await import("../src/lib/account-service");
   await ensureAccountCatalog();
   ciAccount = String((await Account.findOne({ name: "CI - CERTIFICADOS" }).lean<{ _id: Types.ObjectId }>())!._id);
+  cashTvp = String((await CashAccount.create({ company: "tvp", name: "Banco Nación TVP", nameKey: "banco nacion tvp", type: "cuenta_corriente" }))._id);
+  cashConstructora = String((await CashAccount.create({ company: "constructora", name: "Banco Galicia Constructora", nameKey: "banco galicia constructora", type: "cuenta_corriente" }))._id);
 }, 120_000);
 
 afterAll(async () => {
@@ -65,7 +70,7 @@ describe("facturas de Tango, recibos y seguimiento", () => {
     // Un recibo que cobra la primera entera y parte de la segunda.
     const pending = await call(await receiptsRoute.GET(new Request(`http://test/api/receipts?clientId=${client._id}`)));
     expect(pending.body.items.map((row: { label: string; balanceCents: number }) => [row.label, row.balanceCents])).toEqual([["Factura A 0003-00000120", 1_210_000_00], ["Factura A 0003-00000121", 605_000_00]]);
-    const receipt = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount,
+    const receipt = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, cashAccountId: cashTvp,
       clientId: String(client._id), date: "2026-09-25", method: "transferencia", reference: "TRF 991",
       allocations: [{ invoiceId: first.body._id, amountCents: 1_210_000_00 }, { invoiceId: second.body._id, amountCents: 105_000_00 }],
     })));
@@ -76,18 +81,18 @@ describe("facturas de Tango, recibos y seguimiento", () => {
     expect(await Invoice.findById(second.body._id).lean()).toMatchObject({ collectedCents: 105_000_00, status: "parcial" });
 
     // No se cobra de más, ni una factura de otro cliente.
-    const tooMuch = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, clientId: String(client._id), date: "2026-09-26", method: "efectivo", allocations: [{ invoiceId: second.body._id, amountCents: 600_000_00 }] })));
+    const tooMuch = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, cashAccountId: cashTvp, clientId: String(client._id), date: "2026-09-26", method: "efectivo", allocations: [{ invoiceId: second.body._id, amountCents: 600_000_00 }] })));
     expect(tooMuch.status).toBe(409);
-    const wrongClient = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, clientId: String(other._id), date: "2026-09-26", method: "efectivo", allocations: [{ invoiceId: second.body._id, amountCents: 1_00 }] })));
+    const wrongClient = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, cashAccountId: cashTvp, clientId: String(other._id), date: "2026-09-26", method: "efectivo", allocations: [{ invoiceId: second.body._id, amountCents: 1_00 }] })));
     expect(wrongClient.status).toBe(409);
-    const noDate = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, clientId: String(client._id), method: "efectivo", allocations: [{ invoiceId: second.body._id, amountCents: 1_00 }] })));
+    const noDate = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, cashAccountId: cashTvp, clientId: String(client._id), method: "efectivo", allocations: [{ invoiceId: second.body._id, amountCents: 1_00 }] })));
     expect(noDate.status).toBe(400);
 
     // Editar el recibo: deshace lo aplicado y aplica lo nuevo (al editar, lo suyo vuelve a contar como saldo).
     const editing = await call(await receiptsRoute.GET(new Request(`http://test/api/receipts?clientId=${client._id}&receipt=${receipt.body.receipt._id}`)));
     expect(editing.body.items.find((row: { _id: string }) => row._id === first.body._id)).toMatchObject({ balanceCents: 1_210_000_00, appliedCents: 1_210_000_00 });
     const edited = await call(await receiptRoute.PUT(json("PUT", {
-      accountId: ciAccount, clientId: String(client._id), date: "2026-09-25", method: "transferencia",
+      accountId: ciAccount, cashAccountId: cashTvp, clientId: String(client._id), date: "2026-09-25", method: "transferencia",
       allocations: [{ invoiceId: first.body._id, amountCents: 1_210_000_00 }, { invoiceId: second.body._id, amountCents: 605_000_00 }],
     }), params({ id: receipt.body.receipt._id })));
     expect(edited.status).toBe(200);
@@ -113,7 +118,7 @@ describe("facturas de Tango, recibos y seguimiento", () => {
     expect(await Invoice.findById(second.body._id).lean()).toMatchObject({ collectedCents: 0, status: "pendiente" });
 
     // El próximo recibo sigue la numeración, y sin facturas queda como pago a cuenta.
-    const onAccount = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, clientId: String(other._id), date: "2026-09-27", method: "efectivo", amountCents: 50_000_00 })));
+    const onAccount = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, cashAccountId: cashTvp, clientId: String(other._id), date: "2026-09-27", method: "efectivo", amountCents: 50_000_00 })));
     expect(onAccount.body.receipt).toMatchObject({ number: "RC-2", amountCents: 50_000_00 });
     expect(await Collection.countDocuments()).toBe(1);
   });
@@ -152,9 +157,9 @@ describe("empresa que factura", () => {
     const draft = (await call(await draftRoute.GET(new Request("http://test/api/invoices/draft")))).body;
     expect(draft).toMatchObject({ company: "tvp", number: "0003-00000501", numbers: { tvp: { factura_a: "0003-00000501", factura_x: "X-0001-00000001" }, constructora: { factura_a: "0005-00000078" } } });
     // Un recibo es de una sola empresa.
-    const mixed = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, clientId: String(client._id), date: "2026-09-30", method: "efectivo", allocations: [{ invoiceId: tvp.body._id, amountCents: 121_00 }, { invoiceId: constructora.body._id, amountCents: 242_00 }] })));
+    const mixed = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, cashAccountId: cashTvp, clientId: String(client._id), date: "2026-09-30", method: "efectivo", allocations: [{ invoiceId: tvp.body._id, amountCents: 121_00 }, { invoiceId: constructora.body._id, amountCents: 242_00 }] })));
     expect(mixed).toMatchObject({ status: 409, body: { error: expect.stringContaining("una sola empresa") } });
-    const ok = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, clientId: String(client._id), date: "2026-09-30", method: "efectivo", allocations: [{ invoiceId: constructora.body._id, amountCents: 242_00 }] })));
+    const ok = await call(await receiptsRoute.POST(json("POST", { accountId: ciAccount, cashAccountId: cashConstructora, clientId: String(client._id), date: "2026-09-30", method: "efectivo", allocations: [{ invoiceId: constructora.body._id, amountCents: 242_00 }] })));
     expect(ok.body.pdf.company).toBe("constructora");
   });
 });

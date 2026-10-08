@@ -152,11 +152,16 @@ async function main() {
     invoiceIds.set(invoice.number, id);
   }
 
+  // La caja o cuenta de los movimientos de demo sale del maestro, como en la app.
+  const demoBank = await ensure(db.collection("cashaccounts"), { nameKey: "banco corrientes demo" }, {
+    company: "tvp", name: "Banco Corrientes Demo", nameKey: "banco corrientes demo", type: "cuenta_corriente", bank: "Banco de Corrientes", currency: "ARS", active: true, openingBalanceCents: 0, createdAt: now, updatedAt: now,
+  });
+
   for (const [index, invoice] of invoiceDefinitions.filter(item => item.collected > 0).entries()) {
     const reference = `DEMO-COB-${String(index + 1).padStart(3, "0")}`;
     await ensure(collections, { reference }, {
       clientId: clientIds.get(invoice.client), invoiceId: invoiceIds.get(invoice.number), date: monthDate(Math.max(invoice.age - 1, 0), 5),
-      amountCents: pesos(invoice.collected), method: index % 3 === 0 ? "cheque" : "transferencia", account: "Banco Corrientes Demo",
+      amountCents: pesos(invoice.collected), method: index % 3 === 0 ? "cheque" : "transferencia", cashAccountId: demoBank, account: "Banco Corrientes Demo",
       reference, notes: "Cobranza ficticia", createdAt: monthDate(Math.max(invoice.age - 1, 0), 5), updatedAt: monthDate(Math.max(invoice.age - 1, 0), 5),
     });
   }
@@ -193,7 +198,7 @@ async function main() {
     const reference = `DEMO-PAG-${String(index + 1).padStart(3, "0")}`;
     await ensure(payments, { reference }, {
       supplierId: supplierIds.get(expense.supplier), expenseId: expenseIds.get(expense.number), date: monthDate(Math.max(expense.age - 1, 0), 8),
-      amountCents: pesos(paid), method: index % 4 === 0 ? "cheque" : "transferencia", account: "Banco Corrientes Demo",
+      amountCents: pesos(paid), method: index % 4 === 0 ? "cheque" : "transferencia", cashAccountId: demoBank, account: "Banco Corrientes Demo",
       reference, notes: "Pago ficticio", createdAt: monthDate(Math.max(expense.age - 1, 0), 8), updatedAt: monthDate(Math.max(expense.age - 1, 0), 8),
     });
   }
@@ -255,7 +260,7 @@ async function main() {
   ];
   for (const movement of cashDefinitions) {
     await ensure(cashMovements, { reference: movement.reference }, {
-      date: monthDate(movement.age, 9), direction: movement.direction, account: "Banco Corrientes Demo", category: "operación demo",
+      date: monthDate(movement.age, 9), direction: movement.direction, cashAccountId: demoBank, account: "Banco Corrientes Demo", category: "operación demo",
       description: movement.description, amountCents: pesos(movement.amount), reference: movement.reference, reconciled: movement.age > 0,
       createdAt: monthDate(movement.age, 9), updatedAt: monthDate(movement.age, 9),
     });

@@ -65,10 +65,10 @@ function WorkerPeriods({ worker }: { worker: Item }) {
 const moduleOf: Record<Entity, string> = {
   clients: "MAESTROS", suppliers: "MAESTROS", accounts: "MAESTROS", quotes: "COMERCIAL", works: "OBRAS", tasks: "OBRAS",
   purchases: "COMPRAS", expenses: "COMPRAS", invoices: "VENTAS", collections: "VENTAS", stock: "STOCK Y LOGÍSTICA",
-  workers: "PERSONAL", assets: "ACTIVOS", cash: "TESORERÍA", checks: "TESORERÍA", payments: "TESORERÍA",
+  workers: "PERSONAL", assets: "ACTIVOS", cash: "TESORERÍA", checks: "TESORERÍA", payments: "TESORERÍA", cashAccounts: "TESORERÍA",
 };
 
-const feminine = new Set(["factura", "obra", "cotización", "orden", "tarea", "orden de pago", "cuenta", "factura de compra"]);
+const feminine = new Set(["factura", "obra", "cotización", "orden", "tarea", "orden de pago", "cuenta", "factura de compra", "caja o cuenta"]);
 
 function itemLabel(item: Item) {
   // Una cotización se reconoce por su número: "COT-12 · Fachada 9 de Julio".

@@ -6,7 +6,7 @@ import { defaultPermissionsForRole } from "../src/lib/permissions";
 const session = { userId: new Types.ObjectId().toHexString(), name: "Administración", email: "admin@test.local", role: "gerencia" as const, permissions: defaultPermissionsForRole("gerencia") };
 vi.mock("@/lib/auth", () => ({ requireSession: async () => session, getSession: async () => session, isOwnerEmail: () => false }));
 
-const { Account, CashMovement, Client, Collection, Expense, Invoice, Supplier, VoucherBook, Work } = await import("../src/lib/models");
+const { Account, CashMovement, Client, Collection, Expense, Invoice, Supplier, VoucherBook, Work, CashAccount } = await import("../src/lib/models");
 const recordsRoute = await import("../src/app/api/records/[entity]/route");
 const recordRoute = await import("../src/app/api/records/[entity]/[id]/route");
 const receiptsRoute = await import("../src/app/api/receipts/route");
@@ -25,11 +25,17 @@ const accountId = async (name: string) => String((await Account.findOne({ name }
 const post = async (entity: string, body: unknown) => call(await recordsRoute.POST(json("POST", body), params({ entity })));
 const patch = async (entity: string, id: string, body: unknown) => call(await recordRoute.PATCH(json("PATCH", body), params({ entity, id })));
 
+// El maestro de cajas y cuentas: los movimientos eligen una de acá (o la nombran, si ya existe).
+const cash: Record<string, string> = {};
+
 beforeAll(async () => {
   server = await MongoMemoryServer.create();
   process.env.MONGODB_URI = server.getUri("comprobantes");
   const { connectDB } = await import("../src/lib/db");
   await connectDB();
+  for (const [name, nameKey, company, type] of [["Caja chica", "caja chica", "tvp", "caja"], ["Banco", "banco", "tvp", "cuenta_corriente"], ["Banco Nación TVP", "banco nacion tvp", "tvp", "cuenta_corriente"], ["Banco Constructora", "banco constructora", "constructora", "cuenta_corriente"]]) {
+    cash[name] = String((await CashAccount.create({ name, nameKey, company, type }))._id);
+  }
 }, 120_000);
 
 afterAll(async () => {
@@ -77,7 +83,7 @@ describe("plan de cuentas", () => {
   });
 
   it("un pase entre cuentas deja egreso e ingreso atados y avisa si parece repetido", async () => {
-    const body = { date: "2026-10-03", from: "Caja chica", to: "Banco Nación TVP", amountCents: 100_000_00 };
+    const body = { date: "2026-10-03", from: cash["Caja chica"], to: cash["Banco Nación TVP"], amountCents: 100_000_00 };
     const first = await call(await transferRoute.POST(json("POST", body)));
     expect(first.status).toBe(201);
     const pair = await CashMovement.find({ transferId: first.body.transferId }).sort({ direction: 1 }).lean<Array<Record<string, unknown>>>();
@@ -88,7 +94,7 @@ describe("plan de cuentas", () => {
     const again = await call(await transferRoute.POST(json("POST", body)));
     expect(again.status).toBe(409);
     expect((await call(await transferRoute.POST(json("POST", { ...body, confirmDuplicate: true })))).status).toBe(201);
-    expect((await call(await transferRoute.POST(json("POST", { ...body, to: "Caja chica" })))).status).toBe(400);
+    expect((await call(await transferRoute.POST(json("POST", { ...body, to: cash["Caja chica"] })))).status).toBe(400);
   });
 
   it("los movimientos por cuenta suman por código y cuenta", async () => {
@@ -147,7 +153,7 @@ describe("Factura X", () => {
     const client = await Client.create({ name: "Cliente sustitución" });
     const x = await post("invoices", { company: "tvp", voucherType: "factura_x", clientId: String(client._id), issueDate: "2026-10-05", netCents: 80_000_00, vatPct: 0, status: "pendiente" });
     const ci = await accountId("CI - VENTA DE MATERIALES");
-    await call(await receiptsRoute.POST(json("POST", { accountId: ci, clientId: String(client._id), date: "2026-10-05", method: "efectivo", allocations: [{ invoiceId: x.body._id, amountCents: 30_000_00 }] })));
+    await call(await receiptsRoute.POST(json("POST", { accountId: ci, cashAccountId: cash["Banco Nación TVP"], clientId: String(client._id), date: "2026-10-05", method: "efectivo", allocations: [{ invoiceId: x.body._id, amountCents: 30_000_00 }] })));
     expect(await Invoice.findById(x.body._id).lean()).toMatchObject({ collectedCents: 30_000_00, status: "parcial" });
 
     // Una fiscal no se pasa a X ni al revés: se sustituye.
@@ -180,7 +186,7 @@ describe("compras: factura, orden de pago y pago", () => {
     expect(order.status).toBe(201);
     expect(order.body.number).toMatch(/^OP-\d+$/);
     expect(await Expense.findById(invoice.body._id).lean()).toMatchObject({ paidCents: 0, status: "pendiente" });
-    await patch("payments", order.body._id, { status: "pagada" });
+    await patch("payments", order.body._id, { status: "pagada", cashAccountId: cash["Banco Constructora"] });
     expect(await Expense.findById(invoice.body._id).lean()).toMatchObject({ paidCents: 121_000_00, status: "pagado" });
     await patch("payments", order.body._id, { status: "anulada" });
     expect(await Expense.findById(invoice.body._id).lean()).toMatchObject({ paidCents: 0, status: "pendiente" });

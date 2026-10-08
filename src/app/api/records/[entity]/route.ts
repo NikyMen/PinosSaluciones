@@ -17,6 +17,7 @@ import { ensureAccountCatalog } from "@/lib/account-service";
 import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
 import { closeCertificate } from "@/lib/certificate-billing";
+import { cashAccountBalances, type CashAccountDoc } from "@/lib/cash-accounts";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -57,6 +58,11 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
       model.find(filter, listProjection[entity] || {}).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
       model.countDocuments(filter),
     ]);
+    // El maestro de cajas muestra el saldo de cada cuenta.
+    if (entity === "cashAccounts") {
+      const balances = await cashAccountBalances(items as CashAccountDoc[]);
+      for (const item of items as Array<Record<string, unknown>>) item.balanceCents = balances.get(String(item._id)) ?? 0;
+    }
     // El stock muestra el último precio de cada material, con su fecha.
     return Response.json({ items: entity === "stock" ? await withLastPrices(items as Record<string, unknown>[]) : items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) { return apiError(error); }
@@ -78,7 +84,7 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     if (entity === "quotes") data.version = await nextQuoteVersion(String(data.title || ""));
     if (entity === "tasks") await resolveTaskAssignee(session, data);
     if (entity === "workers") { data.name = composeWorkerName(data); await prepareNewWorker(data); }
-    await beforeCreate(entity, data);
+    await beforeCreate(entity, data, session);
     const replaced = entity === "invoices" ? await checkSubstitution(data) : null;
     // La factura referencia los remitos de venta que factura: no vuelve a descontar stock.
     if (entity === "invoices") await checkRemitosForInvoice(data);

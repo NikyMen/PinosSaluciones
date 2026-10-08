@@ -736,7 +736,8 @@ const CollectionSchema = new Schema({
   date: { type: Date, required: true }, amountCents: money,
   userName: String,
   method: { type: String, enum: ["transferencia", "efectivo", "cheque", "retencion", "otro"], required: true },
-  // `account` es la caja o el banco donde entró; `accountId`, la cuenta del plan (CI) a la que se imputa.
+  // `cashAccountId` es la caja o el banco donde entró (del maestro) y `account`, su nombre; `accountId`, la cuenta del plan (CI) a la que se imputa.
+  cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
   account: String, reference: String, notes: String,
   accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
 }, options);
@@ -754,6 +755,8 @@ const PaymentSchema = new Schema({
   status: { type: String, enum: ["emitida", "pagada", "anulada"], default: "pagada" },
   date: { type: Date, required: true }, dueDate: Date, amountCents: money, retentionsCents: money,
   method: { type: String, enum: ["transferencia", "efectivo", "cheque", "otro"], required: true },
+  // De qué caja o cuenta del maestro sale (`account` es su nombre, lo único que tienen los de antes).
+  cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
   account: String, reference: String, notes: String,
   accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
 }, options);
@@ -766,10 +769,32 @@ const CheckSchema = new Schema({
   clientId: { type: Schema.Types.ObjectId, ref: "Client" }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
 }, options);
 
+/*
+ * El maestro de cajas y cuentas bancarias (requerimiento integral v4, 4.1). Cada
+ * movimiento de plata elige una de acá: ya no se crea una caja escribiendo un
+ * nombre nuevo. `nameKey` es el nombre sin mayúsculas, acentos ni espacios de
+ * más: dos que se escriben distinto no pueden ser la misma cuenta dos veces.
+ * Una cuenta usada no se borra: se inactiva.
+ */
+export const CASH_ACCOUNT_TYPES = ["caja", "cuenta_corriente", "caja_ahorro", "cuenta_dolares", "otra"] as const;
+const CashAccountSchema = new Schema({
+  company: { type: String, enum: ["tvp", "constructora"], required: true },
+  name: { type: String, required: true, trim: true }, nameKey: { type: String, required: true, unique: true },
+  type: { type: String, enum: CASH_ACCOUNT_TYPES, required: true },
+  bank: String, currency: { type: String, enum: ["ARS", "USD"], default: "ARS" },
+  cbu: String, alias: String, internalId: String,
+  active: { type: Boolean, default: true },
+  // El saldo con el que arranca y desde qué fecha: lo de antes de esa fecha no suma.
+  openingBalanceCents: { type: Number, default: 0 }, openingDate: Date,
+  notes: String,
+}, options);
+
 const CashSchema = new Schema({
   date: { type: Date, required: true }, direction: { type: String, enum: ["ingreso", "egreso"], required: true },
-  // `account` es la caja o la cuenta bancaria; `accountId`, la cuenta del plan a la que se imputa (obligatoria).
+  // `cashAccountId` es la caja o la cuenta bancaria del maestro; `account`, su nombre (lo único que tienen los de antes).
+  // `accountId` es la cuenta del plan a la que se imputa (obligatoria).
   // `category` es el texto libre de antes: los movimientos viejos lo tienen y no tienen cuenta del plan.
+  cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
   account: { type: String, required: true }, category: String, description: { type: String, required: true },
   accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
   company: { type: String, enum: ["tvp", "constructora"] },
@@ -779,6 +804,7 @@ const CashSchema = new Schema({
   amountCents: money, reference: String, reconciled: { type: Boolean, default: false },
 }, options);
 CashSchema.index({ transferId: 1 }, { sparse: true });
+CashSchema.index({ cashAccountId: 1, date: 1 });
 
 /* El plan de cuentas: el catálogo maestro de src/lib/account-catalog.ts, que se puede ampliar o desactivar. */
 const AccountSchema = new Schema({
@@ -904,6 +930,7 @@ export const Collection = mongoose.models.Collection || mongoose.model("Collecti
 export const Payment = mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);
 export const Check = mongoose.models.Check || mongoose.model("Check", CheckSchema);
 export const CashMovement = mongoose.models.CashMovement || mongoose.model("CashMovement", CashSchema);
+export const CashAccount = mongoose.models.CashAccount || mongoose.model("CashAccount", CashAccountSchema);
 export const Task = mongoose.models.Task || mongoose.model("Task", TaskSchema);
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditSchema);
 export const StockTicket = mongoose.models.StockTicket || mongoose.model("StockTicket", StockTicketSchema);
@@ -984,4 +1011,4 @@ export async function nextReceiptNumber() {
   return `RC-${counter.seq}`;
 }
 
-export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task, assets: Asset, accounts: Account } as const;
+export const modelByEntity ={ clients: Client, quotes: Quote, works: Work, workers: Worker, suppliers: Supplier, stock: StockItem, purchases: Purchase, expenses: Expense, invoices: Invoice, collections: Collection, payments: Payment, checks: Check, cash: CashMovement, tasks: Task, assets: Asset, accounts: Account, cashAccounts: CashAccount } as const;

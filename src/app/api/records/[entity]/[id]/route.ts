@@ -19,6 +19,7 @@ import { isTrashEntity } from "@/lib/trash";
 import { refreshAssetSchedule } from "@/lib/asset-service";
 import { resolveWorkNetBudget } from "@/lib/work-budget";
 import { closeCertificate, reopenCertificate } from "@/lib/certificate-billing";
+import { checkCashAccountCanBeDeleted } from "@/lib/cash-accounts";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -105,6 +106,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
+    if (entity === "cashAccounts") await checkCashAccountCanBeDeleted(id);
     if (entity === "invoices" && (before as Record<string, unknown>).cae) throw new HttpError("La factura está emitida en ARCA con CAE: no se borra. Para anularla hace falta una nota de crédito.");
     if (entity === "invoices") {
       const { Invoice } = await import("@/lib/models");

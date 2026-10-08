@@ -35,6 +35,11 @@ La etapa 1 también está desarrollada:
 - El sistema frena una factura que supera lo disponible, salvo autorización de Gerencia con motivo.
 - Un remito se puede facturar en partes.
 
+La etapa 2 está desarrollada:
+- Existe el maestro de Cajas y Cuentas Bancarias, y cada movimiento elige una cuenta activa de su empresa.
+- El pase entre cuentas propias exige origen y destino y no duplica ingresos ni egresos.
+- Los nombres que ya se usaban se migran al maestro, con una lista previa para revisar.
+
 ## Respuestas a la sección 9
 
 1. **Maestro de Cajas y Bancos con permisos de alta, modificación e inactivación.** Sí (etapa 2).

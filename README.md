@@ -97,6 +97,10 @@ pnpm build
 pm2 reload ecosystem.config.cjs --update-env
 ```
 
+Si la versión trae una migración de datos, va después del build y antes del reload. Hacé primero el backup y corré cada migración en modo prueba:
+
+- `pnpm migrate:cash-accounts`: arma el maestro de cajas y cuentas bancarias con los nombres que se escribían a mano en caja, recibos y pagos. Sin `--apply` solo muestra cómo agruparía los nombres. Si dos nombres distintos son la misma cuenta, se unen con un mapa JSON (`--map mapa.json`, con `{ "como se escribió": "nombre de la cuenta" }`). Con `--apply` crea las cuentas y ata cada movimiento a la suya. Después, en Tesorería › Cajas y cuentas bancarias, hay que revisar la empresa, el tipo, el banco y el saldo inicial de cada cuenta.
+
 ## Factura electrónica (ARCA)
 
 Cada empresa (Constructora Pino y Trabajos Verticales Pino) entra a los web services de ARCA con su propio certificado. En Configuración › Empresas y comprobantes, "Probar conexión" trae los puntos de venta de web services y el último número de cada comprobante. Solo consulta: no emite nada.
@@ -135,6 +139,15 @@ El sistema se conecta con ARCA por web services (WSAA + WSFEv1) con un certifica
 - Las notas de débito y crédito van asociadas a una factura (o nota de débito) del mismo cliente, empresa y letra, y usan el talonario y punto de venta de la factura de su letra. La nota de crédito resta: descuenta de lo que se debe de la factura asociada (queda "aplicada", no puede ser por más de ese saldo) y resta en tablero, reportes, seguimiento y libro IVA.
 - Un comprobante con CAE no se borra, no se anula y no cambia cliente, fecha, número ni importes: una factura se anula con una nota de crédito. Una factura con notas asociadas no se borra. Su PDF, con CAE y QR, sale del botón "PDF fiscal" de la lista.
 - El servidor de WSFEv1 ofrece primero Diffie-Hellman de 1024 bits, que Node rechaza; `src/lib/arca.ts` pide solo cifrados ECDHE con AES-GCM o ChaCha20.
+
+## Cajas y cuentas bancarias
+
+Tesorería › Cajas y cuentas bancarias es el maestro (`cashAccounts`): empresa titular, nombre, tipo, banco, moneda, CBU/alias, estado y saldo inicial con su fecha de corte.
+
+- Cada movimiento de caja, recibo y pago elige una cuenta activa del maestro, de su misma empresa (`cashAccountId`; en `account` queda el nombre). Ya no se crea una cuenta escribiendo un nombre nuevo. Una planilla importada puede traer el nombre de una cuenta que ya existe.
+- El nombre no se repite aunque se escriba distinto (`nameKey`). Una cuenta usada no se borra: se inactiva. El saldo inicial y la fecha de corte los cambia sólo Gerencia.
+- El saldo de cada cuenta se calcula como el inicial, más lo que entró y menos lo que salió desde la fecha de corte.
+- El pase entre cuentas propias elige el origen y el destino del maestro. En Movimientos por cuenta aparece, pero no suma a los ingresos ni a los egresos.
 
 ## Facturación parcial
 

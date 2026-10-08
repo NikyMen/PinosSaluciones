@@ -7,6 +7,7 @@ import { entityConfig, type Field } from "@/lib/entity-config";
 import { isoPlusDays, money, titleCase } from "@/lib/format";
 import { DateInput, FileDrop, MoneyInput, PhoneList, SearchSelect, type Option } from "@/components/fields";
 import { useLedgerAccounts } from "@/components/ledger-account";
+import { CashAccountSelect } from "@/components/cash-account-select";
 
 /*
  * El formulario genérico de un registro: un campo por cada entrada de
@@ -42,7 +43,7 @@ export function QuickCreateModal({ entity, onClose, onCreated, hint = "Se crea a
 }) {
   const config = entityConfig[entity];
   // El alta rápida sólo pide campos simples: nada de relaciones anidadas ni archivos.
-  const fields = config.fields.filter(field => field.type !== "relation" && field.type !== "file" && field.type !== "account" && field.type !== "hidden" && !field.editOnly && !field.readOnly);
+  const fields = config.fields.filter(field => field.type !== "relation" && field.type !== "file" && field.type !== "account" && field.type !== "cashAccount" && field.type !== "hidden" && !field.editOnly && !field.readOnly);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -86,6 +87,7 @@ export function FormField({ field, value, relationOptions, personOptions, relati
   if (field.type === "hidden") return <input type="hidden" name={field.key} value={Array.isArray(value) ? value.map(String).join(",") : text} />;
   if (field.readOnly) return <label className="readonly-field">{label}<output>{field.type === "money" ? money(Number(value || 0)) : field.optionLabels?.[text] ?? (text ? titleCase(text) : "—")}</output></label>;
   if (field.type === "account") return <label>{label}<AccountSelect field={field} value={relationValue} onChange={onRelationChange} autoFocus={autoFocus} /></label>;
+  if (field.type === "cashAccount") return <label>{label}<CashAccountSelect name={field.key} value={relationValue} onChange={onRelationChange} required={field.required} autoFocus={autoFocus} /></label>;
   if (field.type === "money") return <label>{label}<MoneyInput name={field.key} defaultValue={Number(value || 0) / 100} required={field.required} autoFocus={autoFocus} /></label>;
   if (field.type === "date") return <label>{label}<DateInput name={field.key} required={field.required} autoFocus={autoFocus} quickRanges={field.quickRanges} hideToday={field.hideToday}
     defaultValue={value ? new Date(String(value)).toISOString().slice(0, 10) : field.defaultInDays ? isoPlusDays(field.defaultInDays) : ""} /></label>;

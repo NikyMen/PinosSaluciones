@@ -97,7 +97,7 @@ export async function POST(request:Request,context:RouteContext<"/api/import/[en
         const data=parsed.data as Record<string,unknown>;
         if(entity==="workers"){data.name=composeWorkerName(data);await prepareNewWorker(data)}
         // Las mismas reglas que un alta a mano: cuenta del plan obligatoria, talonarios habilitados, numeración de la X.
-        await beforeCreate(entity as Entity,data);
+        await beforeCreate(entity as Entity,data,session);
         const item=await model.create(data as never);await audit(session,"import",entity,item._id,null,item.toObject());imported++;
         if(entity==="workers")workers.push(item.toObject() as WorkerMatch);
       }catch(error){errors.push({row:index+2,error:error instanceof Error?error.message:"Error al guardar"})}

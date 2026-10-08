@@ -74,7 +74,7 @@ export function LedgerView() {
       <div className="price-kpis tracking-kpis">
         <div className="stock-kpi"><span>Ingresos</span><strong>{money(summary.totals.inCents)}</strong><small>Cuentas CI</small></div>
         <div className="stock-kpi"><span>Egresos</span><strong>{money(summary.totals.outCents)}</strong><small>Resto de los códigos</small></div>
-        <div className="stock-kpi"><span>Neto</span><strong>{money(summary.totals.inCents - summary.totals.outCents)}</strong><small>Ingresos menos egresos</small></div>
+        <div className="stock-kpi"><span>Neto</span><strong>{money(summary.totals.inCents - summary.totals.outCents)}</strong><small>Ingresos menos egresos{summary.transfers?.count ? ` · sin ${Math.ceil(summary.transfers.count / 2)} pase${Math.ceil(summary.transfers.count / 2) === 1 ? "" : "s"} entre cuentas (${money(summary.transfers.outCents)})` : ""}</small></div>
         <div className={summary.unassigned.count ? "stock-kpi alert" : "stock-kpi"}><span>Sin cuenta</span><strong>{summary.unassigned.count}</strong><small>Movimientos de antes del plan</small></div>
       </div>
       {summary.byCode.length > 0 && <div className="ledger-codes">{summary.byCode.map(code => <div key={code.code}><b>{code.code}</b><span>{accountCodeLabels[code.code]}</span><strong>{money(code.inCents || code.outCents)}</strong></div>)}</div>}

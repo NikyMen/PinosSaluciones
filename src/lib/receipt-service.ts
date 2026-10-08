@@ -7,6 +7,7 @@ import { money } from "./format";
 import { companyOf, type CompanyKey } from "./companies";
 import { accountChange, checkLedgerAccount } from "./account-service";
 import { VOID_INVOICE_STATUSES } from "./invoice-labels";
+import { resolveCashAccount } from "./cash-accounts";
 import type { Session } from "./auth";
 
 /*
@@ -24,7 +25,8 @@ export const receiptSchema = z.object({
   clientId: id,
   date: z.string({ error: "Poné la fecha del recibo" }).regex(/^\d{4}-\d{2}-\d{2}$/, "Poné la fecha del recibo").transform(value => new Date(`${value}T00:00:00.000Z`)),
   method: z.enum(["transferencia", "efectivo", "cheque", "retencion", "otro"], { error: "Elegí el medio de pago" }),
-  account: z.string().trim().max(200).optional().default(""),
+  // La caja o cuenta bancaria del maestro donde entró la plata: es obligatoria.
+  cashAccountId: z.string({ error: "Elegí la caja o cuenta donde entró" }).regex(/^[a-f\d]{24}$/i, "Elegí la caja o cuenta donde entró"),
   // La cuenta del plan (una CI) a la que se imputa el cobro: es obligatoria.
   accountId: z.string({ error: "Elegí la cuenta del plan a la que se imputa el cobro" }).regex(/^[a-f\d]{24}$/i, "Elegí la cuenta del plan a la que se imputa el cobro"),
   accountChangeReason: z.string().trim().max(500).optional().default(""),
@@ -35,7 +37,7 @@ export const receiptSchema = z.object({
 });
 
 export type ReceiptInput = {
-  clientId: string; date: Date; method: string; account?: string; reference?: string; notes?: string;
+  clientId: string; date: Date; method: string; cashAccountId: string; reference?: string; notes?: string;
   accountId: string; accountChangeReason?: string;
   /** Solo cuenta si no se aplica a ninguna factura (un pago a cuenta). */ amountCents?: number;
   allocations: Array<{ invoiceId: string; amountCents: number }>;
@@ -102,10 +104,13 @@ export async function saveReceipt(input: ReceiptInput, session: Session, receipt
   const allocations = [...byInvoice].map(([invoiceId, amountCents]) => ({ invoiceId: new Types.ObjectId(invoiceId), amountCents }));
   const amountCents = allocations.length ? allocations.reduce((total, allocation) => total + allocation.amountCents, 0) : Math.round(Number(input.amountCents || 0));
   if (amountCents <= 0) throw new ReceiptError("Poné cuánto se cobra");
+  // La caja o cuenta: del maestro, activa (salvo que el recibo ya la tuviera) y de la empresa de las facturas.
+  const keepsAccount = before && String(before.cashAccountId || "") === input.cashAccountId;
+  const cashAccount = await resolveCashAccount(input.cashAccountId, { company: [...companies][0], allowInactive: Boolean(keepsAccount) }).catch(error => { throw new ReceiptError(error instanceof Error ? error.message : "Elegí la caja o cuenta"); });
 
   const payload = {
     clientId: new Types.ObjectId(input.clientId), date: input.date, method: input.method, amountCents,
-    account: input.account || "", accountId: new Types.ObjectId(input.accountId), reference: input.reference || "", notes: input.notes || "",
+    cashAccountId: new Types.ObjectId(input.cashAccountId), account: cashAccount?.name || "", accountId: new Types.ObjectId(input.accountId), reference: input.reference || "", notes: input.notes || "",
     allocations, invoiceId: allocations[0]?.invoiceId,
   };
   if (before) {
