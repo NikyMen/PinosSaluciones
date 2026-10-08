@@ -26,7 +26,7 @@ function escape(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&
 async function setFollowUp(workId: string, number: string, open: boolean) {
   await Promise.all([
     Task.updateMany({ type: "facturar_certificado", relatedId: workId, status: open ? "completada" : { $ne: "completada" }, title: { $regex: `^Facturar certificado ${escape(number)} —` } }, { $set: { status: open ? "pendiente" : "completada" } }),
-    Notification.updateMany({ dedupeKey: `certificate-${workId}-${number}` }, { $set: { status: open ? "pendiente" : "hecha" } }),
+    Notification.updateMany({ dedupeKey: `certificate-${workId}-${number}` }, { $set: open ? { status: "nueva" } : { status: "resuelta", doneAt: new Date(), doneByName: "Al facturarse" } }),
   ]);
 }
 

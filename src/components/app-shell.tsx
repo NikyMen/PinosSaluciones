@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { PackagePlus, ArrowLeftRight, BarChart3, BookOpen, BookText, Boxes, Building2, CalendarDays, CarFront, ChevronDown, CircleDollarSign, ClipboardList, CreditCard, Database, FileClock, FileText, HandCoins, HardHat, Landmark, LayoutDashboard, Library, ListTodo, LogOut, Menu, PackageOpen, ReceiptText, Route, ScanBarcode, Settings, ShieldCheck, ShoppingCart, Store, Tags, Truck, Users, WalletCards, X, PackageSearch, Calculator, Banknote, ScrollText } from "lucide-react";
+import { Inbox, PackagePlus, ArrowLeftRight, BarChart3, BookOpen, BookText, Boxes, Building2, CalendarDays, CarFront, ChevronDown, CircleDollarSign, ClipboardList, CreditCard, Database, FileClock, FileText, HandCoins, HardHat, Landmark, LayoutDashboard, Library, ListTodo, LogOut, Menu, PackageOpen, ReceiptText, Route, ScanBarcode, Settings, ShieldCheck, ShoppingCart, Store, Tags, Truck, Users, WalletCards, X, PackageSearch, Calculator, Banknote, ScrollText } from "lucide-react";
 import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
 import { canViewSection, type UserPermissions } from "@/lib/permissions";
 import { saveNavVersion, type NavVersion } from "@/lib/nav-version";
@@ -81,6 +81,7 @@ const groups: NavGroup[] = [
   ] },
   { id: "management", label: "Gestión", icon: LayoutDashboard, items: [
     dashboardItem,
+    { href: "/app/bandeja", label: "Bandeja de pendientes", icon: Inbox },
     { href: "/app/reports", label: "iA y Reportes", icon: BarChart3, permission: "reports" },
   ] },
 ];

@@ -85,7 +85,7 @@ export async function emitRequest(id: string, session: Session) {
     await notify({
       title: `Autorizar la solicitud ${saved.number} por ${money(Number(saved.amountCents))}`,
       body: `${supplier?.name || "Proveedor"} · ${String(saved.description || "")}. La emitió ${session.name}.`,
-      kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: ["gerencia"], userIds: await usersWithAction("approvePurchases"), dedupeKey: `purchase-approve-${saved._id}`,
+      kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: ["gerencia"], userIds: await usersWithAction("approvePurchases"), event: "compra.autorizar", exception: true, dedupeKey: `purchase-approve-${saved._id}`,
     });
   } else await notifyTreasury(saved, supplier?.name);
   return saved;
@@ -95,7 +95,7 @@ async function notifyTreasury(request: PurchaseDoc, supplierName?: string) {
   await notify({
     title: `Solicitud ${request.number} autorizada: emitir la orden de pago`,
     body: `${supplierName || "Proveedor"} · ${money(Number(request.amountCents))} · ${paymentTermLabels[String(request.paymentTerms || "contado")]}${request.paymentTerms === "plazo" && request.termDays ? ` a ${request.termDays} días` : ""}.`,
-    kind: "compra", href: `/app/purchases?ver=${request._id}`, roles: ["administracion"], dedupeKey: `purchase-treasury-${request._id}`,
+    kind: "compra", href: `/app/purchases?ver=${request._id}`, roles: ["administracion"], event: "compra.tesoreria", dedupeKey: `purchase-treasury-${request._id}`,
   });
 }
 
@@ -114,7 +114,7 @@ export async function decideRequest(id: string, input: { approve: boolean; reaso
   if (!saved) throw new HttpError("La solicitud ya se resolvió", 409);
   const supplier = await Supplier.findById(request.supplierId).select("name").lean<{ name?: string }>();
   if (input.approve) await notifyTreasury(saved, supplier?.name);
-  else await notify({ title: `Solicitud ${saved.number} rechazada`, body: `${session.name}: ${reason}`, kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: ["compras"], userIds: request.userId ? [request.userId] : undefined, dedupeKey: `purchase-rejected-${saved._id}` });
+  else await notify({ title: `Solicitud ${saved.number} rechazada`, body: `${session.name}: ${reason}`, kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: ["compras"], userIds: request.userId ? [request.userId] : undefined, event: "compra.rechazada", dedupeKey: `purchase-rejected-${saved._id}` });
   return saved;
 }
 
@@ -142,7 +142,7 @@ export async function cancelPurchase(id: string, reasonInput: string, session: S
   const ids = [request?._id, order?._id].filter(Boolean);
   await Purchase.updateMany({ _id: { $in: ids } }, { $set: { status: "anulada", cancellation }, $push: { history: history("Anulada", session, reason) } });
   if (order) await Payment.updateMany({ purchaseId: order._id, status: "emitida" }, { $set: { status: "anulada", notes: `Anulada con la orden ${order.number}: ${reason}` } });
-  await notify({ title: `${purchase.number} anulada`, body: `${session.name}: ${reason}`, kind: "compra", href: `/app/purchases?ver=${purchase._id}`, roles: ["compras", "administracion"] });
+  await notify({ title: `${purchase.number} anulada`, body: `${session.name}: ${reason}`, kind: "compra", href: `/app/purchases?ver=${purchase._id}`, roles: ["compras", "administracion"], event: "compra.anulada" });
   return Purchase.find({ _id: { $in: ids } }).lean();
 }
 
@@ -235,7 +235,7 @@ async function notifyPurchasing(order: PurchaseDoc, payment: Lean, session: Sess
   await notify({
     title: paid ? `Pago ${String(payment.number)} de la orden ${order.number}` : `Orden de compra ${order.number} con la orden de pago ${String(payment.number)}`,
     body: `${money(Number(payment.amountCents || 0))} · ${paid ? `pagado por ${session.name}${payment.attachment ? ", con comprobante" : ""}` : `vence ${payment.dueDate ? new Date(payment.dueDate as Date).toLocaleDateString("es-AR") : "sin fecha"}`}. ${order.receptionStatus === "recibida" ? "" : "Ya se puede recibir la mercadería."}`.trim(),
-    kind: "compra", href: `/app/purchases?ver=${order._id}`, roles: ["compras"], dedupeKey: `purchase-payment-${String(payment._id)}-${paid ? "pagada" : "emitida"}`,
+    kind: "compra", href: `/app/purchases?ver=${order._id}`, roles: ["compras"], event: "compra.pago", dedupeKey: `purchase-payment-${String(payment._id)}-${paid ? "pagada" : "emitida"}`,
   });
 }
 
@@ -349,7 +349,7 @@ export async function registerPurchaseReceipt(id: string, input: PurchaseReceipt
     attachment: input.attachment, notes: input.notes, userId: session.userId, userName: session.name,
   });
   await Purchase.updateOne({ _id: order._id }, { $push: { history: history(`Remito ${input.supplierRemito || number}${close ? " (final: orden cerrada)" : ""}`, session, input.status === "observada" ? input.notes : undefined) } });
-  if (input.status === "observada") await notify({ title: `Remito observado de la orden ${order.number}`, body: input.notes || "Llegó con diferencias", kind: "compra", href: `/app/purchases?ver=${order._id}`, roles: ["compras", "administracion"] });
+  if (input.status === "observada") await notify({ title: `Remito observado de la orden ${order.number}`, body: input.notes || "Llegó con diferencias", kind: "compra", href: `/app/purchases?ver=${order._id}`, roles: ["compras", "administracion"], event: "compra.remito_observado" });
   return { receipt: receipt.toObject(), order: await Purchase.findById(order._id).lean(), warehouse };
 }
 

@@ -2,6 +2,7 @@ import mongoose, { Schema } from "mongoose";
 import { entities, ROLES, USER_ACTIONS, viewSections } from "./constants";
 import { CHECK_RESULTS, DEVIATIONS, INSPECTION_RUBROS, MATERIAL_CONDITIONS, ORDER_STATUS, PERFORMANCE, PRODUCTION_CONSUMPTION, WEATHER } from "./inspections";
 import { WAREHOUSE_KEYS } from "./warehouses";
+import { LEGACY_NOTIFICATION_STATUSES, NOTIFICATION_STATUSES } from "./notification-rules";
 import { ACCOUNT_CODES } from "./account-catalog";
 import { INVOICE_STATUSES, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES, VOUCHER_TYPES } from "./invoice-labels";
 import { VAT_CONDITION_KEYS } from "./fiscal";
@@ -975,12 +976,23 @@ const NotificationSchema = new Schema({
   roles: [{ type: String, enum: ROLES }],
   // Además de los roles, personas puntuales: quienes pueden autorizar compras, por ejemplo.
   userIds: { type: [{ type: Schema.Types.ObjectId, ref: "User" }], default: undefined },
-  // "hecha" la saca de la campanita para siempre; "pospuesta" la esconde hasta remindAt.
-  status: { type: String, enum: ["pendiente", "pospuesta", "hecha"], default: "pendiente" },
+  // Nueva → Leída → En gestión → Resuelta, o Descartada con motivo (src/lib/notification-rules.ts).
+  // Los de antes: "pendiente" es nueva, "pospuesta" es en gestión con recordatorio y "hecha" es resuelta.
+  status: { type: String, enum: [...NOTIFICATION_STATUSES, ...LEGACY_NOTIFICATION_STATUSES], default: "nueva" },
+  // El evento que lo generó: de ahí sale el plazo para resolverlo antes de escalar a Gerencia.
+  event: String, dueAt: Date, escalatedAt: Date,
+  // A quién de su área se le asignó.
+  assignedToId: { type: Schema.Types.ObjectId, ref: "User" }, assignedToName: String,
+  // "En gestión" con recordatorio: se esconde de la campanita hasta remindAt.
   remindAt: Date,
-  doneAt: Date, doneByName: String,
+  doneAt: Date, doneByName: String, discardReason: String,
+  history: { type: [{ _id: false, action: String, note: String, at: { type: Date, default: Date.now }, userName: String }], default: undefined },
   dedupeKey: { type: String, index: true },
 }, options);
+NotificationSchema.index({ status: 1, dueAt: 1 });
+
+/* Los plazos de la bandeja por evento, en horas, si Gerencia los cambió. Un solo documento. */
+const NotificationSettingsSchema = new Schema({ _id: String, hours: { type: Map, of: Number, default: {} } }, options);
 
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
 export const Client = mongoose.models.Client || mongoose.model("Client", ClientSchema);
@@ -1008,6 +1020,7 @@ export const StockTicket = mongoose.models.StockTicket || mongoose.model("StockT
 export const Asset = mongoose.models.Asset || mongoose.model("Asset", AssetSchema);
 export const StockTrash = mongoose.models.StockTrash || mongoose.model("StockTrash", StockTrashSchema);
 export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);
+export const NotificationSettings = mongoose.models.NotificationSettings || mongoose.model("NotificationSettings", NotificationSettingsSchema);
 export const StockTransfer = mongoose.models.StockTransfer || mongoose.model("StockTransfer", StockTransferSchema);
 export const SalesRemito = mongoose.models.SalesRemito || mongoose.model("SalesRemito", SalesRemitoSchema);
 export const StockReservation = mongoose.models.StockReservation || mongoose.model("StockReservation", StockReservationSchema);

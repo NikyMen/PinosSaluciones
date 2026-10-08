@@ -2141,3 +2141,14 @@ td > .company-badge:first-child { margin-left: 0; }
 .attachments-panel .icon-link { display: inline-flex; align-items: center; cursor: pointer; color: var(--muted); }
 .attachments-history li { opacity: .7; text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
 .attachments-add { justify-self: start; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+
+/* Bandeja de pendientes */
+.notif-status { font-size: 11px; color: var(--muted); }
+.notif-escalated, .notif-due { display: block; font-size: 11px; color: #b42318; }
+.notif-due { color: var(--muted); }
+.notif-inbox-link { display: flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 13px; border-top: 1px solid var(--line, #e2e8f0); }
+.inline-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.badge.notif-nueva, .badge.notif-pendiente { background: #fff5e0; color: #946200; }
+.badge.notif-en_gestion, .badge.notif-pospuesta, .badge.notif-leida { background: #eef2f7; color: #4a5568; }
+.badge.notif-resuelta, .badge.notif-hecha { background: #e6f6ec; color: #1d7a45; }
+.badge.notif-descartada { background: #fdecec; color: #b42318; }

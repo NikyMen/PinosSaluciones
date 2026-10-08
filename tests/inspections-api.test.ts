@@ -122,7 +122,8 @@ describe("inspecciones de obra (API)", () => {
     expect(updated.activity.at(-1)?.detail).toMatch(/Inspección de pintura del 18\/09\/2026 cerrada/);
 
     const notices = await Notification.find({ href: `/app/works/${workId}/inspections/${inspectionId}` }).lean() as unknown as Array<{ roles: string[] }>;
-    expect(notices.map(notice => notice.roles.sort().join(","))).toEqual(expect.arrayContaining(["arquitecto,gerencia", "compras,gerencia"]));
+    // Gerencia ya no recibe todos los avisos operativos: sólo excepciones y lo escalado.
+    expect(notices.map(notice => notice.roles.sort().join(","))).toEqual(expect.arrayContaining(["arquitecto", "compras"]));
 
     // Cerrada ya no se edita ni se descarta.
     expect((await inspection.PATCH(new Request("http://test", { ...json({ stage: "Otra" }), method: "PATCH" }), params({ id: workId, inspectionId }))).status).toBe(409);

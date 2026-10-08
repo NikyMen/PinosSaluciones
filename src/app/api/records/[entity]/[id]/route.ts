@@ -21,6 +21,7 @@ import { resolveWorkNetBudget } from "@/lib/work-budget";
 import { closeCertificate, reopenCertificate } from "@/lib/certificate-billing";
 import { checkCashAccountCanBeDeleted } from "@/lib/cash-accounts";
 import { afterPaymentChange, checkPurchaseDelete } from "@/lib/purchase-flow";
+import { noticeQuoteApproved, noticeWorkFinished } from "@/lib/event-notices";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -70,6 +71,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       // Aprobada: reserva lo disponible y pasa el faltante a Compras. Si se cae, la reserva se libera.
       const status = String((item as Record<string, unknown>).status);
       if (status === "aprobada") await reserveForQuote(id, session);
+      // Cada área recibe su aviso con lo que le toca.
+      if (status === "aprobada") await noticeQuoteApproved(item as Record<string, unknown> & { _id: unknown }, session);
       else if (status !== "convertida") await releaseForQuote(id, session);
     }
     // Una factura anulada libera sus remitos: vuelven a estar pendientes de facturar.
@@ -82,6 +85,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       // Anulada, el certificado que facturaba vuelve a quedar pendiente; reactivada, se vuelve a marcar.
       if (wasVoid !== isVoid) await (isVoid ? reopenCertificate(item as Record<string, unknown>) : closeCertificate(item as Record<string, unknown>));
     }
+    // Obra finalizada: Ventas, Administración, Compras y RR. HH. cierran cada uno lo suyo.
+    if (entity === "works" && item && (before as Record<string, unknown>).status !== "terminada" && (item as Record<string, unknown>).status === "terminada") await noticeWorkFinished(item as Record<string, unknown> & { _id: unknown }, session);
     // La lectura de uso pudo cambiar a mano: lo que vence por km u horas se recalcula y avisa.
     if (entity === "assets" && item && "currentReading" in changes) await refreshAssetSchedule(id);
     if (entity === "collections" && item) {

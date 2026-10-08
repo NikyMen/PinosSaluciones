@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import { CashMovement, Expense, Payment, Purchase, PurchaseReceipt } from "./models";
 import { HttpError } from "./api";
 import { canRead, canWrite } from "./permissions";
+import { notify } from "./notifications";
 import type { Entity } from "./constants";
 import type { Session } from "./auth";
 
@@ -65,5 +66,10 @@ export async function addAttachment(entity: AttachmentEntity, id: string, input:
     if (!result.modifiedCount) throw new HttpError("El archivo a reemplazar no existe o ya se reemplazó", 409);
     await model.updateOne({ _id: id }, { $push: { files: file } });
   } else await model.updateOne({ _id: id }, { $push: { files: file } });
+  // Un comprobante de pago de una compra: Compras se entera, con el link a la OC.
+  if (entity === "payments" && doc.purchaseId) await notify({
+    title: `Comprobante de la ${String(doc.number || "orden de pago")}`, body: `${input.name || "Archivo"} · lo cargó ${session.name}.`,
+    kind: "compra", href: `/app/purchases?ver=${String(doc.purchaseId)}`, roles: ["compras"], event: "compra.pago", dedupeKey: `payment-file-${String(file._id)}`,
+  });
   return filesOf(await model.findById(id).lean<Record<string, unknown>>());
 }

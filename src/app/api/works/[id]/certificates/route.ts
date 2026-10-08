@@ -35,7 +35,14 @@ export async function POST(request: Request, context: RouteContext<"/api/works/[
     if (parsed.data.approved) await notify({
       title: `Certificado ${parsed.data.number} listo para facturar`,
       body: `Obra ${work.code} — ${work.name}. Avance ${parsed.data.percentage}% · ${money(amountCents)} neto. Lo emitió ${session.name}.`,
-      kind: "certificado", href: `/app/invoices?obra=${work._id}&certificado=${certificate._id}`, roles: ["administracion"], dedupeKey: `certificate-${work._id}-${parsed.data.number}`,
+      // Ventas y Administración: facturar y proyectar la cobranza.
+      kind: "certificado", href: `/app/invoices?obra=${work._id}&certificado=${certificate._id}`, roles: ["administracion", "ventas"], event: "certificado.aprobado", dedupeKey: `certificate-${work._id}-${parsed.data.number}`,
+    });
+    // Cargado sin aprobar: Producción lo revisa y gestiona la aprobación del cliente.
+    else await notify({
+      title: `Certificado ${parsed.data.number} cargado: gestionar la aprobación del cliente`,
+      body: `Obra ${work.code} — ${work.name}. Avance ${parsed.data.percentage}% · ${money(amountCents)} neto. Lo cargó ${session.name}.`,
+      kind: "certificado", href: `/app/works/${work._id}`, roles: ["arquitecto"], event: "certificado.cargado", dedupeKey: `certificate-loaded-${work._id}-${parsed.data.number}`,
     });
     if (parsed.data.approved) await Task.create({ title: `Facturar certificado ${parsed.data.number} — ${work.name}`, type: "facturar_certificado", status: "pendiente", assigneeRole: "administracion", relatedType: "works", relatedId: work._id });
     await audit(session, "add_certificate", "works", id, before, work.toObject());
