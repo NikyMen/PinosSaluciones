@@ -109,6 +109,8 @@ const QuoteSchema = new Schema({
   clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   title: { type: String, required: true }, description: String,
   version: { type: Number, default: 1, min: 1 }, amountCents: money,
+  // El neto (sin IVA): sobre esto se certifica y se controla lo facturado. La cascada lo escribe (subtotal 3).
+  netCents: Number,
   estimatedCostCents: money,
   status: { type: String, enum: ["borrador", "enviada", "seguimiento", "aprobada", "rechazada", "vencida", "convertida"], default: "borrador" },
   ownerId: { type: Schema.Types.ObjectId, ref: "User" }, validUntil: Date,
@@ -160,6 +162,8 @@ const WorkSchema = new Schema({
   // planificada = Pendiente de inicio, en_curso = Activa, terminada = Finalizada; cerrada es con todo conciliado.
   status: { type: String, enum: ["planificada", "en_curso", "pausada", "terminada", "cerrada", "cancelada"], default: "planificada" },
   startDate: Date, endDate: Date, budgetCents: money,
+  // El presupuesto sin IVA: los certificados son un porcentaje de esto, y la factura le suma el IVA.
+  budgetNetCents: Number,
   // El avance fisico ya no se escribe a mano: lo recalcula el cierre de cada
   // inspeccion. Se guarda para que listados y tablero no tengan que calcularlo.
   // "manual" es el avance que venia cargado antes de las inspecciones;
@@ -690,6 +694,8 @@ const InvoiceSchema = new Schema({
   number: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" },
   workId: { type: Schema.Types.ObjectId, ref: "Work" }, certificateNumber: String,
+  // El certificado que factura, por id: el número se repite entre obras y se puede tipear distinto.
+  certificateId: { type: Schema.Types.ObjectId },
   description: String, issueDate: { type: Date, required: true }, dueDate: Date,
   netCents: Number, vatPct: Number, vatCents: Number,
   amountCents: money, collectedCents: money,

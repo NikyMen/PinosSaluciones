@@ -7,6 +7,7 @@ import { money } from "./format";
 import { checkVoucherEnabled, takeInternalNumber } from "./voucher-books";
 import { companyOf } from "./companies";
 import { nextPaymentOrderNumber } from "./balances";
+import { netFromGross } from "./net-amounts";
 import type { Entity } from "./constants";
 import type { Session } from "./auth";
 
@@ -36,6 +37,7 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
 
   if (entity === "payments" && !data.number) data.number = await nextPaymentOrderNumber();
   if (entity === "expenses") await prepareExpense(data);
+  prepareNetAmounts(entity, data);
   if (entity === "invoices") {
     const company = companyOf(data.company).key;
     await checkVoucherEnabled(company, "venta", data.voucherType);
@@ -59,6 +61,7 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
   const history = direction ? await accountChange(before, changes, reason, session) : null;
 
   if (entity === "expenses") await prepareExpense(changes, before);
+  prepareNetAmounts(entity, changes, before);
   if (entity === "works" && changes.status === "cerrada" && before.status !== "cerrada") await checkWorkCanClose(String(before._id));
   if (entity === "invoices") {
     if ("voucherType" in changes || "company" in changes) await checkVoucherEnabled(companyOf(merged.company).key, "venta", merged.voucherType);
@@ -72,6 +75,22 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
     delete changes.replacesId;
   }
   return history ? { $push: { accountHistory: history } } : {};
+}
+
+/**
+ * El neto de una cotización cargada a mano y el de una obra salen del importe
+ * con IVA cuando ese importe cambia. La cascada escribe el suyo (subtotal 3) en
+ * su propia ruta. El formulario de la obra manda siempre el presupuesto: sólo
+ * se recalcula si cambió, para no pisar el neto que vino de la cascada.
+ */
+function prepareNetAmounts(entity: Entity, data: Record<string, unknown>, before: Record<string, unknown> = {}) {
+  if (entity === "quotes" && "amountCents" in data && Number(data.amountCents) !== Number(before.amountCents)) {
+    const cascade = before.cascade as { ivaPct?: number } | undefined;
+    data.netCents = netFromGross(Number(data.amountCents || 0), cascade?.ivaPct);
+  }
+  if (entity === "works" && "budgetCents" in data && !("budgetNetCents" in data && data.budgetNetCents !== undefined) && Number(data.budgetCents) !== Number(before.budgetCents)) {
+    data.budgetNetCents = netFromGross(Number(data.budgetCents || 0));
+  }
 }
 
 /**

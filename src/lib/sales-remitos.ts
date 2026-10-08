@@ -161,6 +161,31 @@ export async function attachRemitos(invoiceId: unknown, remitoIds: unknown[], re
   await SalesRemito.updateMany({ _id: { $in: remitoIds } }, { $set: { status: "facturado" }, $addToSet: { invoiceIds: invoiceId } });
 }
 
+/**
+ * Toma los remitos para una factura nueva antes de guardarla: cada uno pasa de
+ * "pendiente" a "facturado" sólo si sigue pendiente. Si dos facturas quieren el
+ * mismo remito a la vez, una lo consigue y la otra se frena acá. Si no se pudo
+ * tomar alguno, se sueltan los que se habían tomado.
+ */
+export async function claimRemitos(invoiceId: unknown, remitoIds: unknown[]) {
+  const claimed: unknown[] = [];
+  for (const remitoId of remitoIds) {
+    const remito = await SalesRemito.findOneAndUpdate({ _id: remitoId, status: "pendiente" }, { $set: { status: "facturado" }, $addToSet: { invoiceIds: invoiceId } }, { returnDocument: "after" }).select("number").lean<{ number?: string }>();
+    if (!remito) {
+      await unclaimRemitos(invoiceId, claimed);
+      const taken = await SalesRemito.findById(remitoId).select("number status").lean<{ number?: string; status?: string }>();
+      throw new HttpError(`El remito ${taken?.number || ""} ya está ${taken?.status || "tomado por otra factura"}`.replace("  ", " "), 409);
+    }
+    claimed.push(remitoId);
+  }
+}
+
+/** Suelta los remitos que había tomado una factura que al final no se guardó. */
+export async function unclaimRemitos(invoiceId: unknown, remitoIds: unknown[]) {
+  if (!remitoIds.length) return;
+  await SalesRemito.updateMany({ _id: { $in: remitoIds }, invoiceIds: invoiceId }, { $set: { status: "pendiente" }, $pull: { invoiceIds: invoiceId } });
+}
+
 /** Una factura anulada devuelve sus remitos a "pendiente de facturar", salvo que otra factura vigente los tenga. */
 export async function releaseRemitos(invoiceId: unknown) {
   const remitos = await SalesRemito.find({ invoiceIds: invoiceId }).lean<Array<Lean & { invoiceIds: Types.ObjectId[] }>>();

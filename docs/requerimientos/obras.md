@@ -27,6 +27,8 @@ En la reunión se habló de *"botón de generar certificado por el 50 % de obra"
 
 Antes de implementar OBR-3 hay que definir con Fede cuál de los dos es el alcance. Ver [[../modelo-datos/certificado-obra]].
 
+Hoy existe la certificación por porcentaje global. Se calcula sobre el **presupuesto neto** de la obra y el servidor controla que no pase del 100 %: ver [[../decisiones/2026-10-certificado-sobre-neto]]. El certificado por ítem es la fase 6 del [[respuesta-v4|requerimiento integral v4]].
+
 ## Flujo de cobro declarado
 
 1. Anticipo del 30–50 % a la aprobación

@@ -37,7 +37,7 @@ async function uploadFiles(files: File[]) {
 }
 type WorkExpense = { _id: string; number?: string; description: string; category: string; amountCents: number; issueDate: string; status: string };
 
-type Work = { _id: string; name: string; code: string; progress: number; budgetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
+type Work = { _id: string; name: string; code: string; progress: number; budgetCents?: number; budgetNetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
 
 export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEdit: boolean; canCreateWorker: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
@@ -185,7 +185,7 @@ export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEd
 
     <div className="work-detail-grid">
       <WorkSection icon={<FileCheck2/>} title="Certificados">
-        {canEdit && <form className="mini-form" key={`certificate-${formKey}`} onSubmit={certificate}><input name="number" required placeholder="Número"/><input name="period" required placeholder="Período"/><input name="percentage" type="number" min="0" max="100" required placeholder="%"/><MoneyInput name="amount" required placeholder="Importe"/><FileDrop name="files" multiple/><button className="primary-btn" disabled={certificateBusy === "new"}>{certificateBusy === "new" ? "Subiendo…" : "Aprobar"}</button></form>}
+        {canEdit && <form className="mini-form" key={`certificate-${formKey}`} onSubmit={certificate}><input name="number" required placeholder="Número"/><input name="period" required placeholder="Período"/><input name="percentage" type="number" min="0" max="100" required placeholder="%"/><MoneyInput name="amount" required placeholder="Importe neto (sin IVA)"/><FileDrop name="files" multiple/><button className="primary-btn" disabled={certificateBusy === "new"}>{certificateBusy === "new" ? "Subiendo…" : "Aprobar"}</button></form>}
         <div className="detail-list">{work.certificates?.slice().reverse().map((item, index) => {
           const files = certificateFiles(item);
           return <div className="certificate-row" key={item._id || index}>
@@ -235,7 +235,7 @@ export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEd
       </div>
     </section>
 
-    {invoicing && <InvoiceWorkModal work={{ _id: id, code: work.code, name: work.name, budgetCents: work.budgetCents, progress: work.progress, certificates: work.certificates, expenses }}
+    {invoicing && <InvoiceWorkModal work={{ _id: id, code: work.code, name: work.name, budgetCents: work.budgetCents, budgetNetCents: work.budgetNetCents, progress: work.progress, certificates: work.certificates, expenses }}
       onClose={() => setInvoicing(false)} onDone={updated => { setInvoicing(false); setWork(updated as Work); }} />}
   </>;
 }

@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-10-06 · 26 colecciones.
+Generado el 2026-10-08 · 26 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -50,6 +50,7 @@ Colección `quotes` · entidad `quotes`
 | `description` | texto | — | — |
 | `version` | número | — | mínimo 1 · por defecto `1` |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
+| `netCents` | número | — | — |
 | `estimatedCostCents` | número | — | mínimo 0 · por defecto `0` |
 | `status` | texto | — | valores: `borrador` · `enviada` · `seguimiento` · `aprobada` · `rechazada` · `vencida` · `convertida` · por defecto `"borrador"` |
 | `ownerId` | referencia | — | apunta a **User** |
@@ -117,6 +118,7 @@ Colección `works` · entidad `works`
 | `startDate` | fecha | — | — |
 | `endDate` | fecha | — | — |
 | `budgetCents` | número | — | mínimo 0 · por defecto `0` |
+| `budgetNetCents` | número | — | — |
 | `progress` | número | — | mínimo 0 · máximo 100 · por defecto `0` |
 | `progressMode` | texto | — | valores: `inspecciones` · `manual` · `sin_base` · por defecto `"sin_base"` |
 | `progressUpdatedAt` | fecha | — | — |
@@ -399,6 +401,7 @@ Colección `invoices` · entidad `invoices`
 | `quoteId` | referencia | — | apunta a **Quote** |
 | `workId` | referencia | — | apunta a **Work** |
 | `certificateNumber` | texto | — | — |
+| `certificateId` | referencia | — | — |
 | `description` | texto | — | — |
 | `issueDate` | fecha | sí | — |
 | `dueDate` | fecha | — | — |

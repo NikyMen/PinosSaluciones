@@ -24,7 +24,8 @@ export async function GET(request: Request) {
     await connectDB();
     const url = new URL(request.url);
     const workId = url.searchParams.get("obra") || "";
-    const certificateNumber = url.searchParams.get("certificado") || "";
+    // El certificado llega por id; los avisos de antes traen su número.
+    const certificateRef = url.searchParams.get("certificado") || "";
     // Facturar remitos de venta (?remitos=id1,id2): del mismo cliente y la misma empresa.
     const remitoIds = (url.searchParams.get("remitos") || "").split(",").filter(isValidObjectId);
 
@@ -47,16 +48,17 @@ export async function GET(request: Request) {
     // Las empresas con certificado de ARCA en el servidor: sus A y B se emiten desde acá, con CAE.
     const arca = Object.fromEntries(COMPANY_KEYS.map(company => [company, Boolean(arcaCredentials(company))]));
     const draft: Record<string, unknown> = { company: "tvp", voucherType: firstType, number: numbers.tvp?.[firstType] || "", numbers, types, pointsOfSale, arca, vatPct: 21 };
-    if (workId && certificateNumber && isValidObjectId(workId)) {
-      const work = await Work.findById(workId, { code: 1, name: 1, clientId: 1, quoteId: 1, certificates: 1 }).lean<{ code: string; name: string; clientId?: unknown; quoteId?: unknown; certificates?: Array<{ number?: string; period?: string; percentage?: number; amountCents?: number }> }>();
-      const certificate = work?.certificates?.find(item => String(item.number) === certificateNumber);
+    if (workId && certificateRef && isValidObjectId(workId)) {
+      const work = await Work.findById(workId, { code: 1, name: 1, clientId: 1, quoteId: 1, certificates: 1 }).lean<{ code: string; name: string; clientId?: unknown; quoteId?: unknown; certificates?: Array<{ _id?: unknown; number?: string; period?: string; percentage?: number; amountCents?: number }> }>();
+      const certificate = work?.certificates?.find(item => String(item._id) === certificateRef) || work?.certificates?.find(item => String(item.number) === certificateRef);
+      const certificateNumber = String(certificate?.number || certificateRef);
       // La empresa es la que tiene cargada la cotización de la obra.
       const quote = work?.quoteId ? await Quote.findById(work.quoteId).select("company").lean<{ company?: string }>() : null;
       if (quote?.company && COMPANY_KEYS.includes(quote.company as CompanyKey)) Object.assign(draft, { company: quote.company, number: numbers[quote.company as CompanyKey]?.[firstType] || "" });
       if (work && certificate) Object.assign(draft, {
         clientId: work.clientId ? String(work.clientId) : "",
         workId, quoteId: work.quoteId ? String(work.quoteId) : "",
-        certificateNumber,
+        certificateNumber, certificateId: certificate._id ? String(certificate._id) : "",
         // El certificado va sin IVA: es el neto de la factura.
         netCents: Number(certificate.amountCents || 0),
         issueDate: todayIso(),

@@ -50,6 +50,8 @@ export async function PUT(request: Request, context: RouteContext<"/api/quotes/[
       $set: {
         items, overheads, cascade,
         amountCents: result.priceCents,
+        // El neto es el subtotal 3: lo que se certifica y se factura; el IVA lo suma la factura.
+        netCents: result.subtotal3Cents,
         estimatedCostCents: result.directCostCents,
       },
       ...(closed && force ? { $push: { history: { action: `Destrabó el costeo (cotización ${before.status})`, at: new Date(), userId: session.userId, userName: session.name } } } : {}),

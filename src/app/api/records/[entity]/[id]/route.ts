@@ -17,6 +17,8 @@ import { applyCreditNote, checkFiscalChanges, prepareInvoice } from "@/lib/invoi
 import { prepareWorkerChanges } from "@/lib/worker-files";
 import { isTrashEntity } from "@/lib/trash";
 import { refreshAssetSchedule } from "@/lib/asset-service";
+import { resolveWorkNetBudget } from "@/lib/work-budget";
+import { closeCertificate, reopenCertificate } from "@/lib/certificate-billing";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -29,6 +31,8 @@ export async function GET(_request: Request, context: RouteContext<"/api/records
     if (!item) return Response.json({ error: "No encontrado" }, { status: 404 });
     // Una tarea de otra area no se lee ni sabiendo el id.
     if (entity === "tasks" && !canSeeTask(session, item as Record<string, unknown>)) return Response.json({ error: "No encontrado" }, { status: 404 });
+    // Una obra de antes no tiene guardado su presupuesto neto: se calcula para certificar sobre el neto.
+    if (entity === "works") (item as Record<string, unknown>).budgetNetCents = await resolveWorkNetBudget(item as Parameters<typeof resolveWorkNetBudget>[0]);
     return Response.json(item);
   } catch (error) { return apiError(error); }
 }
@@ -73,6 +77,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       const wasVoid = VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status));
       const isVoid = VOID_INVOICE_STATUSES.includes(String((item as Record<string, unknown>).status));
       if (wasVoid !== isVoid) await applyCreditNote(before as Record<string, unknown>, isVoid ? -1 : 1);
+      // Anulada, el certificado que facturaba vuelve a quedar pendiente; reactivada, se vuelve a marcar.
+      if (wasVoid !== isVoid) await (isVoid ? reopenCertificate(item as Record<string, unknown>) : closeCertificate(item as Record<string, unknown>));
     }
     // La lectura de uso pudo cambiar a mano: lo que vence por km u horas se recalcula y avisa.
     if (entity === "assets" && item && "currentReading" in changes) await refreshAssetSchedule(id);
@@ -115,6 +121,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     await model.findByIdAndDelete(id);
     if (entity === "invoices") await releaseRemitos(id);
     if (entity === "invoices" && !VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status))) await applyCreditNote(before as Record<string, unknown>, -1);
+    if (entity === "invoices") await reopenCertificate(before as Record<string, unknown>);
     if (entity === "collections") await applyCollection(before as Record<string, unknown>, -1);
     if (entity === "payments") await applyExpensePayment((before as Record<string, unknown>).expenseId, -paidByPayment(before as Record<string, unknown>));
     await audit(session, "delete", entity, id, before, null, request.headers.get("x-forwarded-for") || undefined);

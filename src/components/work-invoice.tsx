@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { FileCheck2, Percent, ReceiptText, X } from "lucide-react";
 import { MoneyInput } from "@/components/fields";
 import { money } from "@/lib/format";
+import { workNetBudgetCents } from "@/lib/net-amounts";
 
 export type InvoiceableWork = {
-  _id: string; code: string; name: string; budgetCents?: number; progress?: number;
+  _id: string; code: string; name: string; budgetCents?: number; budgetNetCents?: number; progress?: number;
   certificates?: Array<{ number?: string; percentage?: number; amountCents?: number }>;
   expenses?: Array<{ _id: string; description: string; category: string; amountCents?: number; issueDate?: string; status?: string }>;
 };
@@ -24,7 +25,7 @@ export function currentPeriod() {
  * Facturar un avance de obra.
  *
  * Se pide el porcentaje que se quiere facturar y el importe sale solo del
- * presupuesto. Se guarda como certificado aprobado: eso es lo que avisa a
+ * presupuesto neto (sin IVA): la factura le suma el IVA una sola vez. Se guarda como certificado aprobado: eso es lo que avisa a
  * Administración por la campanita y le deja la tarea de emitir la factura.
  */
 export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableWork; onClose: () => void; onDone: (work: unknown) => void }) {
@@ -32,7 +33,7 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
   const [expenses, setExpenses] = useState(work.expenses || []);
   const [expensesLoading, setExpensesLoading] = useState(!work.expenses);
   const [includeExpenses, setIncludeExpenses] = useState(true);
-  const budgetCents = Number(work.budgetCents || 0);
+  const budgetCents = workNetBudgetCents(work);
   // Lo ya certificado marca cuánto queda: nadie quiere facturar dos veces lo mismo.
   const usedPercent = certificates.reduce((total, item) => total + Number(item.percentage || 0), 0);
   const remaining = Math.max(0, Math.round((100 - usedPercent) * 10) / 10);
@@ -81,7 +82,8 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
     setSaving(true); setError("");
     const response = await fetch(`/api/works/${work._id}/certificates`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ number, period, percentage: percent, amountCents, includeExpenses, approved: true, file: "" }),
+      // Sin ajuste a mano, el importe lo calcula el servidor con el mismo neto.
+      body: JSON.stringify({ number, period, percentage: percent, amountCents: override ?? undefined, includeExpenses, approved: true, file: "" }),
     });
     const result = await response.json();
     setSaving(false);
@@ -95,13 +97,13 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
       <header><div className="modal-title-wrap"><span className="modal-heading-icon"><FileCheck2 /></span><div>
         <p className="eyebrow">FACTURAR AVANCE</p>
         <h2 id="invoice-modal-title">{work.name}</h2>
-        <small>Obra {work.code} · Presupuesto {money(budgetCents)}</small>
+        <small>Obra {work.code} · Presupuesto neto {money(budgetCents)}</small>
       </div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
 
       <form onSubmit={submit}>
         <div className="modal-form-body">
           <div className="invoice-summary">
-            <div><span>Presupuesto</span><strong>{money(budgetCents)}</strong></div>
+            <div><span>Presupuesto neto (sin IVA)</span><strong>{money(budgetCents)}</strong></div>
             <div><span>Ya certificado</span><strong>{usedPercent}% · {money(certificates.reduce((total, item) => total + Number(item.amountCents || 0), 0))}</strong></div>
             <div><span>Queda por facturar</span><strong>{remaining}%</strong></div>
             <div><span>Avance de obra</span><strong>{Number(work.progress || 0)}%</strong></div>
@@ -121,7 +123,7 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
                 <Percent size={15} />
               </div>
             </label>
-            <label><span>Importe a facturar<em className="field-hint">Avance + gastos seleccionados; se puede ajustar</em></span>
+            <label><span>Importe neto a facturar<em className="field-hint">Avance + gastos seleccionados, sin IVA; se puede ajustar</em></span>
               <MoneyInput name="amountCents" key={`amount-${computedCents + invoiceExpensesCents}`} defaultValue={amountCents / 100}
                 onValueChange={value => setOverride(Math.round(value * 100))} />
             </label>
@@ -131,7 +133,7 @@ export function InvoiceWorkModal({ work, onClose, onDone }: { work: InvoiceableW
 
           <p className="invoice-note">
             {percent > 0
-              ? <>Se certifica el <b>{percent}%</b> de {money(budgetCents)}{includeExpenses && expensesCents ? <> + <b>{money(expensesCents)}</b> de gastos</> : null} = <b>{money(amountCents)}</b>{override !== null && override !== computedCents + invoiceExpensesCents ? <> (calculado {money(computedCents + invoiceExpensesCents)}, ajustado a mano)</> : null}. Administración recibe el aviso y le queda la tarea de emitir la factura.</>
+              ? <>Se certifica el <b>{percent}%</b> de {money(budgetCents)}{includeExpenses && expensesCents ? <> + <b>{money(expensesCents)}</b> de gastos</> : null} = <b>{money(amountCents)}</b> neto{override !== null && override !== computedCents + invoiceExpensesCents ? <> (calculado {money(computedCents + invoiceExpensesCents)}, ajustado a mano)</> : null}. La factura le suma el IVA. Administración recibe el aviso y le queda la tarea de emitir la factura.</>
               : <>Elegí el porcentaje que querés facturar y el importe se calcula solo.</>}
           </p>
         </div>

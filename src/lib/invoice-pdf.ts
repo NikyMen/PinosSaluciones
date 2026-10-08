@@ -202,24 +202,28 @@ export function buildInvoicePdf(doc: jsPDF, data: InvoicePdfData, meta: { author
   const totalWidth = 80;
   const totalX = WIDTH - MARGIN - totalWidth;
   setFill([248, 250, 252]);
-  doc.roundedRect(totalX, y - 7, totalWidth, 27, 2, 2, "F");
+  // El certificado es el neto: el IVA se suma una sola vez, acá.
+  const vatCents = Math.round(data.amountCents * 0.21);
+  doc.roundedRect(totalX, y - 7, totalWidth, 31, 2, 2, "F");
   setColor(MUTED);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text("Subtotal", totalX + 5, y);
+  doc.text("Neto", totalX + 5, y);
   doc.text(plain(money(data.amountCents)), WIDTH - MARGIN - 5, y, { align: "right" });
+  doc.text("IVA 21%", totalX + 5, y + 5.5);
+  doc.text(plain(money(vatCents)), WIDTH - MARGIN - 5, y + 5.5, { align: "right" });
   setColor(NAVY);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text("TOTAL", totalX + 5, y + 12);
-  doc.text(plain(money(data.amountCents)), WIDTH - MARGIN - 5, y + 12, { align: "right" });
+  doc.text("TOTAL", totalX + 5, y + 16);
+  doc.text(plain(money(data.amountCents + vatCents)), WIDTH - MARGIN - 5, y + 16, { align: "right" });
 
   setColor(MUTED);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.6);
   // Hasta donde empieza el recuadro del total: los codigos largos no lo pisan.
   const noteWidth = totalX - MARGIN - 6;
-  doc.text(plain(clip(`Se factura el ${data.percentage}% de ${money(data.quote.amountCents)} presupuestados.`, noteWidth)), MARGIN, y);
+  doc.text(plain(clip(`Se factura el ${data.percentage}% de ${money(data.quote.amountCents)} netos presupuestados.`, noteWidth)), MARGIN, y);
   doc.text(plain(clip(`Cotizacion ${data.quote.number || "-"} aprobada y convertida en la obra ${data.work.code}.`, noteWidth)), MARGIN, y + 5.5);
   if (data.work.startDate) doc.text(plain(clip(`Inicio previsto de la obra: ${date(data.work.startDate)}.`, noteWidth)), MARGIN, y + 11);
 

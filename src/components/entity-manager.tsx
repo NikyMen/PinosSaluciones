@@ -34,6 +34,7 @@ import { CashTransferModal } from "@/components/cash-transfer";
 import { meterLabels, sectorLabels } from "@/lib/assets";
 import { printLabels, readPrinterSettings } from "@/lib/ticket-print";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
+import { netFromGross } from "@/lib/net-amounts";
 
 type Item = Record<string, unknown> & { _id: string };
 
@@ -419,7 +420,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     open(undefined, {
       ...base,
       company: item.company, voucherType: "factura_a", clientId: item.clientId, quoteId: item.quoteId, workId: item.workId,
-      certificateNumber: item.certificateNumber, netCents: item.netCents || item.amountCents, vatPct: 21, issueDate: new Date().toISOString().slice(0, 10),
+      certificateNumber: item.certificateNumber, certificateId: item.certificateId, netCents: item.netCents || item.amountCents, vatPct: 21, issueDate: new Date().toISOString().slice(0, 10),
       description: [`Sustituye la ${String(item.number || "").replace(/^X-/, "Factura X ")}`, String(item.description || "")].filter(Boolean).join(" · "),
       replacesId: item._id, remitoIds: item.remitoIds,
     });
@@ -631,8 +632,10 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
   const created = useRef<Item | null>(null);
 
   const budgetCents = Number(quote.amountCents || 0);
+  // Se certifica sobre el neto: la factura le suma el IVA una sola vez.
+  const netCents = typeof quote.netCents === "number" ? quote.netCents : netFromGross(budgetCents);
   const percent = Number(percentage) || 0;
-  const invoiceCents = Math.round(budgetCents * percent / 100);
+  const invoiceCents = Math.round(netCents * percent / 100);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -643,7 +646,7 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
   useEffect(() => { if (billing) percentRef.current?.focus(); }, [billing]);
 
   /** La factura de avance en PDF, con el logo del sitio incrustado. */
-  async function downloadInvoice(work: Item, number: string, period: string) {
+  async function downloadInvoice(work: Item, number: string, period: string, amountCents: number) {
     const [{ jsPDF }, logo, session] = await Promise.all([
       import("jspdf"),
       readPdfLogo(),
@@ -652,9 +655,9 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
     const doc = new jsPDF();
     const filename = buildInvoicePdf(doc, {
       company: quote.company === "constructora" ? "constructora" : "tvp",
-      number, period, percentage: percent, amountCents: invoiceCents,
+      number, period, percentage: percent, amountCents,
       client: { name: String(client?.name || "—"), cuit: String(client?.cuit || ""), address: String(client?.address || ""), email: String(client?.email || "") },
-      quote: { number: String(quote.number || ""), title: String(quote.title || ""), description: String(quote.description || ""), amountCents: budgetCents },
+      quote: { number: String(quote.number || ""), title: String(quote.title || ""), description: String(quote.description || ""), amountCents: netCents },
       work: { code: String(work.code || ""), name: String(work.name || ""), startDate: String(work.startDate || "") },
     }, { author: session?.name || "el sistema", logo });
     doc.save(filename);
@@ -686,11 +689,13 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
     const period = currentPeriod();
     const response = await fetch(`/api/works/${work._id}/certificates`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ number, period, percentage: percent, amountCents: invoiceCents, approved: true, file: "" }),
+      // El importe lo calcula el servidor sobre el presupuesto neto de la obra.
+      body: JSON.stringify({ number, period, percentage: percent, approved: true, file: "" }),
     });
     const result = await response.json();
+    const certificate = (result.certificates as Array<{ number?: string; amountCents?: number }> | undefined)?.find(item => item.number === number);
     if (!response.ok) { setSaving(false); return setError(`La obra ${String(work.code || "")} quedó creada, pero no se pudo facturar el avance: ${result.error || "error inesperado"}`); }
-    try { await downloadInvoice(work, number, period); }
+    try { await downloadInvoice(work, number, period, Number(certificate?.amountCents ?? invoiceCents)); }
     catch { setSaving(false); return setError(`Se facturó el ${percent}% de la obra ${String(work.code || "")}, pero no se pudo generar el PDF. Podés volver a emitirlo desde la obra.`); }
     setSaving(false);
     onDone();
@@ -711,7 +716,7 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
             <label><span>Código de la obra *</span><input name="code" required defaultValue={`OB-${String(quote.number || "")}`} autoFocus /></label>
             <label><span>Nombre de la obra *</span><input name="name" required defaultValue={String(quote.title || "")} /></label>
             <label><span>Fecha de inicio</span><DateInput name="startDate" quickRanges={[7, 14, 30]} /></label>
-            <label className="readonly-field"><span>Presupuesto que hereda</span><output>{money(budgetCents)}</output></label>
+            <label className="readonly-field"><span>Presupuesto que hereda</span><output>{money(budgetCents)} <small>({money(netCents)} sin IVA)</small></output></label>
           </div>
 
           {billing && <div className="convert-billing">
@@ -726,11 +731,11 @@ function ConvertQuoteModal({ quote, client, onClose, onDone }: { quote: Item; cl
                 </div>
                 <div className="percent-quick">{[25, 50, 70, 100].map(value => <button key={value} type="button" className={percent === value ? "active" : ""} onClick={() => setPercentage(String(value))}>{value}%</button>)}</div>
               </label>
-              <label className="readonly-field"><span>Importe a facturar</span><output>{money(invoiceCents)}</output></label>
+              <label className="readonly-field"><span>Importe neto a facturar</span><output>{money(invoiceCents)}</output></label>
             </div>
             <p className="invoice-note">
               {percent > 0
-                ? <>Se certifica el <b>{percent}%</b> de {money(budgetCents)} = <b>{money(invoiceCents)}</b>. Se descarga la factura de avance en PDF (sin validez fiscal) y Administración recibe el aviso para emitir la factura real.</>
+                ? <>Se certifica el <b>{percent}%</b> de {money(netCents)} netos = <b>{money(invoiceCents)}</b> más IVA. Se descarga la factura de avance en PDF (sin validez fiscal) y Administración recibe el aviso para emitir la factura real.</>
                 : <>Elegí el porcentaje que vas a facturar y el importe se calcula solo.</>}
             </p>
           </div>}

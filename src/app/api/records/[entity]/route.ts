@@ -1,6 +1,6 @@
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
-import { Notification, Task, Work, composeWorkerName, modelByEntity, nextPurchaseNumber, nextReceiptNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
+import { composeWorkerName, modelByEntity, nextPurchaseNumber, nextReceiptNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
@@ -10,22 +10,14 @@ import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
 import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balances";
 import { applyCreditNote, checkNote, checkSubstitution, completeSubstitution, emitInvoiceInArca, prepareInvoice } from "@/lib/invoice-service";
 import { beforeCreate } from "@/lib/document-rules";
-import { attachRemitos, checkRemitosForInvoice } from "@/lib/sales-remitos";
+import { Types } from "mongoose";
+import { attachRemitos, checkRemitosForInvoice, claimRemitos, unclaimRemitos } from "@/lib/sales-remitos";
 import { ensureAccountCatalog } from "@/lib/account-service";
 import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
+import { closeCertificate } from "@/lib/certificate-billing";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
-
-/** Facturado el certificado: lo marca en la obra y cierra la tarea y el aviso de "listo para facturar". */
-async function closeCertificate(workId: string, number: string) {
-  const escaped = number.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  await Promise.all([
-    Work.updateOne({ _id: workId, "certificates.number": number }, { $set: { "certificates.$.invoiced": true } }),
-    Task.updateMany({ type: "facturar_certificado", relatedId: workId, status: { $ne: "completada" }, title: { $regex: `^Facturar certificado ${escaped} —` } }, { $set: { status: "completada" } }),
-    Notification.updateMany({ dedupeKey: `certificate-${workId}-${number}` }, { $set: { status: "hecha" } }),
-  ]);
-}
 
 /*
  * Lo que un listado no necesita. Una obra arrastra todas sus horas cargadas,
@@ -96,24 +88,36 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     // Emitir en ARCA: primero se revisa que la factura se pueda guardar, después se pide el CAE.
     const emitInArca = entity === "invoices" && data.arcaEmit === true;
     delete data.arcaEmit;
-    if (emitInArca) {
-      await new model({ ...data, number: data.number || "por-emitir" }).validate();
-      await emitInvoiceInArca(data);
+    // Los remitos se toman antes de emitir y guardar: dos facturas no pueden llevarse el mismo.
+    // En una sustitución ya los tiene la X y pasan a la fiscal después de guardarla.
+    const remitoIds = entity === "invoices" && Array.isArray(data.remitoIds) ? data.remitoIds : [];
+    const claim = remitoIds.length > 0 && !replaced;
+    if (claim) { data._id = new Types.ObjectId(); await claimRemitos(data._id, remitoIds); }
+    let item;
+    try {
+      if (emitInArca) {
+        await new model({ ...data, number: data.number || "por-emitir" }).validate();
+        await emitInvoiceInArca(data);
+      }
+      item = await model.create(data as never).catch(error => {
+        if (!emitInArca) throw error;
+        // Ya está autorizada en ARCA: que no se pierda el dato aunque no se haya podido guardar.
+        console.error("Factura emitida en ARCA que no se pudo guardar", { company: data.company, number: data.number, cae: data.cae, error });
+        throw new HttpError(`La factura quedó emitida en ARCA (${String(data.number)}, CAE ${String(data.cae)}) pero no se pudo guardar en el sistema. Cargala a mano con esos datos.`, 500);
+      });
+    } catch (error) {
+      // Emitida en ARCA, los remitos quedan tomados: la factura existe aunque haya que cargarla a mano.
+      if (claim && !data.cae) await unclaimRemitos(data._id, remitoIds);
+      throw error;
     }
-    const item = await model.create(data as never).catch(error => {
-      if (!emitInArca) throw error;
-      // Ya está autorizada en ARCA: que no se pierda el dato aunque no se haya podido guardar.
-      console.error("Factura emitida en ARCA que no se pudo guardar", { company: data.company, number: data.number, cae: data.cae, error });
-      throw new HttpError(`La factura quedó emitida en ARCA (${String(data.number)}, CAE ${String(data.cae)}) pero no se pudo guardar en el sistema. Cargala a mano con esos datos.`, 500);
-    });
 
     if (replaced) await completeSubstitution(replaced, item);
-    if (entity === "invoices" && Array.isArray(data.remitoIds)) await attachRemitos(item._id, data.remitoIds, replaced?._id);
+    if (entity === "invoices" && remitoIds.length && !claim) await attachRemitos(item._id, remitoIds, replaced?._id);
     // La nota de crédito descuenta su importe de lo que se debe de la factura asociada.
     if (entity === "invoices") await applyCreditNote(item.toObject(), 1);
     if (entity === "collections") await applyCollection(item, 1);
     if (entity === "payments") await applyExpensePayment(item.expenseId, paidByPayment(item));
-    if (entity === "invoices" && item.workId && item.certificateNumber) await closeCertificate(String(item.workId), String(item.certificateNumber));
+    if (entity === "invoices" && item.workId && (item.certificateId || item.certificateNumber)) await closeCertificate(item.toObject());
     await audit(session, "create", entity, item._id, null, item.toObject(), request.headers.get("x-forwarded-for") || undefined);
     return Response.json(item, { status: 201 });
   } catch (error) { return apiError(error); }
