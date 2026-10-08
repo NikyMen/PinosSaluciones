@@ -96,7 +96,7 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
       const purchase = await Purchase.create({
         number: input.reference || `STK-${Date.now().toString(36).toUpperCase()}`, company: owner,
         supplierId: input.supplierId, description: `${input.quantity} ${item.unit} de ${item.name} (Depósito Central)`,
-        amountCents: totalCents, stage: "recepcion", status: "recibida",
+        amountCents: totalCents, stage: "orden", status: "cerrada", receptionStatus: "recibida", closedAt: new Date(),
         requestedDate: date, receivedDate: date, receiptNotes: input.note, deliverTo: "central",
         stockedAt: new Date(), stockedWarehouse: "central", stockedByName: session.name,
       });
@@ -245,54 +245,19 @@ function unitFor(presentation = "", minSale = "") {
 export class PurchaseStockError extends Error {}
 
 /**
- * Cuando llega la mercadería de una orden de compra, sus productos suman al
- * depósito donde se pidió entregar (el Central, o el Salón de Ventas), a nombre de la empresa que compró. Cada producto se busca
- * en el stock por su código; si no está, se da de alta. El costo que entra es
- * el precio con el descuento, sin IVA. Una orden se pasa una sola vez.
+ * El material del stock que corresponde a un renglón de una orden de compra: se
+ * busca por su código y, si no está, se da de alta. Lo usan los remitos de
+ * compra (src/lib/purchase-flow.ts) al sumar lo recibido.
  */
-export async function receivePurchase(purchaseId: string, session: Session) {
-  const purchase = await Purchase.findById(purchaseId);
-  if (!purchase) throw new PurchaseStockError("Orden no encontrada");
-  // Entra donde se pidió entregar: el Salón de Ventas o, por defecto (y si se pidió en obra), el Central.
-  const warehouse: WarehouseKey = purchase.deliverTo === "salon" ? "salon" : "central";
-  if (purchase.stockedAt) throw new PurchaseStockError(`La orden ${purchase.number} ya se pasó al stock (${warehouseLabel(purchase.stockedWarehouse)}).`);
-  if (purchase.status === "cancelada") throw new PurchaseStockError("La orden está cancelada");
-  const lines = (purchase.items || []) as Array<{ code?: string; name: string; presentation?: string; minSale?: string; quantity: number; unitCents: number }>;
-  if (!lines.length) throw new PurchaseStockError("Esta orden no tiene productos cargados: la mercadería se suma desde Stock.");
-
-  // Se marca antes de mover nada: dos clics seguidos no la pasan dos veces.
-  const claimed = await Purchase.updateOne({ _id: purchase._id, stockedAt: { $exists: false } }, { $set: { stockedAt: new Date(), stockedWarehouse: warehouse, stockedByName: session.name } });
-  if (!claimed.modifiedCount) throw new PurchaseStockError(`La orden ${purchase.number} ya se pasó al stock.`);
-
-  let created = 0;
-  const results: Array<{ name: string; quantity: number; unit: string; isNew: boolean }> = [];
-  try {
-  for (const line of lines) {
-    const code = String(line.code || "").trim();
-    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    let item = (code ? await StockItem.findOne({ sku: { $regex: `^${escaped}$`, $options: "i" } }) : null) as Doc | null;
-    const isNew = !item;
-    if (!item) {
-      item = await StockItem.create({
-        name: line.presentation ? `${line.name} · ${line.presentation}` : line.name,
-        sku: code || undefined, category: "materiales", unit: unitFor(line.presentation, line.minSale),
-        supplierId: purchase.supplierId, notes: `Alta automática desde la orden ${purchase.number}`,
-      }) as unknown as Doc;
-      created++;
-    }
-    await applyStockMovement(item, {
-      kind: "ingreso", warehouse, quantity: line.quantity, unitCostCents: line.unitCents, owner: (purchase.company || "tvp") as CompanyKey,
-      supplierId: purchase.supplierId ? String(purchase.supplierId) : undefined,
-      reference: purchase.number, note: `Orden de compra ${purchase.number}`, purchaseId: String(purchase._id),
-    }, session);
-    results.push({ name: item.name, quantity: line.quantity, unit: item.unit, isNew });
-  }
-  } catch (error) {
-    // Si no llegó a sumarse nada, la orden vuelve a quedar pendiente de pasar; si ya se sumó algo, no se deshace a ciegas.
-    if (!results.length) await Purchase.updateOne({ _id: purchase._id }, { $unset: { stockedAt: 1, stockedWarehouse: 1, stockedByName: 1 } });
-    throw error;
-  }
-
-  await Purchase.updateOne({ _id: purchase._id }, { $set: { stage: "recepcion", status: "recibida", receivedDate: new Date() } });
-  return { number: purchase.number as string, warehouse, created, items: results };
+export async function stockItemForPurchaseLine(line: { code?: string; name: string; presentation?: string; minSale?: string }, purchase: { number?: unknown; supplierId?: unknown }) {
+  const code = String(line.code || "").trim();
+  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = (code ? await StockItem.findOne({ sku: { $regex: `^${escaped}$`, $options: "i" } }) : null) as Doc | null;
+  if (found) return { item: found, isNew: false };
+  const item = await StockItem.create({
+    name: line.presentation ? `${line.name} · ${line.presentation}` : line.name,
+    sku: code || undefined, category: "materiales", unit: unitFor(line.presentation, line.minSale),
+    supplierId: purchase.supplierId, notes: `Alta automática desde la orden ${String(purchase.number || "")}`,
+  }) as unknown as Doc;
+  return { item, isNew: true };
 }

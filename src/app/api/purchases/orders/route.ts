@@ -20,9 +20,13 @@ const schema = z.object({
   expectedDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal("")]).optional().transform(value => value ? new Date(`${value}T00:00:00.000Z`) : undefined),
   notes: z.string().trim().max(1000).optional().default(""),
   deliverTo: z.enum([...WAREHOUSE_KEYS, "obra"]).optional().default("central"),
+  // La condición de compra: contado, cuenta corriente o a plazo (con los días).
+  paymentTerms: z.enum(["contado", "cuenta_corriente", "plazo"]).optional().default("contado"),
+  termDays: z.coerce.number().int().min(1).max(365).optional(),
+  requiresAdvance: z.boolean().optional().default(false),
 });
 
-/** Cierra el pedido de un proveedor: crea la orden de compra y devuelve los datos para el PDF. */
+/** Cierra el pedido de un proveedor: crea la solicitud de compra emitida y devuelve los datos para el PDF. */
 export async function POST(request: Request) {
   try {
     const session = await requireSession();
@@ -30,8 +34,9 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || "Pedido inválido" }, { status: 400 });
     await connectDB();
-    const { company, supplierId, items, workId, requestedDate, expectedDate, deliverTo, notes } = parsed.data;
-    const result = await createPurchaseOrder({ company, supplierId, lines: items, workId, requestedDate, expectedDate, deliverTo, notes, session });
+    const { company, supplierId, items, workId, requestedDate, expectedDate, deliverTo, notes, paymentTerms, termDays, requiresAdvance } = parsed.data;
+    if (paymentTerms === "plazo" && !termDays) return Response.json({ error: "Poné a cuántos días es el plazo" }, { status: 400 });
+    const result = await createPurchaseOrder({ company, supplierId, lines: items, workId, requestedDate, expectedDate, deliverTo, notes, paymentTerms, termDays, requiresAdvance, session });
     await audit(session, "create", "purchases", result.purchase._id, null, result.purchase, request.headers.get("x-forwarded-for") || undefined);
     return Response.json(result, { status: 201 });
   } catch (error) {

@@ -2113,3 +2113,20 @@ td > .company-badge:first-child { margin-left: 0; }
 .unlinked-grid ul { margin: 0; padding: 0; list-style: none; font-size: .68rem; }
 .unlinked-grid li { padding: 4px 0; display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); }
 .badge.audit-action { color: var(--brand-navy); background: #e8f1f8; }
+
+/* Ficha de una compra: solicitud, orden, pagos y remitos */
+.purchase-detail { max-width: 1040px; }
+.purchase-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.purchase-actions .danger { color: #b42318; border-color: #f3c4c0; }
+.purchase-panel { border: 1px solid var(--line, #e2e8f0); border-radius: 12px; padding: 14px; margin: 8px 0 16px; background: var(--panel-soft, #f8fafc); }
+.purchase-panel footer { display: flex; justify-content: flex-end; margin-top: 12px; }
+.purchase-section { font-size: 14px; margin: 18px 0 8px; }
+.purchase-decisions { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.purchase-decisions li { display: flex; align-items: center; gap: 6px; }
+.purchase-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.purchase-history small { display: block; color: var(--muted); }
+.receipt-order-pick { display: flex; align-items: center; gap: 8px; min-width: 280px; }
+.badge.purchase-pendiente_autorizacion { background: #fff5e0; color: #946200; }
+.badge.purchase-autorizada, .badge.purchase-cerrada { background: #e6f6ec; color: #1d7a45; }
+.badge.purchase-rechazada, .badge.purchase-anulada { background: #fdecec; color: #b42318; }
+.badge.purchase-borrador, .badge.purchase-emitida { background: #eef2f7; color: #4a5568; }

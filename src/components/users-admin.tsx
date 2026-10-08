@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, KeyRound, MailCheck, MailWarning, Pencil, Plus, Send, ShieldCheck, Trash2, UserRoundCheck, X } from "lucide-react";
-import { entities, entityLabels, ROLES, roleLabels, viewSections, viewSectionLabels, type Entity, type Role, type ViewSection } from "@/lib/constants";
+import { userActionLabels, USER_ACTIONS, entities, entityLabels, ROLES, roleLabels, viewSections, viewSectionLabels, type Entity, type Role, type ViewSection } from "@/lib/constants";
 import { defaultPermissionsForRole, type UserPermissions } from "@/lib/permissions";
 import { dateTime } from "@/lib/format";
 
@@ -134,6 +134,7 @@ function UserModal({ user, error, onClose, onSave }: { user: User | null; error:
     if (permissions.edit.some(entity => editDependencies[entity]?.includes(section))) return;
     const enabled = permissions.view.includes(section);
     setPermissions(current => ({
+      ...current,
       view: enabled ? current.view.filter(value => value !== section) : [...current.view, section],
       edit: enabled && entities.includes(section as Entity) ? current.edit.filter(value => value !== section) : current.edit,
     }));
@@ -143,6 +144,7 @@ function UserModal({ user, error, onClose, onSave }: { user: User | null; error:
     const enabled = permissions.edit.includes(entity);
     const dependencies = editDependencies[entity] || [];
     setPermissions(current => ({
+      ...current,
       view: enabled ? current.view : [...new Set([...current.view, entity, ...dependencies])],
       edit: enabled ? current.edit.filter(value => value !== entity) : [...current.edit, entity],
     }));
@@ -188,6 +190,20 @@ function UserModal({ user, error, onClose, onSave }: { user: User | null; error:
               <span>{viewSectionLabels[section]}{entity && <small>{entityLabels[entity]}</small>}</span>
               <button type="button" className={permissions.view.includes(section) ? "permission-check checked" : "permission-check"} onClick={() => toggleView(section)} disabled={requiredByEdit} title={requiredByEdit ? "Necesario para editar una sección relacionada" : undefined} aria-label={`${permissions.view.includes(section) ? "Quitar" : "Dar"} permiso para ver ${viewSectionLabels[section]}`} aria-pressed={permissions.view.includes(section)}>{permissions.view.includes(section) && <Check/>}</button>
               {entity ? <button type="button" className={permissions.edit.includes(entity) ? "permission-check checked" : "permission-check"} onClick={() => toggleEdit(entity)} aria-label={`${permissions.edit.includes(entity) ? "Quitar" : "Dar"} permiso para editar ${viewSectionLabels[section]}`} aria-pressed={permissions.edit.includes(entity)}>{permissions.edit.includes(entity) && <Check/>}</button> : <span className="read-only-label">Solo lectura</span>}
+            </div>;
+          })}
+        </div>
+        <div className="permission-heading"><div><h3>Permisos especiales</h3><p>Se dan por persona, además de las secciones.</p></div></div>
+        <div className="permission-table" role="table" aria-label="Permisos especiales">
+          {USER_ACTIONS.map(action => {
+            // Gerencia autoriza compras siempre: no se le puede sacar.
+            const fixed = action === "approvePurchases" && role === "gerencia";
+            const checked = fixed || Boolean(permissions.actions?.includes(action));
+            return <div className="permission-row" role="row" key={action}>
+              <span>{userActionLabels[action].label}<small>{fixed ? "Gerencia lo tiene siempre" : userActionLabels[action].hint}</small></span>
+              <button type="button" className={checked ? "permission-check checked" : "permission-check"} disabled={fixed} aria-pressed={checked} aria-label={`${checked ? "Quitar" : "Dar"} permiso para ${userActionLabels[action].label.toLowerCase()}`}
+                onClick={() => setPermissions(current => ({ ...current, actions: checked ? (current.actions || []).filter(value => value !== action) : [...(current.actions || []), action] }))}>{checked && <Check/>}</button>
+              <span />
             </div>;
           })}
         </div>

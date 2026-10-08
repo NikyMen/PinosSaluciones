@@ -1,5 +1,5 @@
 import type { Types } from "mongoose";
-import { nextPurchaseNumber, Purchase, Quote, StockItem, StockReservation, Work } from "./models";
+import { nextRequestNumber, Purchase, Quote, StockItem, StockReservation, Work } from "./models";
 import { levelsOf } from "./stock-levels";
 import { ownersOf, ownerTotals, type OwnerSplit } from "./stock-owners";
 import { notify } from "./notifications";
@@ -117,10 +117,12 @@ export async function reserveForQuote(quoteId: string, session: Session) {
   let purchase: Lean | null = null;
   if (short.length) {
     purchase = (await Purchase.create({
-      number: await nextPurchaseNumber(), company: quote.company || "tvp", quoteId: quote._id, workId: work?._id,
+      number: await nextRequestNumber(), company: quote.company || "tvp", quoteId: quote._id, workId: work?._id,
       description: `Faltante de materiales para ${quote.number} — ${quote.title}: ${short.map(line => `${line.shortageQty} ${line.unit} de ${line.name}`).join("; ")}`,
       amountCents: Math.round(short.reduce((total, line) => total + line.shortageQty * line.unitPriceCents, 0)),
+      // Queda en borrador: Compras elige el proveedor y la condición, y la emite.
       stage: "solicitud", status: "borrador", priority: "alta", requestedDate: new Date(), neededBy: work?.startDate,
+      history: [{ action: `Creada por el faltante de la cotización ${quote.number}`, at: new Date(), userName: session.name }],
       requestLines: lines.map(line => ({ stockItemId: line.stockItemId, name: line.name, unit: line.unit, neededQty: line.neededQty, reservedQty: line.reservedQty, shortageQty: line.shortageQty })),
       userId: session.userId, userName: session.name,
     })).toObject() as Lean;

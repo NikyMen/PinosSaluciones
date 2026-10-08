@@ -108,7 +108,7 @@ describe("movimientos entre depósitos (API)", () => {
   it("una orden de compra entra al Depósito Central una sola vez, a nombre de la empresa que compró; lo que no estaba se da de alta", async () => {
     await StockItem.create({ name: "TECHOS 5000 PU · Balde 20 KG", sku: "5000PU20", unit: "balde", quantity: 2, qty_central: 2, qty_salon: 0, avgCostCents: 190_000, valueCents: 380_000 });
     const purchase = await Purchase.create({
-      number: "OC-9", company: "constructora", description: "Pedido", amountCents: 0, requestedDate: new Date(), stage: "orden", status: "aprobada", deliverTo: "central",
+      number: "OC-9", company: "constructora", description: "Pedido", amountCents: 0, requestedDate: new Date(), stage: "orden", status: "emitida", deliverTo: "central",
       items: [
         { code: "5000PU20", name: "TECHOS 5000 PU", presentation: "Balde 20 KG", quantity: 2, listPriceCents: 234_556_00, discountPct: 15, unitCents: 199_373_00, totalCents: 398_746_00 },
         { code: "1117C", name: "PROTEX MEMBRANA PVC", presentation: "Rollo 41 M2", minSale: "M2", quantity: 41.5, listPriceCents: 52_395_00, discountPct: 15, unitCents: 44_536_00, totalCents: 1_848_244_00 },
@@ -119,13 +119,14 @@ describe("movimientos entre depósitos (API)", () => {
     expect((await call(await receive.POST(post({ warehouse: "salon" }), params({ id })))).status).toBe(400);
     const done = await call(await receive.POST(post({}), params({ id })));
     expect(done.status).toBe(201);
-    expect(done.body).toMatchObject({ number: "OC-9", warehouse: "central", created: 1 });
+    // Sin cantidades llega todo lo que falta: es el remito final y cierra la orden.
+    expect(done.body).toMatchObject({ warehouse: "central", receipt: { final: true, purchaseId: id }, order: { number: "OC-9", status: "cerrada", receptionStatus: "recibida" } });
 
     const techos = await StockItem.findOne({ sku: "5000PU20" }).lean() as Record<string, number>;
     expect(techos).toMatchObject({ qty_central: 4, qty_salon: 0, quantity: 4 });
     const membrane = await StockItem.findOne({ sku: "1117C" }).lean() as Record<string, unknown>;
     expect(membrane).toMatchObject({ name: "PROTEX MEMBRANA PVC · Rollo 41 M2", unit: "m2", qty_central: 41.5, avgCostCents: 44_536_00, owners: { central: { constructora: 41.5 } } });
-    expect(await Purchase.findById(id).lean()).toMatchObject({ status: "recibida", stage: "recepcion", stockedWarehouse: "central" });
+    expect(await Purchase.findById(id).lean()).toMatchObject({ status: "cerrada", stage: "orden", receptionStatus: "recibida", stockedWarehouse: "central", items: [{ receivedQty: 2 }, { receivedQty: 41.5 }] });
 
     const again = await call(await receive.POST(post({ warehouse: "central" }), params({ id })));
     expect(again.status).toBe(409);

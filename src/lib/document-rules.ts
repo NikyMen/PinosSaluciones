@@ -9,6 +9,7 @@ import { companyOf } from "./companies";
 import { nextPaymentOrderNumber } from "./balances";
 import { netFromGross } from "./net-amounts";
 import { prepareCashAccount, prepareCashAccountRecord } from "./cash-accounts";
+import { checkExpenseLimit, checkPurchaseChanges, preparePaymentOrder, prepareNewRequest } from "./purchase-flow";
 import type { Entity } from "./constants";
 import type { Session } from "./auth";
 
@@ -37,7 +38,12 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
   if (direction && (ledgerRequired.has(entity) || data.accountId)) await checkLedgerAccount(direction, data.accountId);
 
   if (entity === "payments" && !data.number) data.number = await nextPaymentOrderNumber();
+  // La OP que paga una factura de una OC queda atada también a la OC.
+  if (entity === "payments") await preparePaymentOrder(data);
+  // Toda compra nueva es una solicitud en borrador (SC-n): la OC la genera Tesorería con la orden de pago.
+  if (entity === "purchases" && session) await prepareNewRequest(data, session);
   if (entity === "expenses") await prepareExpense(data);
+  if (entity === "expenses" && session) await checkExpenseLimit(data, {}, session.role);
   prepareNetAmounts(entity, data);
   // La caja o cuenta sale del maestro: no se crea escribiendo un nombre.
   if (entity === "cash" || entity === "collections" || entity === "payments") await prepareCashAccount(entity, data);
@@ -65,6 +71,10 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
   const history = direction ? await accountChange(before, changes, reason, session) : null;
 
   if (entity === "expenses") await prepareExpense(changes, before);
+  if (entity === "expenses") await checkExpenseLimit(changes, before, session.role);
+  // Una solicitud emitida queda en sólo lectura; una orden, salvo la entrega y las notas.
+  if (entity === "purchases") checkPurchaseChanges(before, changes);
+  if (entity === "payments") await preparePaymentOrder(changes, before);
   prepareNetAmounts(entity, changes, before);
   if (entity === "cash" || entity === "collections" || entity === "payments") await prepareCashAccount(entity, changes, before);
   if (entity === "cashAccounts") await prepareCashAccountRecord(changes, before, session.role);

@@ -252,13 +252,13 @@ describe("listas de precios (base)", () => {
     expect(history.body.items.map((entry: { listCents: number; current: boolean }) => [entry.listCents, entry.current])).toEqual([[20_000_000, false], [23_455_600, true]]);
   });
 
-  it("cierra el pedido de un proveedor: orden OC correlativa, precios de la lista vigente y datos para el PDF", async () => {
+  it("cierra el pedido de un proveedor: solicitud SC emitida, precios de la lista vigente y datos para el PDF", async () => {
     const sika = await Supplier.create({ name: "Sika", discountPct: 10, contactName: "Laura", phone: "379 400-0000" });
     const sikaId = String(sika._id);
     const client = await Client.create({ name: "Consorcio 9 de Julio", cuit: "30-12345678-9" });
     const work = await Work.create({ code: "OB-99", name: "Fachada 9 de Julio", clientId: client._id, budgetCents: 1_000_000, status: "en_curso" });
-    // Ya había una OC cargada a mano con el número 7: la siguiente es la 8.
-    await Purchase.create({ number: "OC-7", description: "Cargada a mano", amountCents: 0, requestedDate: new Date() });
+    // Las órdenes de compra tienen su numeración (OC-n); las solicitudes, la suya (SC-n).
+    await Purchase.create({ number: "OC-7", stage: "orden", status: "emitida", description: "Cargada a mano", amountCents: 0, requestedDate: new Date() });
 
     await importList(sikaId, "2026-08-01", [item("SK1", "SIKAFILL", "Balde 20 KG", 100_000), item("SK2", "SIKAFLEX", "Cartucho", 10_000)]);
     // La fecha de la orden es obligatoria.
@@ -272,30 +272,32 @@ describe("listas de precios (base)", () => {
     const first = await call(await order({ supplierId: sikaId, workId: String(work._id), expectedDate: "2026-09-30", notes: "Entregar de 8 a 12",
       items: [{ itemId: idOf("SK1"), quantity: 2 }, { itemId: idOf("SK2"), quantity: 1.5 }, { itemId: idOf("SK1"), quantity: 1 }] }));
     expect(first.status).toBe(201);
-    expect(first.body.purchase).toMatchObject({ number: "OC-8", stage: "orden", status: "aprobada", subtotalCents: 28_350_000, vatCents: 5_953_500, amountCents: 34_303_500, notes: "Entregar de 8 a 12" });
+    // Menos de $500.000: sale emitida y autorizada sola, para que Tesorería emita la orden de pago.
+    expect(first.body.purchase).toMatchObject({ number: "SC-1", stage: "solicitud", status: "autorizada", paymentTerms: "contado", subtotalCents: 28_350_000, vatCents: 5_953_500, amountCents: 34_303_500, notes: "Entregar de 8 a 12" });
+    expect(first.body.purchase.approval).toMatchObject({ automatic: true });
     expect(first.body.purchase.items).toMatchObject([
       { code: "SK1", quantity: 3, listPriceCents: 10_000_000, discountPct: 10, unitCents: 9_000_000, totalCents: 27_000_000 },
       { code: "SK2", quantity: 1.5, listPriceCents: 1_000_000, discountPct: 10, unitCents: 900_000, totalCents: 1_350_000 },
     ]);
-    expect(first.body.pdf).toMatchObject({ number: "OC-8", supplier: { name: "Sika", contactName: "Laura" }, work: { code: "OB-99" }, subtotalCents: 28_350_000, totalCents: 34_303_500 });
+    expect(first.body.pdf).toMatchObject({ kind: "solicitud", number: "SC-1", supplier: { name: "Sika", contactName: "Laura" }, work: { code: "OB-99" }, subtotalCents: 28_350_000, totalCents: 34_303_500 });
     expect(first.body.pdf.priceListDate.slice(0, 10)).toBe("2026-08-01");
 
     // Llega otra lista: lo que quedó en el carrito se cobra al precio nuevo;
     // lo que la lista nueva no trae se sigue pidiendo a su último precio.
     await importList(sikaId, "2026-09-15", [item("SK1", "SIKAFILL", "Balde 20 KG", 120_000)]);
     const repriced = await call(await order({ supplierId: sikaId, items: [{ itemId: idOf("SK1"), quantity: 1 }] }));
-    expect(repriced.body.purchase).toMatchObject({ number: "OC-9", items: [{ listPriceCents: 12_000_000, unitCents: 10_800_000 }] });
+    expect(repriced.body.purchase).toMatchObject({ number: "SC-2", items: [{ listPriceCents: 12_000_000, unitCents: 10_800_000 }] });
     const kept = await call(await order({ supplierId: sikaId, items: [{ itemId: idOf("SK2"), quantity: 1 }] }));
-    expect(kept.body.purchase).toMatchObject({ number: "OC-10", requestedDate: "2026-09-20T00:00:00.000Z", items: [{ code: "SK2", listPriceCents: 1_000_000 }] });
+    expect(kept.body.purchase).toMatchObject({ number: "SC-3", requestedDate: "2026-09-20T00:00:00.000Z", items: [{ code: "SK2", listPriceCents: 1_000_000 }] });
     // Un producto de otro proveedor no entra en esta orden.
     const foreign = await PriceListItem.findOne({ current: true, supplierId: { $ne: sika._id } }).lean() as { _id: Types.ObjectId };
     expect((await call(await order({ supplierId: sikaId, items: [{ itemId: String(foreign._id), quantity: 1 }] }))).status).toBe(409);
     expect((await call(await order({ supplierId: sikaId, items: [] }))).status).toBe(400);
 
-    // Las órdenes cargadas a mano sin número también siguen el correlativo.
+    // Las solicitudes cargadas a mano también siguen el correlativo, y arrancan como borrador aunque digan otra cosa.
     const recordsRoute = await import("../src/app/api/records/[entity]/route");
     const manual = await call(await recordsRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ description: "Flete", amountCents: 500, stage: "solicitud", status: "borrador", requestedDate: "2026-09-20" }) }), params({ entity: "purchases" })));
-    expect(manual.body.number).toBe("OC-11");
+    expect(manual.body).toMatchObject({ number: "SC-4", stage: "solicitud", status: "borrador" });
   });
 
   it("el PDF de la orden pasa de página cuando hay muchos productos", async () => {

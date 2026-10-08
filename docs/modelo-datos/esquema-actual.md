@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-10-08 · 27 colecciones.
+Generado el 2026-10-08 · 28 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -328,7 +328,41 @@ Colección `purchases` · entidad `purchases`
 | `description` | texto | sí | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `stage` | texto | — | valores: `solicitud` · `orden` · `recepcion` · por defecto `"solicitud"` |
-| `status` | texto | — | valores: `borrador` · `aprobada` · `enviada` · `recibida` · `cancelada` · por defecto `"borrador"` |
+| `status` | texto | — | valores: `borrador` · `pendiente_autorizacion` · `autorizada` · `rechazada` · `anulada` · `emitida` · `cerrada` · `aprobada` · `enviada` · `recibida` · `cancelada` · por defecto `"borrador"` |
+| `legacyNumber` | texto | — | — |
+| `requestId` | referencia | — | apunta a **Purchase** |
+| `orderId` | referencia | — | apunta a **Purchase** |
+| `paymentTerms` | texto | — | valores: `contado` · `cuenta_corriente` · `plazo` · por defecto `"contado"` |
+| `termDays` | número | — | — |
+| `requiresAdvance` | sí/no | — | por defecto `false` |
+| `emittedAt` | fecha | — | — |
+| `approval` | objeto | — | — |
+| `approval.userId` | referencia | — | — |
+| `approval.userName` | texto | — | — |
+| `approval.at` | fecha | — | — |
+| `approval.reason` | texto | — | — |
+| `approval.automatic` | sí/no | — | — |
+| `rejection` | objeto | — | — |
+| `rejection.userId` | referencia | — | — |
+| `rejection.userName` | texto | — | — |
+| `rejection.at` | fecha | — | — |
+| `rejection.reason` | texto | — | — |
+| `rejection.automatic` | sí/no | — | — |
+| `cancellation` | objeto | — | — |
+| `cancellation.userId` | referencia | — | — |
+| `cancellation.userName` | texto | — | — |
+| `cancellation.at` | fecha | — | — |
+| `cancellation.reason` | texto | — | — |
+| `cancellation.automatic` | sí/no | — | — |
+| `paidCents` | número | — | por defecto `0` |
+| `paymentStatus` | texto | — | valores: `pendiente` · `parcial` · `pagada` · por defecto `"pendiente"` |
+| `receptionStatus` | texto | — | valores: `pendiente` · `parcial` · `recibida` · por defecto `"pendiente"` |
+| `closedAt` | fecha | — | — |
+| `history` | lista de objetos | — | — |
+| `history.action` | texto | — | — |
+| `history.note` | texto | — | — |
+| `history.at` | fecha | — | — |
+| `history.userName` | texto | — | — |
 | `requestedDate` | fecha | sí | — |
 | `expectedDate` | fecha | — | — |
 | `receivedDate` | fecha | — | — |
@@ -344,6 +378,7 @@ Colección `purchases` · entidad `purchases`
 | `items.discountPct` | número | — | por defecto `0` |
 | `items.unitCents` | número | — | mínimo 0 · por defecto `0` |
 | `items.totalCents` | número | — | mínimo 0 · por defecto `0` |
+| `items.receivedQty` | número | — | mínimo 0 · por defecto `0` |
 | `requestLines` | lista de objetos | — | — |
 | `requestLines.stockItemId` | referencia | — | apunta a **StockItem** |
 | `requestLines.name` | texto | — | — |
@@ -478,6 +513,8 @@ Colección `payments` · entidad `payments`
 | `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
 | `supplierId` | referencia | — | apunta a **Supplier** |
 | `expenseId` | referencia | — | apunta a **Expense** |
+| `purchaseId` | referencia | — | apunta a **Purchase** |
+| `requestId` | referencia | — | apunta a **Purchase** |
 | `status` | texto | — | valores: `emitida` · `pagada` · `anulada` · por defecto `"pagada"` |
 | `date` | fecha | sí | — |
 | `dueDate` | fecha | — | — |
@@ -497,6 +534,9 @@ Colección `payments` · entidad `payments`
 | `accountHistory.reason` | texto | — | — |
 | `accountHistory.userName` | texto | — | — |
 | `accountHistory.at` | fecha | — | — |
+| `attachment` | texto | — | — |
+| `paidAt` | fecha | — | — |
+| `paidByName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -684,6 +724,7 @@ Usuarios del sistema y sus permisos. Colección `users`.
 | `permissions.view` | lista | — | — |
 | `permissions.edit` | lista | — | — |
 | `permissions.seen` | lista | — | — |
+| `permissions.actions` | lista | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -964,6 +1005,35 @@ Reservas de stock de una cotización aprobada. Las consumen las salidas a su obr
 | `quantity` | número | sí | mínimo 0 |
 | `consumedQty` | número | — | mínimo 0 · por defecto `0` |
 | `status` | texto | — | valores: `activa` · `consumida` · `liberada` · por defecto `"activa"` |
+| `userName` | texto | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### PurchaseReceipt
+
+Remitos del proveedor contra una orden de compra (RE-n). Suman al stock lo recibido de cada renglón; el final cierra la orden. Colección `purchasereceipts`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `number` | texto | sí | único |
+| `purchaseId` | referencia | sí | apunta a **Purchase** |
+| `company` | texto | — | valores: `tvp` · `constructora` |
+| `supplierId` | referencia | — | apunta a **Supplier** |
+| `supplierRemito` | texto | — | — |
+| `date` | fecha | sí | — |
+| `warehouse` | texto | — | valores: `central` · `salon` |
+| `lines` | lista de objetos | — | — |
+| `lines.line` | número | — | — |
+| `lines.name` | texto | — | — |
+| `lines.unit` | texto | — | — |
+| `lines.quantity` | número | — | — |
+| `lines.unitCents` | número | — | — |
+| `lines.stockItemId` | referencia | — | apunta a **StockItem** |
+| `status` | texto | — | valores: `conforme` · `observada` · por defecto `"conforme"` |
+| `final` | sí/no | — | por defecto `false` |
+| `attachment` | texto | — | — |
+| `notes` | texto | — | — |
+| `userId` | referencia | — | apunta a **User** |
 | `userName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |

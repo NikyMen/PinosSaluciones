@@ -212,8 +212,11 @@ async function main() {
   for (const [index, purchase] of purchaseDefinitions.entries()) {
     await ensure(purchases, { number: purchase.number }, {
       number: purchase.number, supplierId: supplierIds.get(purchase.supplier), workId: workIds.get(purchase.work),
-      description: purchase.description, amountCents: pesos(purchase.amount), stage: purchase.status === "recibida" ? "recepcion" : "orden",
-      status: purchase.status, requestedDate: monthDate(2 - Math.min(index, 2), 4), expectedDate: monthDate(0, 22),
+      description: purchase.description, amountCents: pesos(purchase.amount),
+      // Las de demo son órdenes: la recibida, cerrada; las otras, emitidas (la borrador es una solicitud).
+      stage: purchase.status === "borrador" ? "solicitud" : "orden",
+      status: purchase.status === "recibida" ? "cerrada" : purchase.status === "borrador" ? "borrador" : "emitida",
+      receptionStatus: purchase.status === "recibida" ? "recibida" : "pendiente", requestedDate: monthDate(2 - Math.min(index, 2), 4), expectedDate: monthDate(0, 22),
       receivedDate: purchase.status === "recibida" ? monthDate(1, 18) : undefined, receiptNotes: "Orden ficticia",
       createdAt: monthDate(2 - Math.min(index, 2), 4), updatedAt: monthDate(0, 4 + index),
     });

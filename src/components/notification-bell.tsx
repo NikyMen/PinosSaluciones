@@ -11,7 +11,7 @@ type Notification = {
 };
 
 const kindLabels: Record<string, string> = {
-  obra: "Obra", certificado: "Certificado", cotizacion: "Cotización",
+  obra: "Obra", certificado: "Certificado", cotizacion: "Cotización", compra: "Compra",
   cobranza: "Cobranza", vencimiento: "Vencimiento", stock: "Stock", general: "Aviso",
 };
 

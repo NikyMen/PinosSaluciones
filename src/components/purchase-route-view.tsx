@@ -42,7 +42,7 @@ export function PurchaseRouteView() {
       if (filter === "abiertas" && (row.step === "pagada" || row.step === "cancelada")) return false;
       if (filter === "alertas" && !row.alerts.length) return false;
       if (filter === "pagada" && row.step !== "pagada") return false;
-      const text = normalize([row.number, row.supplier, row.description, row.quote?.number, row.work?.code, ...row.invoices.map(invoice => invoice.label), ...row.payments.map(payment => payment.number)].filter(Boolean).join(" "));
+      const text = normalize([row.number, row.requestNumber, row.supplier, row.description, row.quote?.number, row.work?.code, ...row.invoices.map(invoice => invoice.label), ...row.payments.map(payment => payment.number)].filter(Boolean).join(" "));
       return tokens.every(token => text.includes(token));
     });
   }, [data, search, filter]);
@@ -83,7 +83,7 @@ export function PurchaseRouteView() {
         : <div className="table-scroll"><table className="tracking-table"><thead><tr><th>Origen</th><th>Orden</th><th>Ruta</th><th>Recepción</th><th>Facturas</th><th>Pagos</th><th>Ordenado</th><th>Facturado</th><th>Pagado</th></tr></thead><tbody>
           {visible.map(row => <tr key={row._id} className={row.alerts.length ? "row-alert" : ""}>
             <td data-label="Origen">{row.quote ? <Link href={`/app/quotes/${row.quote._id}`} className="tracking-chip">{row.quote.number}</Link> : null}{row.work ? <Link href={`/app/works/${row.work._id}`} className="tracking-chip">{row.work.code}</Link> : null}{!row.quote && !row.work && <span className="muted">Stock / pedido</span>}</td>
-            <td data-label="Orden"><b>{row.number}</b> <span className={`company-badge ${row.company}`}>{companyOf(row.company).short}</span><small className="tracking-sub">{row.supplier || "Sin proveedor"}{row.neededBy ? ` · requerida ${date(row.neededBy)}` : ""}</small></td>
+            <td data-label="Orden"><b>{row.number}</b> <span className={`company-badge ${row.company}`}>{companyOf(row.company).short}</span>{row.requestNumber && <small className="tracking-sub">De la solicitud {row.requestNumber}</small>}<small className="tracking-sub">{row.supplier || "Sin proveedor"}{row.neededBy ? ` · requerida ${date(row.neededBy)}` : ""}</small></td>
             <td data-label="Ruta">{row.step === "cancelada" ? <span className="badge cancelada">Cancelada</span> : <div className="route-steps">{steps.map((step, index) => <i key={step.key} className={steps.findIndex(entry => entry.key === row.step) >= index ? "done" : ""} title={step.label}>{step.label}</i>)}</div>}
               {row.alerts.map(alert => <small key={alert} className="route-alert"><TriangleAlert size={12} /> {alert}</small>)}</td>
             <td data-label="Recepción">{row.receivedAt ? `${date(row.receivedAt)}` : "—"}</td>

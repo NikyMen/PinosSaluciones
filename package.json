@@ -22,7 +22,8 @@
     "postbuild": "node scripts/postbuild-standalone.mjs",
     "migrate:clients": "node --env-file-if-exists=.env scripts/migrate-client-phones.mjs",
     "migrate:progress": "node --env-file-if-exists=.env scripts/migrate-work-progress.mjs",
-    "migrate:cash-accounts": "node --env-file-if-exists=.env scripts/migrate-cash-accounts.mjs"
+    "migrate:cash-accounts": "node --env-file-if-exists=.env scripts/migrate-cash-accounts.mjs",
+    "migrate:purchases": "node --env-file-if-exists=.env scripts/migrate-purchases.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

@@ -1,13 +1,16 @@
 import type { Types } from "mongoose";
-import { nextPurchaseNumber, PriceList, PriceListItem, Purchase, Quote, Supplier, Work } from "./models";
+import { nextRequestNumber, PriceList, PriceListItem, Purchase, Quote, Supplier, Work } from "./models";
+import { emitRequest } from "./purchase-flow";
 import { discounted, normalize, VAT_RATE } from "./price-lists";
 import { purchaseOrderPdfData } from "./purchase-order-pdf";
 import { qty, todayIso } from "./format";
 import type { Session } from "./auth";
 
 /*
- * Cerrar el pedido armado en el buscador de precios: una orden de compra por
- * proveedor, con los precios de su lista vigente y el descuento de hoy. Los
+ * Cerrar el pedido armado en el buscador de precios: una solicitud de compra
+ * por proveedor, con los precios de su lista vigente y el descuento de hoy. Sale
+ * emitida: por debajo del límite queda autorizada y pasa a Tesorería; desde el
+ * límite espera la autorización. La OC la genera Tesorería con la orden de pago. Los
  * precios que trae el carrito del navegador no se usan: pueden haber quedado
  * viejos si entretanto llegó otra lista o cambió el descuento.
  */
@@ -21,8 +24,9 @@ type StoredItem = {
 
 const productKey = (item: { code?: string; name: string; presentation?: string }) => `${normalize(item.code) || normalize(item.name)}|${normalize(item.presentation)}`;
 
-export async function createPurchaseOrder({ company = "tvp", supplierId, lines, workId, requestedDate, expectedDate, deliverTo = "central", notes, session }: {
-  company?: string; supplierId: string; lines: Array<{ itemId: string; quantity: number }>; workId?: string; requestedDate?: Date; expectedDate?: Date; deliverTo?: string; notes?: string; session: Session;
+export async function createPurchaseOrder({ company = "tvp", supplierId, lines, workId, requestedDate, expectedDate, deliverTo = "central", notes, paymentTerms = "contado", termDays, requiresAdvance = false, session }: {
+  company?: string; supplierId: string; lines: Array<{ itemId: string; quantity: number }>; workId?: string; requestedDate?: Date; expectedDate?: Date; deliverTo?: string; notes?: string;
+  paymentTerms?: "contado" | "cuenta_corriente" | "plazo"; termDays?: number; requiresAdvance?: boolean; session: Session;
 }) {
   const supplier = await Supplier.findById(supplierId).lean() as ({ _id: Types.ObjectId; name: string; discountPct?: number } & Record<string, unknown>) | null;
   if (!supplier) throw new PurchaseOrderError("Proveedor no encontrado");
@@ -69,17 +73,18 @@ export async function createPurchaseOrder({ company = "tvp", supplierId, lines, 
 
   const summary = items.slice(0, 3).map(item => `${qty(item.quantity)} x ${item.name}`).join(", ");
   const purchase = await Purchase.create({
-    number: await nextPurchaseNumber(), company,
+    number: await nextRequestNumber(), company,
     supplierId, workId: work ? workId : undefined,
     description: `${items.length} ${items.length === 1 ? "producto" : "productos"} de ${supplier.name}: ${summary}${items.length > 3 ? ` y ${items.length - 3} más` : ""}`,
     amountCents: subtotalCents + vatCents, subtotalCents, vatCents, items, notes: notes || "",
     deliverTo, quoteNumber: quote?.number || undefined,
-    // Cerrada y con el PDF en la mano: falta mandársela al proveedor.
-    stage: "orden", status: "aprobada",
+    paymentTerms, termDays: paymentTerms === "plazo" ? termDays : undefined, requiresAdvance,
+    stage: "solicitud", status: "borrador", history: [{ action: "Creada desde el buscador de precios", at: new Date(), userName: session.name }],
     requestedDate: requestedDate ?? new Date(`${todayIso()}T00:00:00.000Z`), expectedDate,
     priceListId: list?._id, priceListDate: list?.validFrom,
     userId: session.userId, userName: session.name,
   });
-  const saved = purchase.toObject();
+  // Se emite enseguida: el pedido del carrito ya está completo.
+  const saved = await emitRequest(String(purchase._id), session) as unknown as Record<string, unknown>;
   return { purchase: saved, pdf: purchaseOrderPdfData(saved, supplier, work, quote?.number) };
 }

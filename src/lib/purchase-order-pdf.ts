@@ -21,6 +21,10 @@ export type PurchaseOrderLine = {
 };
 
 export type PurchaseOrderPdfData = {
+  /** Una solicitud de compra (SC-n) o la orden de compra (OC-n) que genera Tesorería con la orden de pago. */
+  kind?: "solicitud" | "orden";
+  /** La condición de compra: contado, cuenta corriente o a plazo. */
+  paymentTerms?: string;
   /** Qué empresa compra: su membrete y a su nombre la factura. */
   company?: CompanyKey;
   number: string;
@@ -60,8 +64,8 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
 
   function header() {
     y = drawLetterhead(doc, {
-      title: "Orden de compra", number: `N° ${data.number}`, logo: meta.logo, company: companyOf(data.company),
-      lines: [`Fecha de emisión: ${date(data.requestedDate)}`, `Entrega: ${data.expectedDate ? date(data.expectedDate) : "a coordinar"}`],
+      title: data.kind === "solicitud" ? "Solicitud de compra" : "Orden de compra", number: `N° ${data.number}`, logo: meta.logo, company: companyOf(data.company),
+      lines: [`Fecha de emisión: ${date(data.requestedDate)}`, `Entrega: ${data.expectedDate ? date(data.expectedDate) : "a coordinar"}`, ...(data.paymentTerms ? [`Condición: ${data.paymentTerms}`] : [])],
     });
   }
 
@@ -266,7 +270,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   doc.text("Firma del responsable", WIDTH - MARGIN - 35, signY + 4.5, { align: "center" });
 
   drawFooter(doc, { page, author: meta.author, company: companyOf(data.company) });
-  return `orden-de-compra-${data.number}.pdf`;
+  return `${data.kind === "solicitud" ? "solicitud" : "orden"}-de-compra-${data.number}.pdf`;
 }
 
 type Loose = Record<string, unknown> | null | undefined;
@@ -291,7 +295,10 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
       listPriceCents: subtotalCents, discountPct: 0, unitCents: subtotalCents, totalCents: subtotalCents,
     }];
   }
+  const terms = String(purchase.paymentTerms || "");
   return {
+    kind: purchase.stage === "solicitud" ? "solicitud" : "orden",
+    paymentTerms: terms === "plazo" ? `a plazo${purchase.termDays ? `, ${String(purchase.termDays)} días` : ""}` : terms === "cuenta_corriente" ? "cuenta corriente" : terms === "contado" ? "contado" : undefined,
     company: companyOf(purchase.company).key,
     number: String(purchase.number || ""),
     requestedDate: isoOrUndefined(purchase.requestedDate) || new Date().toISOString(),

@@ -101,7 +101,8 @@ export async function registerCounterOperation(input: CounterInput, session: Ses
       number, company: input.owner || "tvp", supplierId: input.supplierId, items,
       description: `Entrada por caja ${number}: ${items.length === 1 ? `${items[0].quantity} de ${items[0].name}` : `${items.length} materiales`} (${warehouseLabel(input.warehouse)})`,
       amountCents: items.reduce((total, line) => total + line.totalCents, 0), subtotalCents: items.reduce((total, line) => total + line.totalCents, 0),
-      stage: "recepcion", status: "recibida", requestedDate: date, receivedDate: date,
+      // Una entrada por la caja del depósito: la mercadería ya llegó, sin pasar por Tesorería.
+      stage: "orden", status: "cerrada", receptionStatus: "recibida", closedAt: new Date(), requestedDate: date, receivedDate: date,
       receiptNotes: [input.reference && `Comprobante del proveedor: ${input.reference}`, input.note].filter(Boolean).join(" · ") || undefined,
       deliverTo: input.warehouse, stockedAt: new Date(), stockedWarehouse: input.warehouse, stockedByName: session.name,
       userId: session.userId, userName: session.name,

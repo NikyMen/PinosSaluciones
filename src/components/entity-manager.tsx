@@ -11,7 +11,8 @@ import { DateInput } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
 import { FormField, QuickCreateModal, fieldErrors, type FieldProps } from "@/components/record-form";
 import { StockMovementModal, type StockItem, type StockMovement } from "@/components/stock-movement";
-import { ReceivePurchaseModal } from "@/components/receive-purchase";
+import { PurchaseDetailModal } from "@/components/purchase-detail";
+import { purchaseStatusText } from "@/lib/purchase-flow-labels";
 import { levelsOf } from "@/lib/stock-levels";
 import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-owners";
 import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
@@ -40,11 +41,12 @@ type Item = Record<string, unknown> & { _id: string };
 
 // Modulos donde la fila entera abre el formulario. En obras la fila lleva a la
 // pantalla de la obra (lo mismo que "Abrir obra"); el formulario queda en el lápiz.
-const inlineEntities = new Set<Entity>(["tasks", "quotes", "purchases"]);
+const inlineEntities = new Set<Entity>(["tasks", "quotes"]);
 // Donde ademas el estado se cambia sin entrar. En cotizaciones no: ahi el
 // estado lo mueve el formulario y "aprobada" solo sale del boton Aprobar.
 // Una orden de pago se marca pagada desde la lista.
-const inlineStatusEntities = new Set<Entity>(["works", "tasks", "purchases", "payments"]);
+// El estado de una compra no se elige: lo mueven sus acciones (emitir, autorizar, la orden de pago, los remitos).
+const inlineStatusEntities = new Set<Entity>(["works", "tasks", "payments"]);
 
 // Estados desde los que todavia tiene sentido aprobar una cotizacion.
 const approvable = new Set(["borrador", "enviada", "seguimiento", "vencida"]);
@@ -68,7 +70,7 @@ const moduleOf: Record<Entity, string> = {
   workers: "PERSONAL", assets: "ACTIVOS", cash: "TESORERÍA", checks: "TESORERÍA", payments: "TESORERÍA", cashAccounts: "TESORERÍA",
 };
 
-const feminine = new Set(["factura", "obra", "cotización", "orden", "tarea", "orden de pago", "cuenta", "factura de compra", "caja o cuenta"]);
+const feminine = new Set(["factura", "obra", "cotización", "orden", "tarea", "orden de pago", "cuenta", "factura de compra", "caja o cuenta", "solicitud"]);
 
 function itemLabel(item: Item) {
   // Una cotización se reconoce por su número: "COT-12 · Fachada 9 de Julio".
@@ -119,7 +121,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [historyFor, setHistoryFor] = useState<{ _id: string; label: string } | null>(null);
   const [laborFor, setLaborFor] = useState<{ _id: string; label: string } | null>(null);
   const [movementFor, setMovementFor] = useState<{ item: StockItem; kind: StockMovement["kind"] } | null>(null);
-  const [receiveFor, setReceiveFor] = useState<Item | null>(null);
+  // La ficha de una compra: la solicitud con su orden, sus pagos y sus remitos.
+  const [purchaseFor, setPurchaseFor] = useState<string | null>(null);
+  // Compras: solicitudes, órdenes o todas.
+  const [purchaseView, setPurchaseView] = useState<"" | "solicitud" | "orden">("");
   const [convertFor, setConvertFor] = useState<Item | null>(null);
   const [invoiceFor, setInvoiceFor] = useState<Item | null>(null);
   const [statusFor, setStatusFor] = useState<Item | null>(null);
@@ -207,6 +212,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     if (entity === "collections" && key === "method") return methodLabels[String(value)] || titleCase(String(value || ""));
     // El legajo, y si la persona está dada de baja, se ve ahí mismo.
     if (entity === "workers" && key === "fileNumber") return <span className="file-number"><b>{value ? String(value) : "—"}</b>{item.active === false && <span className="badge anulada" title={item.leftAt ? `Baja el ${date(String(item.leftAt))}` : "Dada de baja"}>Baja</span>}</span>;
+    if (entity === "purchases" && key === "stage") return value === "solicitud" ? "Solicitud" : "Orden de compra";
+    if (entity === "purchases" && key === "status") return <span className={`badge purchase-${String(value || "")}`}>{purchaseStatusText(item)}</span>;
+    if (entity === "purchases" && key === "number") return <span className="invoice-number">{String(value || "—")}{item.legacyNumber ? <small> · antes {String(item.legacyNumber)}</small> : null}</span>;
     if (entity === "invoices" && key === "number") return <span className="invoice-number">{String(value || "—").replace(/^X-/, "")}{item.replacedById ? <small> · sustituida</small> : item.replacesId ? <small> · sustituye una X</small> : null}</span>;
     if (key === "company") { const company = companyOf(value); return <span className={`company-badge ${company.key}`} title={`${company.legalName} · CUIT ${company.cuit}`}>{company.short}</span>; }
     if (key === "voucherType" && value === "factura_x") return <span className="voucher-x" title="Comprobante interno: no pasa por ARCA ni va al libro IVA">Factura X</span>;
@@ -265,6 +273,33 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       .then(response => response.ok ? response.json() as Promise<Record<string, unknown>> : {})
       .then(defaults => open(undefined, defaults), () => open());
     // Solo al entrar: después la dirección ya quedó limpia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity, canEdit]);
+
+  // Un aviso de compras llega con ?ver=: se abre la ficha de la compra.
+  useEffect(() => {
+    if (entity !== "purchases") return;
+    const id = new URLSearchParams(window.location.search).get("ver");
+    if (!id) return;
+    router.replace("/app/purchases");
+    const timer = window.setTimeout(() => setPurchaseFor(id), 0);
+    return () => window.clearTimeout(timer);
+    // Solo al entrar: después la dirección ya quedó limpia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity]);
+
+  // "Cargar factura" desde la ficha de una OC llega con ?oc=: la factura ya atada a la orden.
+  useEffect(() => {
+    if (entity !== "expenses" || !canEdit) return;
+    const orderId = new URLSearchParams(window.location.search).get("oc");
+    if (!orderId) return;
+    router.replace("/app/expenses");
+    void fetch(`/api/records/purchases/${orderId}`)
+      .then(response => response.ok ? response.json() as Promise<Item> : null)
+      .then(order => open(undefined, order ? {
+        purchaseId: order._id, company: order.company, supplierId: order.supplierId, workId: order.workId, voucherType: "factura_a",
+        category: "materiales", issueDate: new Date().toISOString().slice(0, 10), description: String(order.description || ""),
+      } : {}), () => open());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity, canEdit]);
 
@@ -461,13 +496,17 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {entity === "assets" && <div className="tracking-filter asset-sectors" role="group" aria-label="Sector">
       {[["", "Todos"], ...Object.entries(sectorLabels)].map(([key, label]) => <button key={key} type="button" className={sectorView === key ? "active" : ""} aria-pressed={sectorView === key} onClick={() => setSectorView(key)}>{label}</button>)}
     </div>}
+    {entity === "purchases" && <div className="tracking-filter" role="group" aria-label="Solicitudes u órdenes">
+      {([["", "Todas"], ["solicitud", "Solicitudes"], ["orden", "Órdenes de compra"]] as const).map(([key, label]) => <button key={key} type="button" className={purchaseView === key ? "active" : ""} aria-pressed={purchaseView === key} onClick={() => setPurchaseView(key)}>{label}</button>)}
+      <Link href="/app/remitos-compra" className="secondary-btn"><PackagePlus size={15} /> Remitos de compra</Link>
+    </div>}
     {entity === "stock" && <div className="warehouse-filter" role="group" aria-label="Depósito">
       {[{ key: "" as const, label: "Ambos depósitos" }, ...WAREHOUSES].map(warehouse => <button key={warehouse.key} type="button" className={warehouseView === warehouse.key ? "active" : ""} aria-pressed={warehouseView === warehouse.key} onClick={() => setWarehouseView(warehouse.key)}>{warehouse.label}</button>)}
     </div>}
-    <section className="table-panel"><div className="table-scroll"><table><thead><tr>{columns.map(column => <th key={column}>{config.columnTitles?.[column] || columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{(entity === "assets" && sectorView ? items.filter(item => (item.sector || "general") === sectorView) : items).map(item => {
-      // En obras la fila lleva a la pantalla de la obra, aunque no se pueda editar.
-      const rowAction = entity === "works" ? () => router.push(`/app/works/${item._id}`) : entity === "assets" ? () => setMaintenanceFor(item._id) : inlineEntities.has(entity) && canEdit ? () => open(item) : null;
-      const rowTitle = entity === "works" ? "Abrir la obra" : entity === "assets" ? "Ver el mantenimiento" : entity === "tasks" ? "Abrir detalle de la tarea" : "Abrir para editar";
+    <section className="table-panel"><div className="table-scroll"><table><thead><tr>{columns.map(column => <th key={column}>{config.columnTitles?.[column] || columnLabels[column] || column}</th>)}<th /></tr></thead><tbody>{(entity === "assets" && sectorView ? items.filter(item => (item.sector || "general") === sectorView) : entity === "purchases" && purchaseView ? items.filter(item => (item.stage === "solicitud" ? "solicitud" : "orden") === purchaseView) : items).map(item => {
+      // En obras la fila lleva a la pantalla de la obra, aunque no se pueda editar. Una compra abre su ficha.
+      const rowAction = entity === "works" ? () => router.push(`/app/works/${item._id}`) : entity === "assets" ? () => setMaintenanceFor(item._id) : entity === "purchases" ? () => setPurchaseFor(item._id) : inlineEntities.has(entity) && canEdit ? () => open(item) : null;
+      const rowTitle = entity === "works" ? "Abrir la obra" : entity === "assets" ? "Ver el mantenimiento" : entity === "tasks" ? "Abrir detalle de la tarea" : entity === "purchases" ? "Abrir la compra: autorización, orden de pago y remitos" : "Abrir para editar";
       // Las tareas se pintan enteras según el estado: de un vistazo se ve qué falta.
       const rowClass = [rowAction ? "clickable-row" : "", entity === "tasks" ? `task-row ${String(item.status || "pendiente")}` : "", entity === "workers" && item.active === false ? "row-inactive" : ""].filter(Boolean).join(" ");
       return <tr key={item._id} className={rowClass} onClick={rowAction || undefined} onKeyDown={rowAction ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rowAction(); } } : undefined} tabIndex={rowAction ? 0 : undefined} title={rowAction ? rowTitle : undefined}>
@@ -491,7 +530,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
           {entity === "quotes" && <button className="row-action-wide" title="Descargar la cotización en PDF para mandarla o imprimirla" onClick={() => { void downloadQuote(item); }}><Download size={15} /> PDF</button>}
           {entity === "suppliers" && <Link className="row-action-wide" title="Subir y ver las listas de precios del proveedor" href={`/app/suppliers/${item._id}`}><FileSpreadsheet size={15} /> Listas de precios</Link>}
-          {entity === "purchases" && <button className="row-action-wide" title="Descargar la orden de compra en PDF para mandársela al proveedor"
+          {entity === "purchases" && <button className="row-action-wide approve" title="La compra de punta a punta: autorizar, orden de pago, remitos" onClick={() => setPurchaseFor(item._id)}><Eye size={15} /> Ver</button>}
+          {entity === "purchases" && <button className="row-action-wide" title={item.stage === "solicitud" ? "Descargar la solicitud en PDF" : "Descargar la orden de compra en PDF para mandársela al proveedor"}
             onClick={() => { void downloadPurchaseOrderPdf(purchaseOrderPdfData(item, relations.suppliers?.find(row => row._id === String(item.supplierId || "")), relations.works?.find(row => row._id === String(item.workId || "")))).catch(() => setError("No se pudo generar el PDF de la orden")); }}>
             <Download size={15} /> PDF</button>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
@@ -501,9 +541,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "stock" && canEdit && <button title="Salida a obra, con remito" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
           {entity === "stock" && canEdit && <button title={item.barcode ? `Imprimir la etiqueta (${String(item.barcode)})` : "Generar el código de barras e imprimir la etiqueta"} onClick={() => { void printStockLabel(item); }}><Tag size={16} /></button>}
           {entity === "assets" && <button className="row-action-wide labor" title="Services, arreglos y próximos mantenimientos" onClick={() => setMaintenanceFor(item._id)}><Wrench size={15} /> Mantenimiento</button>}
-          {entity === "purchases" && canEdit && Array.isArray(item.items) && item.items.length > 0 && (item.stockedAt
-            ? <span className="row-stocked" title={`Pasada al stock por ${String(item.stockedByName || "")}`}><PackageCheck size={14} /> En stock · {warehouseLabel(String(item.stockedWarehouse || ""))}</span>
-            : item.status !== "cancelada" && <button className="row-action-wide approve" title="Llegó la mercadería: sumarla al stock" onClick={() => setReceiveFor(item)}><PackagePlus size={15} /> Pasar a stock</button>)}
+          {entity === "purchases" && Boolean(item.stockedAt) && <span className="row-stocked" title={`Recibida por ${String(item.stockedByName || "")}`}><PackageCheck size={14} /> {item.receptionStatus === "parcial" ? "Recibida en parte" : "En stock"} · {warehouseLabel(String(item.stockedWarehouse || ""))}</span>}
           {entity === "invoices" && canEdit && item.voucherType === "factura_x" && !item.replacedById && item.status !== "anulada" && <button className="row-action-wide" title="Reemplazar esta X por una Factura A o B: lo cobrado pasa a la fiscal y la X deja de contar" onClick={() => { void substitute(item); }}><FileSymlink size={15} /> Sustituir</button>}
           {entity === "expenses" && canEdit && Boolean(item.voucherType) && item.status !== "pagado" && item.status !== "anulado" && <Link className="row-action-wide approve" title="Emitir la orden de pago de esta factura" href={`/app/payments?factura=${item._id}`}><HandCoins size={15} /> Orden de pago</Link>}
           {/* De la factura a lo que la originó: la cotización y la obra (con su certificado). */}
@@ -518,8 +556,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
             ? <button className="row-action-wide approve" title="Vuelve a trabajar: se le da un legajo nuevo" onClick={() => setStatusFor(item)}><UserPlus size={15} /> Reactivar</button>
             : <button title="Dar de baja" aria-label={`Dar de baja a ${itemLabel(item)}`} onClick={() => setStatusFor(item)}><UserMinus size={16} /></button>)}
           {entity === "workers" && <button className="row-action-wide labor" title="Cargar horarios y ver la liquidación" onClick={() => setLaborFor({ _id: item._id, label: itemLabel(item) })}><Timer size={15} /> Horarios</button>}
-          {canEdit && <button title={entity === "tasks" ? "Ver y editar tarea" : "Editar"} onClick={() => open(item)}><Edit3 size={16} /></button>}
-          {canDeleteRecords && <button title="Eliminar" onClick={() => { void remove(item); }}><Trash2 size={16} /></button>}
+          {/* Una compra emitida queda en sólo lectura: se edita y se borra sólo la solicitud en borrador. */}
+          {canEdit && (entity !== "purchases" || (item.stage === "solicitud" && item.status === "borrador")) && <button title={entity === "tasks" ? "Ver y editar tarea" : "Editar"} onClick={() => open(item)}><Edit3 size={16} /></button>}
+          {canDeleteRecords && (entity !== "purchases" || (item.stage === "solicitud" && item.status === "borrador")) && <button title="Eliminar" onClick={() => { void remove(item); }}><Trash2 size={16} /></button>}
         </td>
       </tr>;
     })}</tbody></table></div>{loading ? <div className="loading-state">Cargando…</div> : !items.length && <div className="empty-state compact"><p>No hay registros para mostrar.</p>{canEdit && <button onClick={() => { void openCreate(); }}>Crear {config.singular}</button>}</div>}</section>
@@ -575,7 +614,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {convertFor && <ConvertQuoteModal quote={convertFor} client={(relations.clients || []).find(row => row._id === String(convertFor.clientId || ""))}
       onClose={() => setConvertFor(null)} onDone={() => { setConvertFor(null); void load(); }} />}
 
-    {receiveFor && <ReceivePurchaseModal purchase={receiveFor} onClose={() => setReceiveFor(null)} onDone={() => { void load(); }} />}
+    {purchaseFor && <PurchaseDetailModal purchaseId={purchaseFor} onClose={() => setPurchaseFor(null)} onChanged={() => { void load(); }} />}
     {movementFor && <StockMovementModal item={movementFor.item} initialKind={movementFor.kind}
       onClose={() => setMovementFor(null)}
       onSaved={updated => { setItems(current => current.map(row => row._id === updated._id ? { ...row, ...updated } as Item : row)); setMovementFor({ item: updated, kind: movementFor.kind }); }} />}

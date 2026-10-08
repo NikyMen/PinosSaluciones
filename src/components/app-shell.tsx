@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ArrowLeftRight, BarChart3, BookOpen, BookText, Boxes, Building2, CalendarDays, CarFront, ChevronDown, CircleDollarSign, ClipboardList, CreditCard, Database, FileClock, FileText, HandCoins, HardHat, Landmark, LayoutDashboard, Library, ListTodo, LogOut, Menu, PackageOpen, ReceiptText, Route, ScanBarcode, Settings, ShieldCheck, ShoppingCart, Store, Tags, Truck, Users, WalletCards, X, PackageSearch, Calculator, Banknote, ScrollText } from "lucide-react";
+import { PackagePlus, ArrowLeftRight, BarChart3, BookOpen, BookText, Boxes, Building2, CalendarDays, CarFront, ChevronDown, CircleDollarSign, ClipboardList, CreditCard, Database, FileClock, FileText, HandCoins, HardHat, Landmark, LayoutDashboard, Library, ListTodo, LogOut, Menu, PackageOpen, ReceiptText, Route, ScanBarcode, Settings, ShieldCheck, ShoppingCart, Store, Tags, Truck, Users, WalletCards, X, PackageSearch, Calculator, Banknote, ScrollText } from "lucide-react";
 import { roleLabels, type Role, type ViewSection } from "@/lib/constants";
 import { canViewSection, type UserPermissions } from "@/lib/permissions";
 import { saveNavVersion, type NavVersion } from "@/lib/nav-version";
@@ -47,6 +47,7 @@ const groups: NavGroup[] = [
   ] },
   { id: "purchases", label: "Compras", icon: ShoppingCart, items: [
     { href: "/app/purchases", label: "Solicitudes y órdenes", icon: ClipboardList, permission: "purchases" },
+    { href: "/app/remitos-compra", label: "Remitos de compra", icon: PackagePlus, permission: "purchases" },
     { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
     { href: "/app/expenses", label: "Facturas de compra", icon: ReceiptText, permission: "expenses" },
     { href: "/app/ruta-compras", label: "Ruta de compras", icon: Route, permission: "purchases" },
@@ -112,6 +113,7 @@ const legacyGroups: NavGroup[] = [
     { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
     { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
     { href: "/app/purchases", label: "Órdenes de compra", icon: ShoppingCart, permission: "purchases" },
+    { href: "/app/remitos-compra", label: "Remitos de compra", icon: PackagePlus, permission: "purchases" },
     { href: "/app/ruta-compras", label: "Ruta de compras", icon: Route, permission: "purchases" },
     { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText, permission: "expenses" },
     { href: "/app/assets", label: "Bienes de uso", icon: CarFront, permission: "assets" },

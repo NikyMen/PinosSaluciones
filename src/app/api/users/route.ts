@@ -2,7 +2,7 @@ import { z } from "zod";
 import { isOwnerEmail, requireSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models";
-import { entities, ROLES, viewSections, type Role } from "@/lib/constants";
+import { entities, ROLES, USER_ACTIONS, viewSections, type Role } from "@/lib/constants";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
 import { defaultPermissionsForRole, normalizePermissions, type UserPermissions } from "@/lib/permissions";
@@ -11,6 +11,7 @@ import { issueInvite } from "@/lib/invitations";
 const permissionsSchema = z.object({
   view: z.array(z.enum(viewSections)),
   edit: z.array(z.enum(entities)),
+  actions: z.array(z.enum(USER_ACTIONS)).optional(),
 }).superRefine((permissions, context) => {
   for (const entity of permissions.edit) {
     if (!permissions.view.includes(entity)) context.addIssue({ code: "custom", path: ["edit"], message: "Para editar una sección también debe poder verla" });

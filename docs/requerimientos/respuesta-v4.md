@@ -40,6 +40,17 @@ La etapa 2 está desarrollada:
 - El pase entre cuentas propias exige origen y destino y no duplica ingresos ni egresos.
 - Los nombres que ya se usaban se migran al maestro, con una lista previa para revisar.
 
+La etapa 3 está desarrollada, con el circuito del grupo:
+- La solicitud se numera SC-n, lleva su condición de compra y, una vez emitida, queda en sólo lectura.
+- Por debajo de $500.000 queda autorizada sola y pasa a Tesorería. Desde $500.000 la autoriza Gerencia o quien tenga el permiso "Autorizar compras" (Socio, Presidencia), que se da por usuario en Configuración › Usuarios.
+- Tesorería emite la orden de pago y con ella nace la OC (OC-n), atada a la solicitud.
+  - La OP se paga en el momento, con su caja y su comprobante, o queda emitida con su vencimiento.
+  - Una OC admite varias OP parciales y muestra total, pagado y saldo.
+- Compras recibe el aviso. Carga los remitos en Compras › Remitos de compra: pueden ser parciales, suman al stock y el final cierra la OC.
+- Las facturas de compras de menos de $500.000 las puede cargar Compras; las de compras mayores, Tesorería. Las OP las emite sólo Tesorería.
+- Una solicitud o una OC emitida sólo la anula Gerencia, con motivo. No se anula lo que ya tiene pagos o mercadería recibida.
+- Cada pago parcial es una OP propia; no hay OP "ejecutada parcialmente".
+
 ## Respuestas a la sección 9
 
 1. **Maestro de Cajas y Bancos con permisos de alta, modificación e inactivación.** Sí (etapa 2).

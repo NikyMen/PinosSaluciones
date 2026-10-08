@@ -99,6 +99,7 @@ pm2 reload ecosystem.config.cjs --update-env
 
 Si la versión trae una migración de datos, va después del build y antes del reload. Hacé primero el backup y corré cada migración en modo prueba:
 
+- `pnpm migrate:purchases`: pasa las compras al circuito nuevo. Las solicitudes viejas toman número SC-n y el número anterior queda en `legacyNumber`. Los estados se pasan a los nuevos, las OP de facturas de una OC se atan a la OC y se recalcula lo pagado de cada OC. Sin `--apply` solo cuenta lo que haría.
 - `pnpm migrate:cash-accounts`: arma el maestro de cajas y cuentas bancarias con los nombres que se escribían a mano en caja, recibos y pagos. Sin `--apply` solo muestra cómo agruparía los nombres. Si dos nombres distintos son la misma cuenta, se unen con un mapa JSON (`--map mapa.json`, con `{ "como se escribió": "nombre de la cuenta" }`). Con `--apply` crea las cuentas y ata cada movimiento a la suya. Después, en Tesorería › Cajas y cuentas bancarias, hay que revisar la empresa, el tipo, el banco y el saldo inicial de cada cuenta.
 
 ## Factura electrónica (ARCA)
@@ -139,6 +140,16 @@ El sistema se conecta con ARCA por web services (WSAA + WSFEv1) con un certifica
 - Las notas de débito y crédito van asociadas a una factura (o nota de débito) del mismo cliente, empresa y letra, y usan el talonario y punto de venta de la factura de su letra. La nota de crédito resta: descuenta de lo que se debe de la factura asociada (queda "aplicada", no puede ser por más de ese saldo) y resta en tablero, reportes, seguimiento y libro IVA.
 - Un comprobante con CAE no se borra, no se anula y no cambia cliente, fecha, número ni importes: una factura se anula con una nota de crédito. Una factura con notas asociadas no se borra. Su PDF, con CAE y QR, sale del botón "PDF fiscal" de la lista.
 - El servidor de WSFEv1 ofrece primero Diffie-Hellman de 1024 bits, que Node rechaza; `src/lib/arca.ts` pide solo cifrados ECDHE con AES-GCM o ChaCha20.
+
+## Circuito de compras
+
+Requerimiento integral v4, con lo acordado en el grupo de PINO (`src/lib/purchase-flow.ts`):
+
+1. **Compras** arma la solicitud (`SC-n`) con su condición de compra (contado, cuenta corriente o a plazo) y la emite. Desde ahí queda en sólo lectura y solo Gerencia la anula, con motivo.
+2. **Por debajo de $500.000** queda autorizada sola y pasa a Tesorería. **Desde $500.000** (inclusive, con IVA) la autoriza Gerencia o quien tenga el permiso "Autorizar compras" (Configuración › Usuarios, por persona). El límite está en `PURCHASE_APPROVAL_LIMIT_CENTS`.
+3. **Tesorería** emite la orden de pago desde la ficha de la compra, y con la primera **nace la OC** (`OC-n`, atada a la solicitud). La OP se paga en el momento (caja del maestro y comprobante) o queda emitida con su vencimiento. Una OC admite varias OP parciales y guarda lo pagado (`paidCents`, `paymentStatus`). Las OP las emiten solo Gerencia y Administración, aunque un usuario de Compras tenga guardado el permiso de antes.
+4. **Compras** recibe el aviso y carga los remitos del proveedor (Compras › Remitos de compra, `PurchaseReceipt`). Pueden ser parciales y suman al stock; el remito final cierra la OC.
+5. **Facturas de compra:** Compras carga las de compras menores al límite; desde el límite, Tesorería.
 
 ## Cajas y cuentas bancarias
 

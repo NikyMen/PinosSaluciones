@@ -1,6 +1,7 @@
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
-import { composeWorkerName, modelByEntity, nextPurchaseNumber, nextReceiptNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
+import { composeWorkerName, modelByEntity, nextReceiptNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
+import { afterPaymentChange } from "@/lib/purchase-flow";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
@@ -79,7 +80,6 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     const model = modelByEntity[entity];
     const data = parsed.data as Record<string, unknown>;
     if (entity === "quotes" && !data.number) data.number = await nextQuoteNumber();
-    if (entity === "purchases" && !data.number) data.number = await nextPurchaseNumber();
     // La version no se elige a mano: sale de cuantas cotizaciones hay ya con ese titulo.
     if (entity === "quotes") data.version = await nextQuoteVersion(String(data.title || ""));
     if (entity === "tasks") await resolveTaskAssignee(session, data);
@@ -129,6 +129,7 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     if (entity === "invoices") await applyCreditNote(item.toObject(), 1);
     if (entity === "collections") await applyCollection(item, 1);
     if (entity === "payments") await applyExpensePayment(item.expenseId, paidByPayment(item));
+    if (entity === "payments") await afterPaymentChange(null, item.toObject(), session);
     if (entity === "invoices" && item.workId && (item.certificateId || item.certificateNumber)) await closeCertificate(item.toObject());
     await audit(session, "create", entity, item._id, null, item.toObject(), request.headers.get("x-forwarded-for") || undefined);
     return Response.json(item, { status: 201 });

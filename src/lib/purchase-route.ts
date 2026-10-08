@@ -20,6 +20,8 @@ export const THREE_WAY_TOLERANCE = 0.05;
 
 export type RouteRow = {
   _id: string; number: string; stage: string; status: string; company: CompanyKey; priority?: string; neededBy: string | null;
+  /** La solicitud de donde salió la orden (SC-n), y cómo van su pago y su recepción. */
+  requestNumber: string; paymentStatus: string; receptionStatus: string;
   supplier: string; description: string;
   quote: { _id: string; number: string; title: string } | null; work: { _id: string; code: string; name: string } | null;
   orderedCents: number; receivedAt: string | null; receivedWarehouse: string;
@@ -34,10 +36,14 @@ export type RouteRow = {
 const iso = (value: unknown) => value ? new Date(value as Date).toISOString() : null;
 
 export async function purchaseRoute(): Promise<{ rows: RouteRow[]; unlinked: Unlinked }> {
-  const purchases = await Purchase.find({}).sort({ createdAt: -1 }).limit(400).lean<Lean[]>();
+  // Una fila por orden de compra y por solicitud que todavía no la tiene: la solicitud con OC se ve en su orden.
+  const purchases = await Purchase.find({ $or: [{ stage: { $ne: "solicitud" } }, { orderId: { $exists: false } }] }).sort({ createdAt: -1 }).limit(400).lean<Lean[]>();
   const purchaseIds = purchases.map(purchase => purchase._id);
+  const requests = await Purchase.find({ _id: { $in: purchases.map(purchase => purchase.requestId).filter(Boolean) } }).select("number").lean<Lean[]>();
+  const requestNumber = new Map(requests.map(request => [String(request._id), String(request.number || "")]));
   const expenses = await Expense.find({ purchaseId: { $in: purchaseIds } }).lean<Lean[]>();
-  const payments = await Payment.find({ expenseId: { $in: expenses.map(expense => expense._id) } }).sort({ date: 1 }).lean<Lean[]>();
+  // Las OP atadas a la orden: las de contado o anticipo (sin factura) y las de sus facturas.
+  const payments = await Payment.find({ $or: [{ purchaseId: { $in: purchaseIds } }, { expenseId: { $in: expenses.map(expense => expense._id) } }] }).sort({ date: 1 }).lean<Lean[]>();
   const [suppliers, quotes, works] = await Promise.all([
     Supplier.find({ _id: { $in: purchases.map(purchase => purchase.supplierId).filter(Boolean) } }).select("name").lean<Lean[]>(),
     Quote.find({ _id: { $in: purchases.map(purchase => purchase.quoteId).filter(Boolean) } }).select("number title").lean<Lean[]>(),
@@ -49,25 +55,27 @@ export async function purchaseRoute(): Promise<{ rows: RouteRow[]; unlinked: Unl
 
   const rows = purchases.map((purchase): RouteRow => {
     const own = expenses.filter(expense => String(expense.purchaseId) === String(purchase._id) && expense.status !== "anulado");
-    const ownPayments = payments.filter(payment => own.some(expense => String(expense._id) === String(payment.expenseId)));
+    const ownPayments = payments.filter(payment => String(payment.purchaseId || "") === String(purchase._id) || own.some(expense => String(expense._id) === String(payment.expenseId)));
     const ordered = Number(purchase.amountCents || 0);
     const invoiced = own.reduce((total, expense) => total + Number(expense.amountCents || 0), 0);
     const paid = ownPayments.reduce((total, payment) => total + paidByPayment(payment), 0);
     const pendingOrders = ownPayments.filter(payment => payment.status === "emitida").reduce((total, payment) => total + Number(payment.amountCents || 0), 0);
-    const received = Boolean(purchase.stockedAt) || purchase.status === "recibida";
+    const received = Boolean(purchase.stockedAt) || purchase.status === "recibida" || purchase.receptionStatus === "recibida";
+    const cancelled = purchase.status === "cancelada" || purchase.status === "anulada";
     const alerts: string[] = [];
     if (received && !own.length) alerts.push("Recibida sin factura");
-    if (!received && own.length && purchase.status !== "cancelada") alerts.push("Facturada sin recepción");
+    if (!received && own.length && !cancelled) alerts.push("Facturada sin recepción");
     // El neto de la factura contra lo ordenado (la orden va sin IVA).
     const invoicedNet = own.reduce((total, expense) => total + Number(expense.netCents || expense.amountCents || 0), 0);
     if (own.length && ordered > 0 && Math.abs(invoicedNet - ordered) / ordered > THREE_WAY_TOLERANCE) alerts.push(`Facturado ${invoicedNet > ordered ? "más" : "menos"} que lo ordenado`);
-    const step: RouteRow["step"] = purchase.status === "cancelada" ? "cancelada"
-      : own.length && paid >= invoiced && invoiced > 0 ? "pagada"
+    const step: RouteRow["step"] = cancelled ? "cancelada"
+      : (own.length && paid >= invoiced && invoiced > 0) || purchase.paymentStatus === "pagada" && received ? "pagada"
       : own.length ? "facturada" : received ? "recibida" : purchase.stage === "solicitud" ? "solicitud" : "orden";
     const quote = purchase.quoteId ? quoteById.get(String(purchase.quoteId)) : null;
     const work = purchase.workId ? workById.get(String(purchase.workId)) : null;
     return {
       _id: String(purchase._id), number: String(purchase.number || ""), stage: String(purchase.stage || ""), status: String(purchase.status || ""),
+      requestNumber: purchase.requestId ? requestNumber.get(String(purchase.requestId)) || "" : "", paymentStatus: String(purchase.paymentStatus || ""), receptionStatus: String(purchase.receptionStatus || ""),
       company: companyOf(purchase.company).key, priority: purchase.priority ? String(purchase.priority) : undefined, neededBy: iso(purchase.neededBy),
       supplier: supplierName.get(String(purchase.supplierId)) || "", description: String(purchase.description || ""),
       quote: quote ? { _id: String(quote._id), number: String(quote.number || ""), title: String(quote.title || "") } : null,
@@ -92,7 +100,8 @@ export type Unlinked = {
 async function unlinkedDocuments(): Promise<Unlinked> {
   const [purchaseInvoices, payments, salesInvoices, remitosToInvoice] = await Promise.all([
     Expense.find({ voucherType: { $exists: true, $ne: null }, purchaseId: { $exists: false }, status: { $ne: "anulado" } }).sort({ issueDate: -1 }).limit(100).lean<Lean[]>(),
-    Payment.find({ expenseId: { $exists: false }, status: { $ne: "anulada" } }).sort({ date: -1 }).limit(100).lean<Lean[]>(),
+    // Un pago sin factura ni orden de compra: suelto. Uno contra la OC (anticipo, contado) no.
+    Payment.find({ expenseId: { $exists: false }, purchaseId: { $exists: false }, status: { $ne: "anulada" } }).sort({ date: -1 }).limit(100).lean<Lean[]>(),
     Invoice.find({ quoteId: { $exists: false }, workId: { $exists: false }, remitoIds: { $in: [null, []] }, status: { $nin: VOID_INVOICE_STATUSES } }).sort({ issueDate: -1 }).limit(100).lean<Lean[]>(),
     SalesRemito.countDocuments({ kind: "salida", status: "pendiente" }),
   ]);

@@ -20,6 +20,7 @@ import { refreshAssetSchedule } from "@/lib/asset-service";
 import { resolveWorkNetBudget } from "@/lib/work-budget";
 import { closeCertificate, reopenCertificate } from "@/lib/certificate-billing";
 import { checkCashAccountCanBeDeleted } from "@/lib/cash-accounts";
+import { afterPaymentChange, checkPurchaseDelete } from "@/lib/purchase-flow";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -90,6 +91,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     if (entity === "payments" && item) {
       await applyExpensePayment((before as Record<string, unknown>).expenseId, -paidByPayment(before as Record<string, unknown>));
       await applyExpensePayment((item as Record<string, unknown>).expenseId, paidByPayment(item as Record<string, unknown>));
+      await afterPaymentChange(before as Record<string, unknown>, item as Record<string, unknown>, session);
     }
     const action = entity === "tasks" && (before as Record<string, unknown>).status !== (item as Record<string, unknown> | null)?.status
       ? "status_change"
@@ -107,6 +109,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
     if (entity === "cashAccounts") await checkCashAccountCanBeDeleted(id);
+    if (entity === "purchases") checkPurchaseDelete(before as Record<string, unknown>);
     if (entity === "invoices" && (before as Record<string, unknown>).cae) throw new HttpError("La factura está emitida en ARCA con CAE: no se borra. Para anularla hace falta una nota de crédito.");
     if (entity === "invoices") {
       const { Invoice } = await import("@/lib/models");
@@ -126,6 +129,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     if (entity === "invoices") await reopenCertificate(before as Record<string, unknown>);
     if (entity === "collections") await applyCollection(before as Record<string, unknown>, -1);
     if (entity === "payments") await applyExpensePayment((before as Record<string, unknown>).expenseId, -paidByPayment(before as Record<string, unknown>));
+    if (entity === "payments") await afterPaymentChange(before as Record<string, unknown>, null, session);
     await audit(session, "delete", entity, id, before, null, request.headers.get("x-forwarded-for") || undefined);
     return Response.json({ ok: true });
   } catch (error) { return apiError(error); }

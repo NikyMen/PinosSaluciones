@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { entities, ROLES, viewSections } from "./constants";
+import { entities, ROLES, USER_ACTIONS, viewSections } from "./constants";
 import { CHECK_RESULTS, DEVIATIONS, INSPECTION_RUBROS, MATERIAL_CONDITIONS, ORDER_STATUS, PERFORMANCE, PRODUCTION_CONSUMPTION, WEATHER } from "./inspections";
 import { WAREHOUSE_KEYS } from "./warehouses";
 import { ACCOUNT_CODES } from "./account-catalog";
@@ -30,6 +30,8 @@ const UserSchema = new Schema({
       edit: [{ type: String, enum: entities }],
       // Las secciones que existían cuando se guardaron: una sección nueva se da según el rol.
       seen: [{ type: String, enum: viewSections }],
+      // Lo que se da por persona: autorizar compras (Socio, Presidencia).
+      actions: [{ type: String, enum: USER_ACTIONS }],
     }, { _id: false }),
     default: undefined,
   },
@@ -632,7 +634,17 @@ const PurchaseLineSchema = new Schema({
   quantity: { type: Number, required: true, min: 0 },
   // Sin IVA: precio de lista, descuento del proveedor y lo que queda por unidad.
   listPriceCents: money, discountPct: { type: Number, default: 0 }, unitCents: money, totalCents: money,
+  // Lo que ya llegó de este renglón con los remitos del proveedor.
+  receivedQty: { type: Number, min: 0, default: 0 },
 }, { _id: false });
+
+/* Una decisión sobre una compra: quién, cuándo y por qué (autorizar, rechazar, anular). */
+const PurchaseDecisionSchema = new Schema({ userId: Schema.Types.ObjectId, userName: String, at: { type: Date, default: Date.now }, reason: String, automatic: Boolean }, { _id: false });
+
+/* Los estados de las compras (requerimiento integral v4, punto 2.2). Los de antes siguen valiendo hasta migrarlos. */
+export const PURCHASE_REQUEST_STATUSES = ["borrador", "pendiente_autorizacion", "autorizada", "rechazada", "anulada"] as const;
+export const PURCHASE_ORDER_STATUSES = ["emitida", "cerrada", "anulada"] as const;
+const LEGACY_PURCHASE_STATUSES = ["aprobada", "enviada", "recibida", "cancelada"];
 
 const PurchaseSchema = new Schema({
   number: { type: String, required: true, unique: true },
@@ -642,8 +654,24 @@ const PurchaseSchema = new Schema({
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, neededBy: Date,
   priority: { type: String, enum: ["alta", "media", "baja"], default: "media" },
   description: { type: String, required: true }, amountCents: money,
+  // La solicitud (SC-n) y la orden de compra (OC-n) son documentos distintos: la OC nace cuando
+  // Tesorería emite la orden de pago de una solicitud autorizada y queda atada a ella (`requestId` / `orderId`).
+  // "recepcion" es de antes: una orden ya recibida (la migración la pasa a "orden" cerrada).
   stage: { type: String, enum: ["solicitud", "orden", "recepcion"], default: "solicitud" },
-  status: { type: String, enum: ["borrador", "aprobada", "enviada", "recibida", "cancelada"], default: "borrador" },
+  status: { type: String, enum: [...new Set([...PURCHASE_REQUEST_STATUSES, ...PURCHASE_ORDER_STATUSES, ...LEGACY_PURCHASE_STATUSES])], default: "borrador" },
+  // El número que tenía antes de que la solicitud tuviera numeración propia.
+  legacyNumber: String,
+  requestId: { type: Schema.Types.ObjectId, ref: "Purchase" }, orderId: { type: Schema.Types.ObjectId, ref: "Purchase" },
+  // La condición de compra: contado, cuenta corriente o a plazo (con los días), y si hay que pagar antes de la entrega.
+  paymentTerms: { type: String, enum: ["contado", "cuenta_corriente", "plazo"], default: "contado" }, termDays: Number,
+  requiresAdvance: { type: Boolean, default: false },
+  emittedAt: Date, approval: PurchaseDecisionSchema, rejection: PurchaseDecisionSchema, cancellation: PurchaseDecisionSchema,
+  // En la orden: lo pagado (las OP ejecutadas, directas o por sus facturas) y cómo va el pago y la recepción.
+  paidCents: { type: Number, default: 0 },
+  paymentStatus: { type: String, enum: ["pendiente", "parcial", "pagada"], default: "pendiente" },
+  receptionStatus: { type: String, enum: ["pendiente", "parcial", "recibida"], default: "pendiente" },
+  closedAt: Date,
+  history: { type: [{ _id: false, action: String, note: String, at: { type: Date, default: Date.now }, userName: String }], default: undefined },
   requestedDate: { type: Date, required: true }, expectedDate: Date, receivedDate: Date, receiptNotes: String,
   // Lo que sigue lo llena la orden cerrada desde el buscador de precios.
   items: { type: [PurchaseLineSchema], default: undefined },
@@ -657,6 +685,25 @@ const PurchaseSchema = new Schema({
   quoteNumber: String,
   // Cuando la mercadería llegó y se sumó al stock: a qué depósito y quién lo hizo. Se pasa una sola vez.
   stockedAt: Date, stockedWarehouse: { type: String, enum: WAREHOUSE_KEYS }, stockedByName: String,
+}, options);
+
+/*
+ * El remito del proveedor: lo que llegó de una orden de compra (requerimiento
+ * integral v4, punto 2). Lo cargan Compras o el Depósito; al guardarlo suma al
+ * stock lo recibido de cada renglón. Puede ser parcial. El remito marcado como
+ * final cierra la orden.
+ */
+const PurchaseReceiptSchema = new Schema({
+  number: { type: String, required: true, unique: true },
+  purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase", required: true, index: true },
+  company: { type: String, enum: ["tvp", "constructora"] }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
+  supplierRemito: String, date: { type: Date, required: true }, warehouse: { type: String, enum: WAREHOUSE_KEYS },
+  lines: [{ _id: false, line: Number, name: String, unit: String, quantity: Number, unitCents: Number, stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" } }],
+  // Conforme: llegó como se pidió. Observada: con diferencias, roturas o faltantes (va en `notes`).
+  status: { type: String, enum: ["conforme", "observada"], default: "conforme" },
+  final: { type: Boolean, default: false },
+  attachment: String, notes: String,
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
 }, options);
 
 /*
@@ -752,6 +799,8 @@ const PaymentSchema = new Schema({
   // Qué empresa paga.
   company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
   supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
+  // La orden de compra que paga (y la solicitud de donde salió). Una OP contra la OC sin factura es un anticipo o un pago de contado.
+  purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase", index: true }, requestId: { type: Schema.Types.ObjectId, ref: "Purchase" },
   status: { type: String, enum: ["emitida", "pagada", "anulada"], default: "pagada" },
   date: { type: Date, required: true }, dueDate: Date, amountCents: money, retentionsCents: money,
   method: { type: String, enum: ["transferencia", "efectivo", "cheque", "otro"], required: true },
@@ -759,6 +808,8 @@ const PaymentSchema = new Schema({
   cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
   account: String, reference: String, notes: String,
   accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
+  // El comprobante del pago (transferencia, cheque, depósito) o la constancia de entrega del efectivo.
+  attachment: String, paidAt: Date, paidByName: String,
 }, options);
 
 const CheckSchema = new Schema({
@@ -902,9 +953,11 @@ const StockTrashSchema = new Schema({
 const NotificationSchema = new Schema({
   title: { type: String, required: true, trim: true },
   body: { type: String, default: "" },
-  kind: { type: String, enum: ["obra", "certificado", "cotizacion", "cobranza", "vencimiento", "stock", "general"], default: "general" },
+  kind: { type: String, enum: ["obra", "certificado", "cotizacion", "cobranza", "vencimiento", "stock", "compra", "general"], default: "general" },
   href: String,
   roles: [{ type: String, enum: ROLES }],
+  // Además de los roles, personas puntuales: quienes pueden autorizar compras, por ejemplo.
+  userIds: { type: [{ type: Schema.Types.ObjectId, ref: "User" }], default: undefined },
   // "hecha" la saca de la campanita para siempre; "pospuesta" la esconde hasta remindAt.
   status: { type: String, enum: ["pendiente", "pospuesta", "hecha"], default: "pendiente" },
   remindAt: Date,
@@ -924,6 +977,7 @@ export const Supplier = mongoose.models.Supplier || mongoose.model("Supplier", S
 export const PriceList = mongoose.models.PriceList || mongoose.model("PriceList", PriceListSchema);
 export const PriceListItem = mongoose.models.PriceListItem || mongoose.model("PriceListItem", PriceListItemSchema);
 export const Purchase = mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
+export const PurchaseReceipt = mongoose.models.PurchaseReceipt || mongoose.model("PurchaseReceipt", PurchaseReceiptSchema);
 export const Expense = mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
 export const Invoice = mongoose.models.Invoice || mongoose.model("Invoice", InvoiceSchema);
 export const Collection = mongoose.models.Collection || mongoose.model("Collection", CollectionSchema);
@@ -984,6 +1038,19 @@ export async function nextQuoteNumber() {
 }
 
 /** Numeración correlativa de las órdenes de compra, igual que la de cotizaciones: arranca después de la OC más alta ya cargada. */
+/** El próximo número de solicitud de compra: SC-1, SC-2… (la OC tiene la suya, OC-n). */
+export async function nextRequestNumber() {
+  const counter = await Counter.findByIdAndUpdate("purchase_requests", { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after" });
+  return `SC-${counter.seq}`;
+}
+
+/** El próximo número interno de remito de compra: RE-1, RE-2… (el número del proveedor va aparte). */
+export async function nextPurchaseReceiptNumber() {
+  const counter = await Counter.findByIdAndUpdate("purchase_receipts", { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after" });
+  return `RE-${counter.seq}`;
+}
+
+/** El próximo número de orden de compra: OC-1, OC-2… */
 export async function nextPurchaseNumber() {
   if (!await Counter.exists({ _id: "purchases" })) {
     const [highest] = await Purchase.aggregate([

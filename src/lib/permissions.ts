@@ -1,7 +1,7 @@
-import { entities, viewSections, type Entity, type Role, type ViewSection } from "./constants";
+import { entities, USER_ACTIONS, viewSections, type Entity, type Role, type UserAction, type ViewSection } from "./constants";
 
-/** `seen`: las secciones que existían cuando se guardaron estos permisos. */
-export type UserPermissions = { view: ViewSection[]; edit: Entity[]; seen?: ViewSection[] };
+/** `seen`: las secciones que existían cuando se guardaron estos permisos. `actions`: lo que se da por persona (autorizar compras). */
+export type UserPermissions = { view: ViewSection[]; edit: Entity[]; seen?: ViewSection[]; actions?: UserAction[] };
 
 /*
  * Secciones que se agregaron después de que se guardaron los permisos de la
@@ -33,11 +33,21 @@ const writeAccess: Record<Entity, Role[]> = {
   cashAccounts: ["gerencia", "administracion"],
 };
 
+/*
+ * Lo que sólo puede hacer un rol, aunque a la persona se le haya dado permiso
+ * de editar la sección: las órdenes de pago las emite Tesorería (Administración)
+ * o Gerencia. Los permisos guardados de antes le daban OP a Compras.
+ */
+const roleLocked: Partial<Record<Entity, Role[]>> = {
+  payments: ["gerencia", "administracion"],
+};
+
 export function defaultPermissionsForRole(role: Role): UserPermissions {
   return {
     view: [...viewSections],
     edit: entities.filter(entity => writeAccess[entity].includes(role)),
     seen: [...viewSections],
+    actions: role === "gerencia" ? ["approvePurchases"] : [],
   };
 }
 
@@ -49,7 +59,8 @@ export function normalizePermissions(role: Role, permissions?: Partial<UserPermi
   const defaults = defaultPermissionsForRole(role);
   const view = [...new Set([...permissions.view, ...fresh.filter(section => defaults.view.includes(section))])].filter((section): section is ViewSection => viewSections.includes(section as ViewSection));
   const edit = [...new Set([...permissions.edit, ...fresh.filter(section => defaults.edit.includes(section as Entity))])].filter((entity): entity is Entity => entities.includes(entity as Entity) && view.includes(entity as ViewSection));
-  return { view, edit, seen: [...viewSections] };
+  const actions = (Array.isArray(permissions.actions) ? permissions.actions : []).filter((action): action is UserAction => USER_ACTIONS.includes(action as UserAction));
+  return { view, edit, seen: [...viewSections], actions: role === "gerencia" ? [...new Set<UserAction>([...actions, "approvePurchases"])] : actions };
 }
 
 function resolved(subject: PermissionSubject) {
@@ -58,5 +69,13 @@ function resolved(subject: PermissionSubject) {
 
 export function canViewSection(subject: PermissionSubject, section: ViewSection) { return resolved(subject).view.includes(section); }
 export function canRead(subject: PermissionSubject, entity: Entity) { return canViewSection(subject, entity); }
-export function canWrite(subject: PermissionSubject, entity: Entity) { return resolved(subject).edit.includes(entity); }
+export function canWrite(subject: PermissionSubject, entity: Entity) {
+  const locked = roleLocked[entity];
+  if (locked && !locked.includes(typeof subject === "string" ? subject : subject.role)) return false;
+  return resolved(subject).edit.includes(entity);
+}
+/** Autorizar solicitudes de compra desde el límite: Gerencia siempre, y quien tenga el permiso (Socio, Presidencia). */
+export function canApprovePurchases(subject: PermissionSubject) {
+  return (typeof subject === "string" ? subject : subject.role) === "gerencia" || Boolean(resolved(subject).actions?.includes("approvePurchases"));
+}
 export function canDelete(subject: PermissionSubject) { return (typeof subject === "string" ? subject : subject.role) === "gerencia"; }

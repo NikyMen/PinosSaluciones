@@ -130,7 +130,8 @@ describe("caja del depósito (API)", () => {
     expect(entry.body.lines.map((line: { name: string; quantity: number }) => [line.name, line.quantity])).toEqual([["Látex interior", 3], ["Rodillo", 12]]);
     const purchases = await Purchase.find({ number: entry.body.number }).lean() as Array<{ items: unknown[]; status: string; stockedAt?: Date }>;
     expect(purchases).toHaveLength(1);
-    expect(purchases[0]).toMatchObject({ status: "recibida" });
+    // Una entrada por la caja: una orden ya recibida y cerrada.
+    expect(purchases[0]).toMatchObject({ stage: "orden", status: "cerrada", receptionStatus: "recibida" });
     expect(purchases[0].items).toHaveLength(2);
     expect(await StockItem.findById(paint._id).lean()).toMatchObject({ qty_central: 5, qty_salon: 3, quantity: 8, avgCostCents: 107_500 });
 

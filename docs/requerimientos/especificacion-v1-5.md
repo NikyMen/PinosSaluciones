@@ -74,6 +74,7 @@ exacto. Lo que no se encuentra cuenta como faltante entero.
 | Solicitud y OC atadas a cotización/obra, con fecha requerida y prioridad | ✅ | `Purchase.quoteId`, `neededBy`, `priority`, `requestLines` |
 | Factura de compra A/C/X atada a la OC y al remito o conformidad | ✅ | `Expense.purchaseId`, `receiptRef`; hereda empresa, proveedor y obra |
 | Orden de pago desde la factura; pago desde la OP | ✅ | `Payment.status`: emitida (no descuenta) → pagada. Número OP-n, retenciones, vencimiento |
+| Circuito del requerimiento v4: solicitud SC-n de sólo lectura, autorización desde $500.000, la OP de Tesorería genera la OC, pagos parciales, remitos de compra | ✅ | `src/lib/purchase-flow.ts`; ver [[respuesta-v4]] |
 | Ruta cerrada, en los dos sentidos | ✅ | Compras › Ruta de compras, con control de tres vías y documentos sin vínculo |
 | Una OP que agrupa varias facturas | ⏳ | Hoy una OP es de una factura |
 
@@ -81,7 +82,7 @@ exacto. Lo que no se encuentra cuenta como faltante entero.
 
 ✅ Remito desde el Salón · ✅ factura que junta varios remitos del mismo cliente y empresa ·
 ✅ la factura no vuelve a descontar · ✅ devolución del cliente con remito de entrada ·
-⏳ facturación parcial de un remito (decisión pendiente: hoy se factura el remito entero) ·
+✅ facturación parcial de un remito (cantidades por renglón) ·
 ⏳ nota de crédito de la devolución.
 
 ## 7. Matriz de trazabilidad
