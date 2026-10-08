@@ -69,7 +69,7 @@ describe("lectura de la planilla", () => {
     expect(manual.ok && manual.parsed.items[0]).toMatchObject({ code: "A1", name: "Látex interior 20 l", listPriceCents: 4_500_050 });
   });
 
-  it("lee la planilla modificada de Protex sin títulos usando el precio de lista de F", () => {
+  it("lee los precios de lista y final de la planilla modificada de Protex", () => {
     const rows: unknown[][] = [
       Array(13).fill(null),
       ["MORTEROS IMPERMEABILIZANTES CEMENTICIOS", null, null, null, null, null, null, null, -0.45, "FLETE", "VENTA FINAL", null, "REVENTA"],
@@ -86,6 +86,7 @@ describe("lectura de la planilla", () => {
     expect(parsed.layout.columns.price).toBe(5);
     expect(parsed.detectedDiscountPct).toBe(45);
     expect(parsed.parsed.items.map(item => item.listPriceCents)).toEqual([100000, 200000, 300000, 400000]);
+    expect(parsed.parsed.items.map(item => item.consumerGrossCents)).toEqual([90000, 180000, 270000, 360000]);
     expect(parsed.parsed.items[0]).toMatchObject({ presentation: "Kit 35 KG", category: "Morteros impermeabilizantes cementicios" });
     expect(parsed.parsed.items[3]).toMatchObject({ category: "Morteros impermeabilizantes cementicios", subcategory: "Impermeabilizantes para cubiertas" });
     expect(parsed.parsed.skipped).toEqual([]);
@@ -214,7 +215,7 @@ describe("listas de precios (base)", () => {
     const first = await importList(protexId, "2026-07-01", [item("5000PU20", "TECHOS 5000 PU", "Balde 20 KG", 200_000), item("5000PU5", "TECHOS 5000 PU", "Balde 5 KG", 60_000), item("OLD", "DISCONTINUADO", "Balde", 1_000)]);
     expect(first.summary).toMatchObject({ total: 3, added: 3 });
 
-    const second = await importList(protexId, "2026-09-02", [item("5000PU20", "TECHOS 5000 PU", "Balde 20 KG", 234_556), item("5000PU5", "TECHOS 5000 PU", "Balde 5 KG", 62_837), item("NEW", "TECHOS FIBRADO", "Balde 20 KG", 146_905)]);
+    const second = await importList(protexId, "2026-09-02", [item("5000PU20", "TECHOS 5000 PU", "Balde 20 KG", 234_556, { consumerGrossCents: 40_000_000 }), item("5000PU5", "TECHOS 5000 PU", "Balde 5 KG", 62_837), item("NEW", "TECHOS FIBRADO", "Balde 20 KG", 146_905)]);
     expect(second.summary).toEqual({ total: 3, added: 1, up: 2, down: 0, same: 0, removed: 1 });
     // La otra lista viene con IVA: se guarda sin IVA para poder comparar.
     await importList(String(other._id), "2026-09-10", [item("T5", "Techos 5000 PU blanco", "Balde 20 KG", 290_400)], true);
@@ -233,11 +234,11 @@ describe("listas de precios (base)", () => {
     const search = await call(await searchRoute.GET(new Request("http://test/api/prices/search?q=5000 techos")));
     expect(search.status).toBe(200);
     expect(search.body.total).toBe(3);
-    const rows = search.body.rows as Array<{ supplierName: string; presentation: string; listCents: number; ownCents: number; previousCents: number | null; measure: { qty: number; unit: string } | null; best: boolean; kindLabel: string }>;
+    const rows = search.body.rows as Array<{ supplierName: string; presentation: string; listCents: number; ownCents: number; consumerGrossCents: number | null; previousCents: number | null; measure: { qty: number; unit: string } | null; best: boolean; kindLabel: string }>;
     const big = rows.find(row => row.supplierName === "Protex" && row.presentation === "Balde 20 KG")!;
-    expect(big).toMatchObject({ listCents: 23_455_600, ownCents: 19_937_260, previousCents: 20_000_000, measure: { qty: 20, unit: "kg" }, kindLabel: "Productos de stock" });
+    expect(big).toMatchObject({ listCents: 23_455_600, ownCents: 19_937_260, consumerGrossCents: 40_000_000, previousCents: 20_000_000, measure: { qty: 20, unit: "kg" }, kindLabel: "Productos de stock" });
     const competitor = rows.find(row => row.supplierName === "Otro corralón")!;
-    expect(competitor).toMatchObject({ listCents: 24_000_000, ownCents: 24_000_000 });
+    expect(competitor).toMatchObject({ listCents: 24_000_000, ownCents: 24_000_000, consumerGrossCents: null });
     // Por kilo lo más barato es el balde de 20 de Protex con el 15 % aplicado.
     expect(rows.filter(row => row.best)).toEqual([big]);
 

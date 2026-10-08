@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Check, FileSpreadsheet, History, Plus, Search, Trophy, TriangleAlert, X } from "lucide-react";
 import { date, money, preciseMoney, qty } from "@/lib/format";
-import { discounted, measureLabels, withVat as addVat, type PriceRow } from "@/lib/price-lists";
+import { discounted, measureLabels, withVat as addVat, withoutVat, type PriceRow } from "@/lib/price-lists";
 import { purchaseCart, usePurchaseCart } from "@/lib/purchase-cart";
 import { PurchaseCart } from "@/components/purchase-cart";
 
@@ -121,6 +121,7 @@ export function PriceTable({ rows, withVat, mode, canOrder = false }: { rows: Pr
       <th>Presentación</th>
       <th className="num">Precio de lista</th>
       <th className="num">Tu precio</th>
+      <th className="num">Final consumidor</th>
       <th className="num">Por unidad</th>
       <th>{mode === "search" ? "Lista" : "Disponibilidad"}</th>
       <th />
@@ -138,6 +139,8 @@ export function PriceTable({ rows, withVat, mode, canOrder = false }: { rows: Pr
         <td data-label="Presentación"><div className="price-cell">{row.presentation || "—"}{row.minSale && <small>Mínimo: {row.minSale}</small>}</div></td>
         <td data-label="Precio de lista" className="num"><div className="price-cell">{money(show(row.listCents))}<Variation previous={row.previousCents} current={row.listCents} /></div></td>
         <td data-label="Tu precio" className="num"><strong className="price-own">{money(show(row.ownCents))}</strong></td>
+        <td data-label="Final consumidor" className="num">{row.consumerGrossCents === null ? <span className="price-unit empty">—</span>
+          : <strong className="price-consumer">{money(withVat ? row.consumerGrossCents : withoutVat(row.consumerGrossCents))}</strong>}</td>
         <td data-label="Por unidad" className="num">{row.measure
           ? <span className="price-unit">{preciseMoney(show(row.ownCents) / row.measure.qty)} <small>/ {measureLabels[row.measure.unit]}</small></span>
           : <span className="price-unit empty" title="La presentación no dice cuánto trae, o lo dice de una forma que no se puede comparar">—</span>}</td>
@@ -237,7 +240,7 @@ export function PriceSearch({ canOrder }: { canOrder: boolean }) {
 
     {result && result.total > 0 && <p className="price-count">
       {searching ? `${result.total} ${result.total === 1 ? "producto encontrado" : "productos encontrados"}` : `${result.total} productos en ${result.lists} ${result.lists === 1 ? "lista vigente" : "listas vigentes"}`}
-      {" · "}Precios {withVat ? "con IVA (21 %)" : "sin IVA"}{" · "}“Tu precio” ya tiene el descuento de cada proveedor.
+      {" · "}Precios {withVat ? "con IVA (21 %)" : "sin IVA"}{" · "}“Tu precio” es el costo con descuento. “Final consumidor” viene de la planilla cuando está disponible.
     </p>}
 
     <section className="table-panel">

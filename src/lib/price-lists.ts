@@ -10,7 +10,7 @@
 
 export const VAT_RATE = 0.21;
 
-export const priceFields = ["code", "name", "description", "presentation", "minSale", "price", "kind"] as const;
+export const priceFields = ["code", "name", "description", "presentation", "minSale", "price", "consumerGross", "kind"] as const;
 export type PriceField = (typeof priceFields)[number];
 export type ColumnMap = Partial<Record<PriceField, number>>;
 /** Dónde está cada dato en la planilla: la hoja, la fila de títulos y la columna de cada campo. */
@@ -18,7 +18,7 @@ export type PriceLayout = { sheet: string; headerRow: number; columns: ColumnMap
 
 export const priceFieldLabels: Record<PriceField, string> = {
   code: "Código", name: "Producto", description: "Descripción", presentation: "Presentación",
-  minSale: "Mínimo de venta", price: "Precio", kind: "Tipo / disponibilidad",
+  minSale: "Mínimo de venta", price: "Precio", consumerGross: "Precio final consumidor (con IVA)", kind: "Tipo / disponibilidad",
 };
 
 export type ParsedPriceItem = {
@@ -27,6 +27,8 @@ export type ParsedPriceItem = {
   code: string; name: string; description: string; presentation: string; minSale: string;
   category: string; subcategory: string; kind: string;
   listPriceCents: number;
+  /** Precio final al consumidor tal como figura en la planilla, con IVA. */
+  consumerGrossCents?: number | null;
 };
 
 export type MeasureUnit = "kg" | "litro" | "m2" | "m3" | "metro";
@@ -35,8 +37,9 @@ export const measureLabels: Record<MeasureUnit, string> = { kg: "kg", litro: "li
 
 /**
  * Un producto listo para mostrar: con el nombre del proveedor, la fecha de su
- * lista y lo que nos cuesta. Los importes van siempre SIN IVA; la pantalla lo
- * suma si la persona pide verlos con IVA.
+ * lista y lo que nos cuesta. Lista y costo van sin IVA; el precio final al
+ * consumidor viene con IVA de la planilla y la pantalla adapta los tres al
+ * selector de IVA.
  */
 export type PriceRow = {
   _id: string; supplierId: string; supplierName: string; discountPct: number;
@@ -45,6 +48,7 @@ export type PriceRow = {
   category: string; subcategory: string; kind: string; kindLabel: string;
   /** Precio de lista. */ listCents: number;
   /** Precio de lista menos el descuento del proveedor. */ ownCents: number;
+  /** Precio final al consumidor de la planilla, con IVA; null si no viene. */ consumerGrossCents: number | null;
   /** Precio de lista que tenía en la lista anterior. */ previousCents: number | null;
   measure: Measure | null;
   /** La lista tiene más de tres meses: el precio puede haber cambiado. */ stale: boolean;
@@ -162,6 +166,7 @@ const synonyms: Record<PriceField, string[]> = {
   presentation: ["presentacion", "envase", "formato", "empaque", "contenido"],
   minSale: ["min. venta", "min venta", "minimo de venta", "venta minima", "minimo", "unidad de venta", "u. de venta", "cant. minima"],
   price: ["precio", "precios", "precio lista", "precio de lista", "p. lista", "precio unitario", "precio sin iva", "precio s/iva", "precio neto", "importe", "valor"],
+  consumerGross: ["cons. final", "cons final", "precio final consumidor", "precio consumidor", "precio venta al publico"],
   kind: ["tipo", "disponibilidad"],
 };
 
@@ -206,7 +211,7 @@ function detectHeaderlessProtexLayout(sheet: string, rows: unknown[][]): PriceLa
   if (samples.length < 3) return null;
   const ratio = Number(samples[0][8]) / Number(samples[0][5]);
   if (ratio <= 0 || ratio >= 1 || samples.some(row => Math.abs(Number(row[8]) / Number(row[5]) - ratio) > 0.000001)) return null;
-  return { sheet, headerRow: 0, columns: { name: 0, description: 1, presentation: 2, minSale: 4, price: 5 } };
+  return { sheet, headerRow: 0, columns: { name: 0, description: 1, presentation: 2, minSale: 4, price: 5, consumerGross: 10 } };
 }
 
 /* ── Leer los productos ────────────────────────────────────────────────────── */
@@ -303,6 +308,7 @@ export function parseSheet(rows: unknown[][], layout: PriceLayout): ParsedSheet 
         minSale: [at(row, "minSale"), extra(row, "minSale")].filter(Boolean).join(" "),
         category, subcategory, kind: at(row, "kind"),
         listPriceCents: Math.round(price * 100),
+        consumerGrossCents: columns.consumerGross === undefined ? null : Math.round(parsePrice(row[columns.consumerGross]) * 100) || null,
       };
       previous = { name, description, presentation: base };
       // La lista de Protex trae una fila repetida tal cual: se guarda una sola vez.

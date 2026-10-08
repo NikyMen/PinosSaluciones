@@ -17,7 +17,7 @@ type StoredItem = {
   _id: Types.ObjectId; supplierId: Types.ObjectId; priceListId: Types.ObjectId;
   code?: string; name: string; description?: string; presentation?: string; minSale?: string;
   category?: string; subcategory?: string; kind?: string;
-  listPriceCents: number; previousPriceCents?: number | null; measureQty?: number | null; measureUnit?: string | null;
+  listPriceCents: number; consumerGrossCents?: number | null; previousPriceCents?: number | null; measureQty?: number | null; measureUnit?: string | null;
 };
 type StoredSupplier = { _id: Types.ObjectId; name: string; discountPct?: number; active?: boolean };
 type StoredList = { _id: Types.ObjectId; validFrom: Date; legend?: Record<string, string> };
@@ -41,7 +41,7 @@ export async function previewImport(supplierId: string, items: ParsedPriceItem[]
     .filter((item): item is typeof item & { previousCents: number } => item.previousCents !== undefined && item.previousCents !== item.listCents)
     .sort((a, b) => Math.abs(b.listCents / b.previousCents - 1) - Math.abs(a.listCents / a.previousCents - 1))
     .slice(0, 8);
-  const sample = next.slice(0, 6).map(item => ({ code: item.code, name: item.name, presentation: item.presentation, category: item.category, listCents: item.listPriceCents }));
+  const sample = next.slice(0, 6).map(item => ({ code: item.code, name: item.name, presentation: item.presentation, category: item.category, listCents: item.listPriceCents, consumerGrossCents: item.consumerGrossCents ?? null }));
   return { summary, changes, sample };
 }
 
@@ -129,6 +129,7 @@ async function toRows(items: StoredItem[]): Promise<PriceRow[]> {
       category: item.category || "", subcategory: item.subcategory || "", kind: item.kind || "",
       kindLabel: shortLegend(list.legend?.[item.kind || ""]),
       listCents: item.listPriceCents, ownCents: discounted(item.listPriceCents, discountPct),
+      consumerGrossCents: item.consumerGrossCents ?? null,
       previousCents: typeof item.previousPriceCents === "number" ? item.previousPriceCents : null,
       measure,
       stale: Date.now() - new Date(list.validFrom).getTime() > STALE_AFTER_DAYS * 24 * 60 * 60 * 1000,

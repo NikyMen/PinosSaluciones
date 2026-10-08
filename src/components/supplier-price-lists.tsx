@@ -21,12 +21,12 @@ type Preview = {
   current: { validFrom: string; itemCount: number } | null;
   summary: Summary;
   changes: Array<{ code: string; name: string; presentation: string; previousCents: number; listCents: number }>;
-  sample: Array<{ code: string; name: string; presentation: string; category: string; listCents: number }>;
+  sample: Array<{ code: string; name: string; presentation: string; category: string; listCents: number; consumerGrossCents: number | null }>;
 };
 
 const sourceLabels: Record<Preview["source"], string> = {
   auto: "Las columnas se reconocieron solas",
-  headerless: "Formato sin títulos: precio de lista en F",
+  headerless: "Formato sin títulos: lista en F y final consumidor en K",
   saved: "Se usaron las columnas guardadas para este proveedor",
   manual: "Se usan las columnas que marcaste",
 };
@@ -219,12 +219,12 @@ export function SupplierPriceLists({ id, canEdit, canOrder }: { id: string; canE
           <div className="stock-kpi"><span>Productos leídos</span><strong>{preview.itemCount}</strong></div>
           {preview.current ? <>
             <div className="stock-kpi"><span>Nuevos</span><strong>{preview.summary.added}</strong></div>
-            <div className="stock-kpi"><span>Cambian de precio</span><strong>{preview.summary.up + preview.summary.down}</strong><small>{preview.summary.up} suben · {preview.summary.down} bajan · {preview.summary.same} igual</small></div>
+            <div className="stock-kpi"><span>Cambian precio de lista</span><strong>{preview.summary.up + preview.summary.down}</strong><small>{preview.summary.up} suben · {preview.summary.down} bajan · {preview.summary.same} igual</small></div>
             <div className={preview.summary.removed ? "stock-kpi alert" : "stock-kpi"}><span>Ya no están</span><strong>{preview.summary.removed}</strong><small>Estaban en la lista vigente ({preview.current.itemCount})</small></div>
           </> : <div className="stock-kpi price-kpi-wide"><span>Primera lista</span><strong>—</strong><small>Es la primera lista de este proveedor: no hay con qué comparar.</small></div>}
         </div>
 
-        {preview.current && !preview.summary.added && !preview.summary.up && !preview.summary.down && !preview.summary.removed && <p className="convert-warning"><TriangleAlert size={17} /><span>Esta lista tiene los mismos precios que la vigente. Fijate si no es el mismo archivo.</span></p>}
+        {preview.current && !preview.summary.added && !preview.summary.up && !preview.summary.down && !preview.summary.removed && <p className="convert-warning"><TriangleAlert size={17} /><span>Esta lista tiene los mismos precios de lista que la vigente. Revisá si cambió el precio final al consumidor antes de guardarla.</span></p>}
 
         {preview.changes.length > 0 && <div className="price-preview-table">
           <p className="eyebrow">LOS CAMBIOS MÁS GRANDES</p>
@@ -238,8 +238,8 @@ export function SupplierPriceLists({ id, canEdit, canOrder }: { id: string; canE
 
         {!preview.current && <div className="price-preview-table">
           <p className="eyebrow">ASÍ SE LEYERON LOS PRIMEROS PRODUCTOS</p>
-          <div className="table-scroll"><table><thead><tr><th>Código</th><th>Producto</th><th>Presentación</th><th>Rubro</th><th className="num">Precio de lista</th></tr></thead>
-            <tbody>{preview.sample.map((item, index) => <tr key={index}><td>{item.code || "—"}</td><td><b>{item.name}</b></td><td>{item.presentation || "—"}</td><td>{item.category || "—"}</td><td className="num">{money(item.listCents)}</td></tr>)}</tbody></table></div>
+          <div className="table-scroll"><table><thead><tr><th>Código</th><th>Producto</th><th>Presentación</th><th>Rubro</th><th className="num">Precio de lista</th><th className="num">Final consumidor (con IVA)</th></tr></thead>
+            <tbody>{preview.sample.map((item, index) => <tr key={index}><td>{item.code || "—"}</td><td><b>{item.name}</b></td><td>{item.presentation || "—"}</td><td>{item.category || "—"}</td><td className="num">{money(item.listCents)}</td><td className="num">{item.consumerGrossCents === null ? "—" : money(item.consumerGrossCents)}</td></tr>)}</tbody></table></div>
           <p className="price-muted">Si algo no quedó donde va (el precio en otra columna, el nombre vacío), tocá “Ajustar columnas”.</p>
         </div>}
 

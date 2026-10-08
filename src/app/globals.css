@@ -1433,6 +1433,7 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 .price-cell a { color: var(--brand-navy); font-weight: 800; }
 .price-cell a:hover { color: var(--brand-red); }
 .price-own { color: var(--brand-navy-deep); font-size: .8rem; }
+.price-consumer { color: var(--brand-navy-deep); font-size: .84rem; }
 .price-unit { white-space: nowrap; }
 .price-unit small { color: var(--muted-2); font-size: .62rem; }
 .price-unit.empty { color: var(--muted-2); }

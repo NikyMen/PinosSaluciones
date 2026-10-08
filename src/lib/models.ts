@@ -386,6 +386,8 @@ const PriceListItemSchema = new Schema({
   presentation: String, minSale: String, category: String, subcategory: String, kind: String,
   // Tal como figura en la lista (con o sin IVA según la lista).
   listPriceCents: money,
+  // Precio final al consumidor, con IVA, cuando la planilla lo informa.
+  consumerGrossCents: Number,
   // El precio que tenía en la lista anterior, para ver cuánto subió.
   previousPriceCents: Number,
   measureQty: Number, measureUnit: String,

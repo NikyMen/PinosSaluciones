@@ -18,7 +18,7 @@ const column = z.coerce.number().int().min(0).max(200).optional();
 // Las columnas que la persona marcó a mano cuando el Excel no se reconoció solo.
 const layoutSchema = z.object({
   sheet: z.string().min(1), headerRow: z.coerce.number().int().min(0),
-  columns: z.object({ code: column, name: column, description: column, presentation: column, minSale: column, price: column, kind: column }),
+  columns: z.object({ code: column, name: column, description: column, presentation: column, minSale: column, price: column, consumerGross: column, kind: column }),
 });
 
 export async function GET(_request: Request, context: RouteContext<"/api/suppliers/[id]/price-lists">) {

@@ -101,6 +101,7 @@ Si la versión trae una migración de datos, va después del build y antes del r
 
 - `pnpm migrate:purchases`: pasa las compras al circuito nuevo. Las solicitudes viejas toman número SC-n y el número anterior queda en `legacyNumber`. Los estados se pasan a los nuevos, las OP de facturas de una OC se atan a la OC y se recalcula lo pagado de cada OC. Sin `--apply` solo cuenta lo que haría.
 - `pnpm migrate:cash-accounts`: arma el maestro de cajas y cuentas bancarias con los nombres que se escribían a mano en caja, recibos y pagos. Sin `--apply` solo muestra cómo agruparía los nombres. Si dos nombres distintos son la misma cuenta, se unen con un mapa JSON (`--map mapa.json`, con `{ "como se escribió": "nombre de la cuenta" }`). Con `--apply` crea las cuentas y ata cada movimiento a la suya. Después, en Tesorería › Cajas y cuentas bancarias, hay que revisar la empresa, el tipo, el banco y el saldo inicial de cada cuenta.
+- `pnpm exec tsx --env-file=.env scripts/migrate-protex-consumer.ts --file /ruta/lista.xlsx`: completa los precios finales de los 211 productos de la lista vigente de Protex y ajusta su vigencia al 01/09/2026. Primero ejecutarlo sin `--apply`; luego repetirlo con `--apply`.
 
 ## Factura electrónica (ARCA)
 
@@ -203,7 +204,7 @@ La restauración es destructiva y debe probarse primero en una base separada:
 
 Cada módulo acepta `.xlsx` o `.csv` de hasta 2.000 filas y 5 MB. La primera fila debe usar las claves técnicas visibles en `src/lib/entity-config.ts` (por ejemplo `name`, `phone`, `amountCents`). Las columnas monetarias se ingresan en pesos y se convierten internamente a centavos. Los errores se aíslan por fila.
 
-Las listas de precios de proveedores se cargan aparte, desde la ficha del proveedor: aceptan `.xlsx` de hasta 10 MB y muestran una vista previa antes de guardar. El formato de Protex sin títulos toma el precio de lista de la columna F; los cálculos comerciales de las columnas posteriores no se importan. El descuento acordado se configura en la ficha y se aplica al mostrar “Tu precio”.
+Las listas de precios de proveedores se cargan aparte, desde la ficha del proveedor: aceptan `.xlsx` de hasta 10 MB y muestran una vista previa antes de guardar. El formato de Protex sin títulos toma el precio de lista de la columna F y el precio final al consumidor, con IVA, de la K. El descuento acordado se configura en la ficha y se aplica al mostrar “Tu precio”, que sigue siendo el costo de compra. Si la planilla informa el precio final al consumidor, el buscador lo muestra en una columna aparte; el selector de IVA permite verlo con o sin impuesto.
 
 ## Seguridad y operación
 

@@ -925,7 +925,7 @@ Listas de precios de proveedores: el Excel que mandó cada uno y desde cuándo v
 
 ### PriceListItem
 
-Cada producto de una lista de precios, sin IVA. El buscador de precios recorre los de las listas vigentes. Colección `pricelistitems`.
+Cada producto de una lista de precios. `listPriceCents` se guarda sin IVA; `consumerGrossCents` conserva el precio final al consumidor con IVA cuando viene en la planilla. El buscador recorre los productos de las listas vigentes. Colección `pricelistitems`.
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
@@ -942,6 +942,7 @@ Cada producto de una lista de precios, sin IVA. El buscador de precios recorre l
 | `subcategory` | texto | — | — |
 | `kind` | texto | — | — |
 | `listPriceCents` | número | — | mínimo 0 · por defecto `0` |
+| `consumerGrossCents` | número | — | precio final al consumidor con IVA, si la planilla lo informa |
 | `previousPriceCents` | número | — | — |
 | `measureQty` | número | — | — |
 | `measureUnit` | texto | — | — |
