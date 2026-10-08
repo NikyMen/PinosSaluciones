@@ -194,6 +194,21 @@ export function detectLayout(sheet: string, rows: unknown[][]): PriceLayout | nu
   return null;
 }
 
+/** La planilla modificada de Protex no tiene títulos: A-E describen el producto,
+ * F es el precio de lista y las columnas posteriores son cálculos comerciales. */
+function detectHeaderlessProtexLayout(sheet: string, rows: unknown[][]): PriceLayout | null {
+  const samples = rows.slice(0, 60).filter(row =>
+    typeof row?.[0] === "string" && typeof row?.[1] === "string" &&
+    typeof row?.[2] === "string" && typeof row?.[4] === "string" &&
+    typeof row?.[5] === "number" && row[5] > 0 &&
+    typeof row?.[8] === "number" && row[8] > 0,
+  );
+  if (samples.length < 3) return null;
+  const ratio = Number(samples[0][8]) / Number(samples[0][5]);
+  if (ratio <= 0 || ratio >= 1 || samples.some(row => Math.abs(Number(row[8]) / Number(row[5]) - ratio) > 0.000001)) return null;
+  return { sheet, headerRow: 0, columns: { name: 0, description: 1, presentation: 2, minSale: 4, price: 5 } };
+}
+
 /* ── Leer los productos ────────────────────────────────────────────────────── */
 
 const numbered = /^\d{1,3}\s*[.)-]\s*(?=\S)/;
@@ -232,12 +247,17 @@ export function parseSheet(rows: unknown[][], layout: PriceLayout): ParsedSheet 
   }
 
   const headerPrice = normalize(cellText(header[columns.price!]));
+  const sectionAt = (row: unknown[]) => {
+    const filled = row.map(cellText).filter(Boolean);
+    if (filled.length === 1) return sectionTitle(filled[0]);
+    const titles = [columns.code, columns.name].filter((index): index is number => index !== undefined).map(index => cellText(row[index])).filter(Boolean);
+    if (titles.length !== 1 || [columns.description, columns.presentation, columns.minSale, columns.price, columns.kind]
+      .some(index => index !== undefined && cellText(row[index]))) return null;
+    return sectionTitle(titles[0]);
+  };
   // Si la lista numera sus rubros, las filas sin número son subrubros; si no
   // numera nada, cada fila suelta es un rubro.
-  const numberedSections = rows.some(row => {
-    const filled = (row || []).map(cellText).filter(Boolean);
-    return filled.length === 1 && sectionTitle(filled[0])?.numbered;
-  });
+  const numberedSections = rows.some(row => sectionAt(row || [])?.numbered);
   const items: ParsedPriceItem[] = [];
   const skipped: ParsedSheet["skipped"] = [];
   const legend: Record<string, string> = {};
@@ -257,7 +277,7 @@ export function parseSheet(rows: unknown[][], layout: PriceLayout): ParsedSheet 
     // Antes de los títulos sólo cuentan los rubros numerados ("01. IMPERMEABILIZANTES"):
     // lo demás es el membrete del proveedor.
     if (index < layout.headerRow) {
-      const section = filled.length === 1 ? sectionTitle(filled[0]) : null;
+      const section = sectionAt(row);
       if (section?.numbered) { category = section.text; subcategory = ""; }
       return;
     }
@@ -293,14 +313,14 @@ export function parseSheet(rows: unknown[][], layout: PriceLayout): ParsedSheet 
       return;
     }
 
-    if (filled.length === 1) {
-      const section = sectionTitle(filled[0]);
-      if (!section) return;
-      if (section.numbered || !numberedSections) { category = section.text; subcategory = ""; }
+    const section = sectionAt(row);
+    if (section) {
+      if (section.numbered || !numberedSections || !category) { category = section.text; subcategory = ""; }
       else subcategory = section.text;
       previous = null;
       return;
     }
+    if (filled.length === 1 || (!at(row, "name") && !at(row, "code") && normalize(at(row, "minSale")) === "min. venta")) return;
 
     // El pie de Protex explica las letras: "A · PRODUCTOS DE STOCK".
     const letter = at(row, "code");
@@ -348,7 +368,7 @@ export function detectVat(rows: unknown[][], headerRow: number): boolean | null 
 export type WorkbookSheet = { sheet: string; data: unknown[][] };
 
 export type WorkbookAnalysis =
-  | { ok: true; layout: PriceLayout; parsed: ParsedSheet; validFrom: string; pricesIncludeVat: boolean | null; source: "auto" | "saved" | "manual" }
+  | { ok: true; layout: PriceLayout; parsed: ParsedSheet; validFrom: string; pricesIncludeVat: boolean | null; detectedDiscountPct: number | null; source: "auto" | "headerless" | "saved" | "manual" }
   | { ok: false };
 
 /**
@@ -357,11 +377,15 @@ export type WorkbookAnalysis =
  * formato que quedó guardado para ese proveedor.
  */
 export function analyzeWorkbook(sheets: WorkbookSheet[], options: { fileName?: string; manual?: PriceLayout | null; saved?: PriceLayout | null } = {}): WorkbookAnalysis {
-  const attempts: Array<{ layout: PriceLayout; source: "auto" | "saved" | "manual" }> = [];
+  const attempts: Array<{ layout: PriceLayout; source: "auto" | "headerless" | "saved" | "manual" }> = [];
   if (options.manual) attempts.push({ layout: options.manual, source: "manual" });
   for (const sheet of sheets) {
     const layout = detectLayout(sheet.sheet, sheet.data);
     if (layout) attempts.push({ layout, source: "auto" });
+  }
+  for (const sheet of sheets) {
+    const layout = detectHeaderlessProtexLayout(sheet.sheet, sheet.data);
+    if (layout) attempts.push({ layout, source: "headerless" });
   }
   if (options.saved) attempts.push({ layout: options.saved, source: "saved" });
 
@@ -370,10 +394,13 @@ export function analyzeWorkbook(sheets: WorkbookSheet[], options: { fileName?: s
     if (!sheet || layout.columns.price === undefined || layout.columns.name === undefined) continue;
     const parsed = parseSheet(sheet.data, layout);
     if (!parsed.items.length) continue;
+    const first = sheet.data[parsed.items[0].row - 1];
+    const ratio = source === "headerless" ? Number(first[8]) / Number(first[5]) : NaN;
     return {
       ok: true, layout, parsed, source,
       validFrom: detectValidFrom(sheet.data, layout.headerRow, options.fileName),
       pricesIncludeVat: detectVat(sheet.data, layout.headerRow),
+      detectedDiscountPct: Number.isFinite(ratio) ? Math.round((1 - ratio) * 10000) / 100 : null,
     };
   }
   return { ok: false };

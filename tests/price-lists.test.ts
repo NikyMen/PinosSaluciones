@@ -68,6 +68,28 @@ describe("lectura de la planilla", () => {
     expect(manual.ok && manual.source).toBe("manual");
     expect(manual.ok && manual.parsed.items[0]).toMatchObject({ code: "A1", name: "Látex interior 20 l", listPriceCents: 4_500_050 });
   });
+
+  it("lee la planilla modificada de Protex sin títulos usando el precio de lista de F", () => {
+    const rows: unknown[][] = [
+      Array(13).fill(null),
+      ["MORTEROS IMPERMEABILIZANTES CEMENTICIOS", null, null, null, null, null, null, null, -0.45, "FLETE", "VENTA FINAL", null, "REVENTA"],
+      ["PROTEX FLEX", "Impermeabilizante flexible", "Kit", "35 KG", "1 Unidad", 1000, null, null, 550, null, 900, null, 765],
+      ["PROTEX SEAL 77", "Impermeabilizante cementicio", "Kit", "33 KG", "1 Unidad", 2000, null, null, 1100, null, 1800, null, 1530],
+      ["PROTEX TAP", "Sellador cementicio", "Balde", "25 KG", "1 Unidad", 3000, null, null, 1650, null, 2700, null, 2295],
+      ["IMPERMEABILIZANTES PARA CUBIERTAS", null, null, null, null, null, null, null, null, 0, 0, null, 0],
+      ["TECHOS 5000 PU", "Membrana líquida", "Balde", "20 KG", "1 Unidad", 4000, null, null, 2200, null, 3600, null, 3060],
+      ["02. SELLADORES DE JUNTAS", null, null, null, null, null, null, null, null, 0, 0, null, 0],
+    ];
+    const parsed = analyzeWorkbook([{ sheet: "Hoja1", data: rows }], { fileName: "LISTA PROTEX 092026 modificado.xlsx" });
+    if (!parsed.ok) throw new Error("No se reconoció la planilla de Protex");
+    expect(parsed.source).toBe("headerless");
+    expect(parsed.layout.columns.price).toBe(5);
+    expect(parsed.detectedDiscountPct).toBe(45);
+    expect(parsed.parsed.items.map(item => item.listPriceCents)).toEqual([100000, 200000, 300000, 400000]);
+    expect(parsed.parsed.items[0]).toMatchObject({ presentation: "Kit 35 KG", category: "Morteros impermeabilizantes cementicios" });
+    expect(parsed.parsed.items[3]).toMatchObject({ category: "Morteros impermeabilizantes cementicios", subcategory: "Impermeabilizantes para cubiertas" });
+    expect(parsed.parsed.skipped).toEqual([]);
+  });
 });
 
 describe("precios y medidas", () => {

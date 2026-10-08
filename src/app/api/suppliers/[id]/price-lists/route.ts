@@ -83,7 +83,7 @@ export async function POST(request: Request, context: RouteContext<"/api/supplie
       const [preview, current] = await Promise.all([previewImport(id, items, pricesIncludeVat), currentList(id)]);
       return Response.json({
         needsMapping: false, sheets: previews, layout: analysis.layout, source: analysis.source,
-        validFrom: validFromText, detectedVat: analysis.pricesIncludeVat, pricesIncludeVat,
+        validFrom: validFromText, detectedVat: analysis.pricesIncludeVat, detectedDiscountPct: analysis.detectedDiscountPct, pricesIncludeVat,
         itemCount: items.length, skipped: skipped.slice(0, 10), skippedCount: skipped.length, legend,
         current: current ? { validFrom: current.validFrom, itemCount: current.itemCount } : null,
         ...preview,

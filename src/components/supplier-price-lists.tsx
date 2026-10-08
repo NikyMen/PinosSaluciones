@@ -15,8 +15,8 @@ type ListInfo = { _id: string; validFrom: string; fileName?: string; file?: stri
 type Data = { supplier: SupplierInfo; lists: ListInfo[]; items: PriceRow[] };
 type SheetPreview = { name: string; rows: string[][] };
 type Preview = {
-  sheets: SheetPreview[]; layout: PriceLayout; source: "auto" | "saved" | "manual";
-  validFrom: string; detectedVat: boolean | null; pricesIncludeVat: boolean; itemCount: number;
+  sheets: SheetPreview[]; layout: PriceLayout; source: "auto" | "headerless" | "saved" | "manual";
+  validFrom: string; detectedVat: boolean | null; detectedDiscountPct: number | null; pricesIncludeVat: boolean; itemCount: number;
   skipped: Array<{ row: number; text: string }>; skippedCount: number;
   current: { validFrom: string; itemCount: number } | null;
   summary: Summary;
@@ -26,6 +26,7 @@ type Preview = {
 
 const sourceLabels: Record<Preview["source"], string> = {
   auto: "Las columnas se reconocieron solas",
+  headerless: "Formato sin títulos: precio de lista en F",
   saved: "Se usaron las columnas guardadas para este proveedor",
   manual: "Se usan las columnas que marcaste",
 };
@@ -195,7 +196,7 @@ export function SupplierPriceLists({ id, canEdit, canOrder }: { id: string; canE
 
     {preview && file && !mapper && <section className="panel price-preview">
       <div className="panel-head">
-        <div className="section-title"><FileSpreadsheet /><div><h2>Revisá la lista antes de guardarla</h2><p>{file.name} · hoja “{preview.layout.sheet}” · títulos en la fila {preview.layout.headerRow + 1} · {sourceLabels[preview.source]}</p></div></div>
+        <div className="section-title"><FileSpreadsheet /><div><h2>Revisá la lista antes de guardarla</h2><p>{file.name} · hoja “{preview.layout.sheet}”{preview.source !== "headerless" && ` · títulos en la fila ${preview.layout.headerRow + 1}`} · {sourceLabels[preview.source]}</p></div></div>
         <button type="button" className="secondary-btn" onClick={() => setMapper({ sheets: preview.sheets, layout: preview.layout, reason: "adjust" })}><Columns3 size={16} /> Ajustar columnas</button>
       </div>
       <div className="price-preview-body">
@@ -208,6 +209,9 @@ export function SupplierPriceLists({ id, canEdit, canOrder }: { id: string; canE
               <option value="true">Con IVA (se lo sacamos al guardar)</option>
             </select></label>
         </div>
+
+        {preview.detectedDiscountPct !== null && Math.abs(preview.detectedDiscountPct - supplier.discountPct) > 0.01 &&
+          <p className="convert-warning"><TriangleAlert size={17} /><span>La planilla calcula {qty(preview.detectedDiscountPct)} % de descuento, pero este proveedor tiene {qty(supplier.discountPct)} % cargado. Corregí “Descuento acordado” para que “Tu precio” coincida con la planilla.</span></p>}
 
         {olderThanCurrent && <p className="convert-warning"><TriangleAlert size={17} /><span>Ya hay una lista vigente desde el {date(String(preview.current!.validFrom))}, más nueva que esta. Si la fecha está bien, esta lista no se puede cargar: revisá que sea el archivo correcto.</span></p>}
 

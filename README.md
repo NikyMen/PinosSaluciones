@@ -203,6 +203,8 @@ La restauración es destructiva y debe probarse primero en una base separada:
 
 Cada módulo acepta `.xlsx` o `.csv` de hasta 2.000 filas y 5 MB. La primera fila debe usar las claves técnicas visibles en `src/lib/entity-config.ts` (por ejemplo `name`, `phone`, `amountCents`). Las columnas monetarias se ingresan en pesos y se convierten internamente a centavos. Los errores se aíslan por fila.
 
+Las listas de precios de proveedores se cargan aparte, desde la ficha del proveedor: aceptan `.xlsx` de hasta 10 MB y muestran una vista previa antes de guardar. El formato de Protex sin títulos toma el precio de lista de la columna F; los cálculos comerciales de las columnas posteriores no se importan. El descuento acordado se configura en la ficha y se aplica al mostrar “Tu precio”.
+
 ## Seguridad y operación
 
 - Sesiones HTTP-only de ocho horas y contraseñas con bcrypt.
