@@ -100,6 +100,13 @@ Colección `quotes` · entidad `quotes`
 | `history.at` | fecha | — | — |
 | `history.userId` | referencia | — | — |
 | `history.userName` | texto | — | — |
+| `adjustments` | lista de objetos | — | — |
+| `adjustments.kind` | texto | sí | valores: `adicional` · `reduccion` |
+| `adjustments.netCents` | número | sí | mínimo 0 |
+| `adjustments.reason` | texto | sí | — |
+| `adjustments.date` | fecha | — | — |
+| `adjustments.userId` | referencia | — | — |
+| `adjustments.userName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -415,6 +422,13 @@ Colección `invoices` · entidad `invoices`
 | `replacesId` | referencia | — | apunta a **Invoice** |
 | `replacedById` | referencia | — | apunta a **Invoice** |
 | `remitoIds` | lista | — | — |
+| `remitoLines` | lista de objetos | — | — |
+| `remitoLines.remitoId` | referencia | sí | apunta a **SalesRemito** |
+| `remitoLines.line` | número | sí | — |
+| `remitoLines.quantity` | número | sí | — |
+| `excessApproval.reason` | texto | — | — |
+| `excessApproval.userName` | texto | — | — |
+| `excessApproval.at` | fecha | — | — |
 | `associatedInvoiceId` | referencia | — | apunta a **Invoice** |
 | `cae` | texto | — | — |
 | `caeDueDate` | fecha | — | — |
@@ -901,8 +915,10 @@ Remitos de venta al cliente desde el Salón (y devoluciones). Descuentan el stoc
 | `lines.ownerParts` | lista de objetos | — | — |
 | `lines.ownerParts.owner` | texto | — | valores: `tvp` · `constructora` · `sin_asignar` |
 | `lines.ownerParts.quantity` | número | — | — |
+| `lines.invoicedQty` | número | — | — |
 | `totalCents` | número | — | mínimo 0 · por defecto `0` |
-| `status` | texto | — | valores: `pendiente` · `facturado` · `anulado` · por defecto `"pendiente"` |
+| `status` | texto | — | valores: `pendiente` · `parcial` · `facturado` · `anulado` · por defecto `"pendiente"` |
+| `billingRev` | número | — | por defecto `0` |
 | `invoiceIds` | lista | — | por defecto `[]` |
 | `returnsId` | referencia | — | apunta a **SalesRemito** |
 | `note` | texto | — | — |

@@ -7,6 +7,7 @@ import { HttpError } from "./api";
 import { companyOf } from "./companies";
 import { VOID_INVOICE_STATUSES } from "./invoice-labels";
 import type { OwnerPart } from "./stock-owners";
+import { invoicedQtyOf, pendingQtyOf, remitoBillingStatus, type RemitoInvoiceLine, type RemitoLineLike } from "./remito-billing";
 import type { Session } from "./auth";
 
 /*
@@ -133,66 +134,140 @@ export async function cancelSalesRemito(remitoId: string, reason: string, sessio
 
 /* ── La factura que referencia remitos ─────────────────────────────────────── */
 
+type RemitoDoc = Lean & { number: string; kind: string; status: string; clientId: Types.ObjectId; company: string; billingRev?: number; lines: RemitoLineLike[]; invoiceIds?: Types.ObjectId[] };
+
+/** Las cantidades que pide la factura, una por renglón: `remitoLines` puede llegar como texto JSON del formulario. */
+function requestedLines(data: Record<string, unknown>): RemitoInvoiceLine[] | null {
+  let raw = data.remitoLines;
+  if (typeof raw === "string") { try { raw = raw.trim() ? JSON.parse(raw) : null; } catch { throw new HttpError("Las cantidades de los remitos no se entienden"); } }
+  if (!Array.isArray(raw) || !raw.length) return null;
+  return raw.map(entry => ({ remitoId: String(entry?.remitoId || ""), line: Number(entry?.line), quantity: round(Number(entry?.quantity || 0)) }))
+    .filter(entry => entry.quantity > 0);
+}
+
 /**
- * Antes de facturar: los remitos tienen que ser salidas del mismo cliente,
- * estar pendientes de facturar y ser de la empresa que factura.
+ * Antes de facturar: los remitos tienen que ser salidas del mismo cliente, ser
+ * de la empresa que factura y tener algo pendiente de facturar. La factura puede
+ * llevar sólo una parte (`remitoLines`); si no dice, factura todo lo pendiente.
  */
 export async function checkRemitosForInvoice(data: Record<string, unknown>) {
   const ids = Array.isArray(data.remitoIds) ? data.remitoIds.map(String).filter(Boolean) : [];
-  if (!ids.length) { delete data.remitoIds; return []; }
-  const remitos = await SalesRemito.find({ _id: { $in: ids } }).lean<Array<Lean & { number: string; kind: string; status: string; clientId: Types.ObjectId; company: string }>>();
+  if (!ids.length) { delete data.remitoIds; delete data.remitoLines; return []; }
+  const remitos = await SalesRemito.find({ _id: { $in: ids } }).lean<RemitoDoc[]>();
   if (remitos.length !== new Set(ids).size) throw new HttpError("Uno de los remitos no existe");
   const company = companyOf(data.company).key;
   for (const remito of remitos) {
     if (remito.kind !== "salida") throw new HttpError(`El ${remito.number} es una devolución: no se factura`);
     if (String(remito.clientId) !== String(data.clientId)) throw new HttpError(`El remito ${remito.number} es de otro cliente`);
     if (remito.company !== company) throw new HttpError(`El remito ${remito.number} lo factura ${companyOf(remito.company).short}`);
-    // En una sustitución la X ya tenía estos remitos: pasan a la fiscal.
-    if (remito.status !== "pendiente" && !(data.replacesId && remito.status === "facturado")) throw new HttpError(`El remito ${remito.number} ya está ${remito.status}`);
+    // En una sustitución la X ya tenía estos remitos: pasan a la fiscal tal cual.
+    if (data.replacesId) { if (!["facturado", "parcial"].includes(remito.status)) throw new HttpError(`El remito ${remito.number} ya está ${remito.status}`); continue; }
+    if (!["pendiente", "parcial"].includes(remito.status)) throw new HttpError(`El remito ${remito.number} ya está ${remito.status}`);
   }
   data.remitoIds = remitos.map(remito => remito._id);
+  if (data.replacesId) return remitos;
+
+  const requested = requestedLines(data);
+  const lines: RemitoInvoiceLine[] = requested ?? remitos.flatMap(remito => remito.lines.map((line, index) => ({ remitoId: String(remito._id), line: index, quantity: pendingQtyOf(line, remito.status) })).filter(entry => entry.quantity > 0));
+  for (const entry of lines) {
+    const remito = remitos.find(candidate => String(candidate._id) === entry.remitoId);
+    const line = remito?.lines[entry.line];
+    if (!remito || !line) throw new HttpError("Una de las cantidades no corresponde a los remitos elegidos");
+    const pending = pendingQtyOf(line, remito.status);
+    if (entry.quantity > pending + 1e-9) throw new HttpError(`Del remito ${remito.number} quedan ${pending} ${line.unit || ""} de ${line.name || "un material"} por facturar`.replace("  ", " "));
+  }
+  if (!lines.length) throw new HttpError("Los remitos elegidos no tienen nada pendiente de facturar");
+  // Sólo los remitos de los que se factura algo.
+  const used = new Set(lines.map(entry => entry.remitoId));
+  data.remitoIds = remitos.filter(remito => used.has(String(remito._id))).map(remito => remito._id);
+  data.remitoLines = lines.map(entry => ({ ...entry, remitoId: new Types.ObjectId(entry.remitoId) }));
   return remitos;
 }
 
-/** Marca los remitos como facturados por esta factura (y, si sustituye una X, los saca de la X). */
-export async function attachRemitos(invoiceId: unknown, remitoIds: unknown[], replacedId?: unknown) {
-  if (!remitoIds.length) return;
-  if (replacedId) await SalesRemito.updateMany({ _id: { $in: remitoIds } }, { $pull: { invoiceIds: replacedId } });
-  await SalesRemito.updateMany({ _id: { $in: remitoIds } }, { $set: { status: "facturado" }, $addToSet: { invoiceIds: invoiceId } });
+/**
+ * Suma (o resta, con `sign` −1) lo que factura una factura a los renglones de un
+ * remito. Cada remito lleva un contador de versión: si otra factura lo tocó en el
+ * medio, se vuelve a leer y se reintenta, así dos facturas a la vez no se pisan.
+ */
+async function moveInvoicedQty(invoiceId: unknown, remitoId: unknown, entries: RemitoInvoiceLine[], sign: 1 | -1) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const remito = await SalesRemito.findById(remitoId).lean<RemitoDoc>();
+    if (!remito) throw new HttpError("Uno de los remitos no existe");
+    const quantities = remito.lines.map(line => invoicedQtyOf(line, remito.status));
+    for (const entry of entries) {
+      const line = remito.lines[entry.line];
+      if (!line) throw new HttpError(`El remito ${remito.number} no tiene ese renglón`);
+      const next = round(quantities[entry.line] + sign * entry.quantity);
+      if (sign > 0 && next > Number(line.quantity || 0) + 1e-9) {
+        throw new HttpError(`Del remito ${remito.number} quedan ${pendingQtyOf(line, remito.status)} ${line.unit || ""} de ${line.name || "un material"} por facturar: otra factura lo tomó`.replace("  ", " "), 409);
+      }
+      quantities[entry.line] = Math.max(0, next);
+    }
+    const status = remitoBillingStatus(remito.lines.map((line, index) => ({ ...line, invoicedQty: quantities[index] })));
+    const set: Record<string, unknown> = { status };
+    quantities.forEach((quantity, index) => { set[`lines.${index}.invoicedQty`] = quantity; });
+    const result = await SalesRemito.updateOne(
+      { _id: remito._id, billingRev: remito.billingRev ?? { $in: [null, 0] }, status: { $ne: "anulado" } },
+      { $set: set, $inc: { billingRev: 1 }, ...(sign > 0 ? { $addToSet: { invoiceIds: invoiceId } } : { $pull: { invoiceIds: invoiceId } }) },
+    );
+    if (result.modifiedCount === 1) return;
+  }
+  throw new HttpError("El remito se está facturando desde otro lado: probá de nuevo", 409);
+}
+
+function byRemito(lines: RemitoInvoiceLine[]) {
+  const groups = new Map<string, RemitoInvoiceLine[]>();
+  for (const entry of lines) groups.set(String(entry.remitoId), [...(groups.get(String(entry.remitoId)) || []), { ...entry, remitoId: String(entry.remitoId) }]);
+  return groups;
 }
 
 /**
- * Toma los remitos para una factura nueva antes de guardarla: cada uno pasa de
- * "pendiente" a "facturado" sólo si sigue pendiente. Si dos facturas quieren el
- * mismo remito a la vez, una lo consigue y la otra se frena acá. Si no se pudo
- * tomar alguno, se sueltan los que se habían tomado.
+ * Toma los remitos para una factura nueva antes de guardarla: suma lo que
+ * factura a cada renglón, sólo si sigue pendiente. Si dos facturas quieren lo
+ * mismo a la vez, una lo consigue y la otra se frena acá. Si no se pudo tomar
+ * alguno, se sueltan los que se habían tomado.
  */
-export async function claimRemitos(invoiceId: unknown, remitoIds: unknown[]) {
-  const claimed: unknown[] = [];
-  for (const remitoId of remitoIds) {
-    const remito = await SalesRemito.findOneAndUpdate({ _id: remitoId, status: "pendiente" }, { $set: { status: "facturado" }, $addToSet: { invoiceIds: invoiceId } }, { returnDocument: "after" }).select("number").lean<{ number?: string }>();
-    if (!remito) {
-      await unclaimRemitos(invoiceId, claimed);
-      const taken = await SalesRemito.findById(remitoId).select("number status").lean<{ number?: string; status?: string }>();
-      throw new HttpError(`El remito ${taken?.number || ""} ya está ${taken?.status || "tomado por otra factura"}`.replace("  ", " "), 409);
-    }
-    claimed.push(remitoId);
+export async function claimRemitos(invoiceId: unknown, lines: RemitoInvoiceLine[]) {
+  const claimed: RemitoInvoiceLine[] = [];
+  for (const [remitoId, entries] of byRemito(lines)) {
+    try { await moveInvoicedQty(invoiceId, remitoId, entries, 1); }
+    catch (error) { await unclaimRemitos(invoiceId, claimed); throw error; }
+    claimed.push(...entries);
   }
 }
 
-/** Suelta los remitos que había tomado una factura que al final no se guardó. */
-export async function unclaimRemitos(invoiceId: unknown, remitoIds: unknown[]) {
-  if (!remitoIds.length) return;
-  await SalesRemito.updateMany({ _id: { $in: remitoIds }, invoiceIds: invoiceId }, { $set: { status: "pendiente" }, $pull: { invoiceIds: invoiceId } });
+/** Suelta lo que había tomado una factura: no se guardó, se anuló o se borró. */
+export async function unclaimRemitos(invoiceId: unknown, lines: RemitoInvoiceLine[]) {
+  for (const [remitoId, entries] of byRemito(lines)) await moveInvoicedQty(invoiceId, remitoId, entries, -1);
 }
 
-/** Una factura anulada devuelve sus remitos a "pendiente de facturar", salvo que otra factura vigente los tenga. */
-export async function releaseRemitos(invoiceId: unknown) {
-  const remitos = await SalesRemito.find({ invoiceIds: invoiceId }).lean<Array<Lean & { invoiceIds: Types.ObjectId[] }>>();
+/** En una sustitución: los remitos de la X pasan a la fiscal, con las mismas cantidades. */
+export async function attachRemitos(invoiceId: unknown, remitoIds: unknown[], replacedId?: unknown) {
+  if (!remitoIds.length) return;
+  if (replacedId) await SalesRemito.updateMany({ _id: { $in: remitoIds } }, { $pull: { invoiceIds: replacedId } });
+  await SalesRemito.updateMany({ _id: { $in: remitoIds } }, { $addToSet: { invoiceIds: invoiceId } });
+}
+
+/** Las cantidades que factura una factura guardada, como las usa `unclaimRemitos`. */
+export function invoiceRemitoLines(invoice: { remitoLines?: unknown }): RemitoInvoiceLine[] {
+  return Array.isArray(invoice.remitoLines)
+    ? (invoice.remitoLines as Array<{ remitoId: unknown; line: number; quantity: number }>).map(entry => ({ remitoId: String(entry.remitoId), line: Number(entry.line), quantity: Number(entry.quantity) }))
+    : [];
+}
+
+/**
+ * Una factura anulada o borrada devuelve lo que facturaba de sus remitos. Las de
+ * antes no dicen cantidades: el remito vuelve a "pendiente de facturar", salvo
+ * que otra factura vigente lo tenga.
+ */
+export async function releaseRemitos(invoice: { _id?: unknown; remitoLines?: unknown }) {
+  const lines = invoiceRemitoLines(invoice);
+  if (lines.length) return unclaimRemitos(invoice._id, lines);
+  const remitos = await SalesRemito.find({ invoiceIds: invoice._id }).lean<Array<Lean & { invoiceIds: Types.ObjectId[] }>>();
   for (const remito of remitos) {
-    const others = remito.invoiceIds.filter(other => String(other) !== String(invoiceId));
+    const others = remito.invoiceIds.filter(other => String(other) !== String(invoice._id));
     const stillInvoiced = others.length ? await Invoice.exists({ _id: { $in: others }, status: { $nin: VOID_INVOICE_STATUSES } }) : null;
-    await SalesRemito.updateOne({ _id: remito._id }, { $pull: { invoiceIds: invoiceId }, ...(stillInvoiced ? {} : { $set: { status: "pendiente" } }) });
+    await SalesRemito.updateOne({ _id: remito._id }, { $pull: { invoiceIds: invoice._id }, $inc: { billingRev: 1 }, ...(stillInvoiced ? {} : { $set: { status: "pendiente" }, $unset: { "lines.$[].invoicedQty": "" } }) });
   }
 }
 

@@ -99,7 +99,9 @@ describe("facturas de Tango, recibos y seguimiento", () => {
     const row = tracking.body.items.find((item: { quote: { number: string } | null }) => item.quote?.number === "COT-40");
     expect(row).toMatchObject({
       client: { name: "Consorcio Belgrano" }, works: [{ code: "OB-40" }],
-      invoicedCents: 1_815_000_00, collectedCents: 1_815_000_00, balanceCents: 0, toInvoiceCents: 1_185_000_00, state: "facturado_parcial",
+      // Lo que falta facturar va en neto: la cotización a mano vale $3.000.000 con IVA (2.479.338,84 netos) y se facturaron 1.500.000 netos.
+      invoicedCents: 1_815_000_00, collectedCents: 1_815_000_00, balanceCents: 0, toInvoiceCents: 979_338_84, state: "facturado_parcial",
+      billing: { currentCents: 2_479_338_84, invoicedCents: 1_500_000_00, pendingCents: 979_338_84, state: "parcial" },
       receipts: [{ number: "RC-1", amountCents: 1_815_000_00 }],
     });
     expect(row.invoices.map((invoice: { label: string }) => invoice.label)).toEqual(["Factura A 0003-00000120", "Factura A 0003-00000121"]);

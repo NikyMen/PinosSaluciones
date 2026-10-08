@@ -1795,6 +1795,13 @@ tbody tr.task-row.pendiente:hover { background: #e9ecf0; }
 .badge.tracking-facturado_parcial { background: #fff5e0; color: #946200; }
 .badge.tracking-por_cobrar { background: #fdecec; color: #b42318; }
 .badge.tracking-completa { background: #e6f6ec; color: #1d7a45; }
+.badge.billing-sin_facturar { background: #eef2f7; color: #4a5568; margin-top: 4px; }
+.badge.billing-parcial { background: #fff5e0; color: #946200; margin-top: 4px; }
+.badge.billing-total { background: #e6f6ec; color: #1d7a45; margin-top: 4px; }
+.badge.billing-exceso { background: #fdecec; color: #b42318; margin-top: 4px; }
+.quote-billing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-top: 16px; }
+.quote-billing-grid h3 { font-size: 14px; margin: 0 0 8px; }
+.quote-billing-sources { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.8; }
 .tracking-table thead th:last-child, .receipt-table thead th:last-child { position: static; }
 .tracking-filter { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: var(--shadow-sm); }
 .tracking-filter button { padding: 8px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-size: .8rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
@@ -2081,7 +2088,7 @@ td > .company-badge:first-child { margin-left: 0; }
 .transfer-lines { margin: 0; padding-left: 14px; font-size: .68rem; }
 .transfer-lines small { color: var(--muted); }
 .row-selected td { background: #f2f7fb; }
-.badge.transfer-en_transito, .badge.remito-pendiente { color: #80590f; background: var(--warning-soft); }
+.badge.transfer-en_transito, .badge.remito-pendiente, .badge.remito-parcial { color: #80590f; background: var(--warning-soft); }
 .badge.transfer-recibida, .badge.remito-facturado { color: #126245; background: var(--success-soft); }
 .badge.transfer-con_diferencias { color: #9e2630; background: var(--danger-soft); }
 .badge.transfer-anulada, .badge.remito-anulado { color: #4a5568; background: #eef2f7; }

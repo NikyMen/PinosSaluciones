@@ -116,7 +116,8 @@ describe("remitos tomados por una sola factura", () => {
     const client = await Client.create({ name: "Cliente remitos" });
     const item = await StockItem.create({ name: "Pegamento", unit: "bolsa", category: "materiales" });
     const remito = await SalesRemito.create({ number: "R-900", clientId: client._id, date: new Date(), lines: [{ stockItemId: item._id, name: "Pegamento", quantity: 4, unitPriceCents: 1000, totalCents: 4000 }], totalCents: 4000 });
-    const results = await Promise.allSettled([claimRemitos(new Types.ObjectId(), [remito._id]), claimRemitos(new Types.ObjectId(), [remito._id])]);
+    const all = [{ remitoId: String(remito._id), line: 0, quantity: 4 }];
+    const results = await Promise.allSettled([claimRemitos(new Types.ObjectId(), all), claimRemitos(new Types.ObjectId(), all)]);
     expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
     const after = await SalesRemito.findById(remito._id).lean<{ status: string; invoiceIds: unknown[] }>();

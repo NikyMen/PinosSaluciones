@@ -11,7 +11,8 @@ import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balan
 import { applyCreditNote, checkNote, checkSubstitution, completeSubstitution, emitInvoiceInArca, prepareInvoice } from "@/lib/invoice-service";
 import { beforeCreate } from "@/lib/document-rules";
 import { Types } from "mongoose";
-import { attachRemitos, checkRemitosForInvoice, claimRemitos, unclaimRemitos } from "@/lib/sales-remitos";
+import { attachRemitos, checkRemitosForInvoice, claimRemitos, invoiceRemitoLines, unclaimRemitos } from "@/lib/sales-remitos";
+import { checkInvoiceExcess } from "@/lib/quote-billing-service";
 import { ensureAccountCatalog } from "@/lib/account-service";
 import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
@@ -81,9 +82,13 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     const replaced = entity === "invoices" ? await checkSubstitution(data) : null;
     // La factura referencia los remitos de venta que factura: no vuelve a descontar stock.
     if (entity === "invoices") await checkRemitosForInvoice(data);
+    // La fiscal que sustituye una X factura lo mismo que la X de sus remitos.
+    if (replaced) data.remitoLines = replaced.remitoLines;
     if (entity === "invoices") await prepareInvoice(data);
     // Una nota de débito o de crédito: con su factura asociada, del mismo cliente y la misma letra.
     if (entity === "invoices") await checkNote(data);
+    // No pasa de lo que queda por facturar de su cotización, su certificado o sus remitos (salvo que Gerencia lo autorice).
+    if (entity === "invoices") await checkInvoiceExcess(data, session);
     if (entity === "collections") { if (!data.number) data.number = await nextReceiptNumber(); data.userName = session.name; }
     // Emitir en ARCA: primero se revisa que la factura se pueda guardar, después se pide el CAE.
     const emitInArca = entity === "invoices" && data.arcaEmit === true;
@@ -91,8 +96,9 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     // Los remitos se toman antes de emitir y guardar: dos facturas no pueden llevarse el mismo.
     // En una sustitución ya los tiene la X y pasan a la fiscal después de guardarla.
     const remitoIds = entity === "invoices" && Array.isArray(data.remitoIds) ? data.remitoIds : [];
-    const claim = remitoIds.length > 0 && !replaced;
-    if (claim) { data._id = new Types.ObjectId(); await claimRemitos(data._id, remitoIds); }
+    const remitoLines = entity === "invoices" ? invoiceRemitoLines(data) : [];
+    const claim = remitoLines.length > 0 && !replaced;
+    if (claim) { data._id = new Types.ObjectId(); await claimRemitos(data._id, remitoLines); }
     let item;
     try {
       if (emitInArca) {
@@ -107,7 +113,7 @@ export async function POST(request: Request, context: RouteContext<"/api/records
       });
     } catch (error) {
       // Emitida en ARCA, los remitos quedan tomados: la factura existe aunque haya que cargarla a mano.
-      if (claim && !data.cae) await unclaimRemitos(data._id, remitoIds);
+      if (claim && !data.cae) await unclaimRemitos(data._id, remitoLines);
       throw error;
     }
 

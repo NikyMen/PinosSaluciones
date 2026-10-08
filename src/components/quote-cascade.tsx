@@ -10,6 +10,7 @@ import { computeCascade, defaultCascadeParams, insumosSummary, parseCoef, rubroL
 import type { CascadeParams, Insumo, OverheadLine, QuoteItem, Rubro } from "@/lib/cascada";
 import { conceptGroups, findConcept } from "@/lib/cascada-conceptos";
 import { QuoteStock } from "@/components/quote-stock";
+import { QuoteBillingPanel } from "@/components/quote-billing";
 
 /**
  * El cotizador cascada: la traduccion a pantalla de las 7 planillas de analisis
@@ -381,6 +382,7 @@ export function QuoteCascade({ id, canEdit, canForceUnlock }: { id: string; canE
 
     {/* Disponibilidad de los materiales: consulta mientras se cotiza, reserva cuando se aprueba. */}
     <QuoteStock quoteId={id} status={quote.status} />
+    <QuoteBillingPanel quoteId={id} canEdit={canEdit} canRemove={canForceUnlock} />
   </>;
 }
 

@@ -29,6 +29,12 @@ La etapa 0 ya está desarrollada:
 - El sistema no deja certificar más del 100 % de la obra.
 - Si una factura de certificado se anula, el certificado vuelve a quedar pendiente de facturar.
 
+La etapa 1 también está desarrollada:
+- La cotización y Seguimiento muestran el cotizado vigente, lo facturado, el pendiente total, lo habilitado para facturar, el % y el estado, todo en neto.
+- Los adicionales y reducciones se cargan en la cotización.
+- El sistema frena una factura que supera lo disponible, salvo autorización de Gerencia con motivo.
+- Un remito se puede facturar en partes.
+
 ## Respuestas a la sección 9
 
 1. **Maestro de Cajas y Bancos con permisos de alta, modificación e inactivación.** Sí (etapa 2).

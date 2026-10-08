@@ -9,6 +9,7 @@ import { COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { peekInternalNumber, suggestFiscalNumber, voucherBooks } from "@/lib/voucher-books";
 import { baseInvoiceType, isNote, SALES_VOUCHER_TYPES, type VoucherType } from "@/lib/invoice-labels";
 import { arcaCredentials } from "@/lib/arca";
+import { invoicedQtyOf, pendingQtyOf, remitoPendingCents, type RemitoLike } from "@/lib/remito-billing";
 
 /**
  * Los datos con los que se abre una factura nueva: qué comprobantes tiene
@@ -66,16 +67,24 @@ export async function GET(request: Request) {
       });
     }
     if (remitoIds.length) {
-      const remitos = await SalesRemito.find({ _id: { $in: remitoIds }, kind: "salida", status: "pendiente" }).sort({ date: 1 }).lean<Array<{ _id: unknown; number: string; company: CompanyKey; clientId: unknown; quoteId?: unknown; totalCents: number }>>();
+      const remitos = await SalesRemito.find({ _id: { $in: remitoIds }, kind: "salida", status: { $in: ["pendiente", "parcial"] } }).sort({ date: 1 }).lean<Array<RemitoLike & { _id: unknown; number: string; company: CompanyKey; clientId: unknown; quoteId?: unknown; totalCents: number }>>();
       const first = remitos[0];
       if (first) {
         const same = remitos.filter(remito => String(remito.clientId) === String(first.clientId) && remito.company === first.company);
+        // Cada renglón con lo que le queda por facturar: se factura todo o se eligen cantidades.
+        const remitoDetail = same.map(remito => ({
+          remitoId: String(remito._id), number: remito.number,
+          lines: (remito.lines || []).map((line, index) => ({ line: index, name: line.name || "", unit: line.unit || "", quantity: Number(line.quantity || 0), invoicedQty: invoicedQtyOf(line, remito.status), pendingQty: pendingQtyOf(line, remito.status), unitPriceCents: Number(line.unitPriceCents || 0), totalCents: Number(line.totalCents || 0) }))
+            .filter(line => line.pendingQty > 0),
+        }));
         Object.assign(draft, {
           company: first.company, number: numbers[first.company]?.[firstType] || "", clientId: String(first.clientId),
           quoteId: first.quoteId ? String(first.quoteId) : "",
           // El precio del remito es el neto: la A le suma el IVA; la X no lo discrimina.
-          netCents: same.reduce((total, remito) => total + Number(remito.totalCents || 0), 0),
-          remitoIds: same.map(remito => String(remito._id)), issueDate: todayIso(),
+          netCents: same.reduce((total, remito) => total + remitoPendingCents(remito), 0),
+          remitoIds: same.map(remito => String(remito._id)), remitoDetail,
+          remitoLines: remitoDetail.flatMap(remito => remito.lines.map(line => ({ remitoId: remito.remitoId, line: line.line, quantity: line.pendingQty }))),
+          issueDate: todayIso(),
           description: `Remito${same.length > 1 ? "s" : ""} ${same.map(remito => remito.number).join(", ")}`,
         });
       }

@@ -123,6 +123,9 @@ const QuoteSchema = new Schema({
   overheads: { type: [OverheadSchema], default: [] },
   cascade: { type: CascadeSchema, default: () => ({}) },
   history: [{ action: String, note: String, at: { type: Date, default: Date.now }, userId: Schema.Types.ObjectId, userName: String }],
+  // Adicionales y reducciones acordados después: cambian lo cotizado vigente sin tocar la cotización original. En neto.
+  adjustments: [{ kind: { type: String, enum: ["adicional", "reduccion"], required: true }, netCents: { type: Number, min: 0, required: true }, reason: { type: String, required: true },
+    date: { type: Date, default: Date.now }, userId: Schema.Types.ObjectId, userName: String }],
 }, options);
 
 const CounterSchema = new Schema({ _id: String, seq: { type: Number, default: 0 } });
@@ -504,9 +507,14 @@ const SalesRemitoSchema = new Schema({
     name: String, unit: String, quantity: Number,
     unitPriceCents: { type: Number, min: 0, default: 0 }, totalCents: { type: Number, min: 0, default: 0 },
     unitCostCents: Number, ownerParts: { type: [OwnerPartSchema], default: undefined },
+    // Lo ya facturado de este renglón: un remito se puede facturar en partes.
+    invoicedQty: Number,
   }],
   totalCents: { type: Number, min: 0, default: 0 },
-  status: { type: String, enum: ["pendiente", "facturado", "anulado"], default: "pendiente" },
+  // "parcial": se facturó una parte. Los de antes no tienen `invoicedQty`: facturados, se facturaron enteros.
+  status: { type: String, enum: ["pendiente", "parcial", "facturado", "anulado"], default: "pendiente" },
+  // Sube con cada factura que toma o suelta cantidades: dos facturas a la vez no se pisan.
+  billingRev: { type: Number, default: 0 },
   invoiceIds: { type: [{ type: Schema.Types.ObjectId, ref: "Invoice" }], default: [] },
   // La devolución dice qué remito devuelve.
   returnsId: { type: Schema.Types.ObjectId, ref: "SalesRemito" },
@@ -704,6 +712,10 @@ const InvoiceSchema = new Schema({
   replacesId: { type: Schema.Types.ObjectId, ref: "Invoice" }, replacedById: { type: Schema.Types.ObjectId, ref: "Invoice" },
   // Los remitos de venta que factura. La factura no vuelve a mover stock: eso ya lo hizo el remito.
   remitoIds: { type: [{ type: Schema.Types.ObjectId, ref: "SalesRemito" }], default: undefined },
+  // Qué cantidades de qué renglones de esos remitos factura (`line` es el índice del renglón).
+  remitoLines: { type: [{ _id: false, remitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito", required: true }, line: { type: Number, required: true }, quantity: { type: Number, required: true } }], default: undefined },
+  // Una factura que pasa de lo disponible de su cotización, certificado o remitos sólo se guarda si Gerencia la autoriza con motivo.
+  excessApproval: { reason: String, userName: String, at: Date },
   // Una nota de débito o de crédito, la factura a la que corresponde (ARCA la pide). La de crédito
   // descuenta su importe de lo que se debe de esa factura y queda "aplicada".
   associatedInvoiceId: { type: Schema.Types.ObjectId, ref: "Invoice" },

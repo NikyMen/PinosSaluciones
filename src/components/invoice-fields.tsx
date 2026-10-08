@@ -8,8 +8,11 @@ import { MoneyInput, SearchSelect } from "@/components/fields";
 import { COMPANIES, COMPANY_KEYS, companyOf, type CompanyKey } from "@/lib/companies";
 import { FormField, type FieldProps } from "@/components/record-form";
 import { isCreditNote, isNote, voucherLabels } from "@/lib/invoice-labels";
+import { invoiceLinesNetCents, type RemitoInvoiceLine } from "@/lib/remito-billing";
 
 type Item = Record<string, unknown> & { _id: string };
+/** Lo que queda por facturar de cada remito elegido, renglón por renglón (lo arma el borrador). */
+type RemitoDetail = { remitoId: string; number: string; lines: Array<{ line: number; name: string; unit: string; quantity: number; invoicedQty: number; pendingQty: number; unitPriceCents: number; totalCents: number }> };
 
 const VAT_RATES = [21, 10.5, 27, 0];
 const groups = [
@@ -59,6 +62,25 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
   const clientId = (clientField ? fieldProps(clientField).relationValue : "") || String(source.clientId || "");
   const [associatedId, setAssociatedId] = useState(() => String(source.associatedInvoiceId || ""));
   const [associable, setAssociable] = useState<Array<{ _id: string; label: string; pendingCents: number }> | null>(null);
+  // Facturar remitos en parte: cuánto de cada renglón. Arranca con todo lo pendiente.
+  const remitoDetail = !editing && Array.isArray(draft.remitoDetail) ? draft.remitoDetail as RemitoDetail[] : [];
+  const [remitoQty, setRemitoQty] = useState<Record<string, string>>(() => Object.fromEntries(remitoDetail.flatMap(remito => remito.lines.map(line => [`${remito.remitoId}:${line.line}`, String(line.pendingQty)]))));
+  const [netKey, setNetKey] = useState(0);
+  const remitoLines: RemitoInvoiceLine[] = remitoDetail.flatMap(remito => remito.lines.map(line => ({ remitoId: remito.remitoId, line: line.line, quantity: Math.min(line.pendingQty, Math.max(0, Number(String(remitoQty[`${remito.remitoId}:${line.line}`] || "0").replace(",", ".")) || 0)) })))
+    .filter(entry => entry.quantity > 0);
+
+  function chooseRemitoQty(key: string, value: string) {
+    const next = { ...remitoQty, [key]: value.replace(/[^\d,.]/g, "") };
+    setRemitoQty(next);
+    // El neto acompaña lo elegido: lo que valen esas cantidades de cada renglón.
+    const lines = remitoDetail.flatMap(remito => remito.lines.map(line => ({ remitoId: remito.remitoId, line: line.line, quantity: Math.min(line.pendingQty, Math.max(0, Number(String(next[`${remito.remitoId}:${line.line}`] || "0").replace(",", ".")) || 0)) })));
+    const remitos = remitoDetail.map(remito => ({ _id: remito.remitoId, status: "parcial", lines: Array.from({ length: Math.max(0, ...remito.lines.map(line => line.line)) + 1 }, (_, index) => {
+      const line = remito.lines.find(candidate => candidate.line === index);
+      return line ? { quantity: line.quantity, invoicedQty: line.invoicedQty, unitPriceCents: line.unitPriceCents, totalCents: line.totalCents } : { quantity: 0 };
+    }) }));
+    setNet(invoiceLinesNetCents(remitos, lines.filter(entry => entry.quantity > 0)) / 100);
+    setNetKey(key => key + 1);
+  }
 
   // Al emitir en ARCA, el número es el que sigue allá: se consulta cada vez que cambia la empresa o el comprobante.
   useEffect(() => {
@@ -178,7 +200,22 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
     </div></fieldset>)}
 
     {/* Los campos ocultos del formulario genérico: a qué X sustituye y qué remitos factura. */}
-    {["replacesId", "remitoIds"].map(key => { const target = field(key); return target ? <FormField key={key} {...fieldProps(target)} /> : null; })}
+    {["replacesId", "remitoIds", "certificateId"].map(key => { const target = field(key); return target ? <FormField key={key} {...fieldProps(target)} /> : null; })}
+    {remitoDetail.length > 0 && <fieldset><legend><b>Remitos que factura</b><small>Todo lo pendiente o una parte: lo que no se facture queda pendiente en el remito</small></legend>
+      <table className="picked-lines"><thead><tr><th>Remito</th><th>Material</th><th>Pendiente</th><th>Factura</th><th>Precio unitario (neto)</th></tr></thead><tbody>
+        {remitoDetail.flatMap(remito => remito.lines.map(line => {
+          const key = `${remito.remitoId}:${line.line}`;
+          return <tr key={key}>
+            <td data-label="Remito">{remito.number}</td>
+            <td data-label="Material">{line.name}</td>
+            <td data-label="Pendiente">{String(line.pendingQty).replace(".", ",")} {line.unit}{line.invoicedQty > 0 && <small className="tracking-sub">Ya facturado {String(line.invoicedQty).replace(".", ",")}</small>}</td>
+            <td data-label="Factura"><input inputMode="decimal" value={remitoQty[key] ?? ""} onChange={event => chooseRemitoQty(key, event.target.value)} aria-label={`Cantidad de ${line.name} a facturar`} /></td>
+            <td data-label="Precio unitario">{money(line.unitPriceCents)}</td>
+          </tr>;
+        }))}
+      </tbody></table>
+      <input type="hidden" name="remitoLines" value={JSON.stringify(remitoLines)} />
+    </fieldset>}
     {emitting && <p className="invoice-note">Al guardar se emite en ARCA: ARCA le da el número y el CAE, y el comprobante queda autorizado. Después no se puede borrar ni cambiar el cliente, la fecha o los importes; para anular una factura hace falta una nota de crédito.</p>}
     {note && isCreditNote(voucherType) && <p className="invoice-note">La nota de crédito resta: baja lo que el cliente debe de la factura asociada, y resta en ventas, libro IVA y reportes.</p>}
     {Boolean(editing?.cae) && <p className="invoice-note">Emitida en ARCA ({editing?.arcaEnvironment === "homologacion" ? "homologación, de prueba" : "producción"}) · CAE {String(editing?.cae)}. Solo se puede cambiar lo que no es fiscal: obra, cotización, descripción y vencimiento.</p>}
@@ -189,7 +226,7 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
         <label><span>Total *</span><MoneyInput name="amountCents" defaultValue={Number(source.amountCents || 0) / 100} required /></label>
         <label className="readonly-field"><span>Neto e IVA</span><output><button type="button" className="link-btn" onClick={() => { setByTotal(false); setNet(Math.round(Number(source.amountCents || 0) / (1 + vatPct / 100)) / 100); }}>Cargar el neto y el IVA</button></output></label>
       </> : <>
-        <label><span>{isX ? "Importe *" : "Neto gravado *"}</span><MoneyInput key={`net-${byTotal}`} name="netCents" defaultValue={net} required onValueChange={setNet} /></label>
+        <label><span>{isX ? "Importe *" : "Neto gravado *"}</span><MoneyInput key={`net-${byTotal}-${netKey}`} name="netCents" defaultValue={net} required onValueChange={setNet} /></label>
         {isX ? <input type="hidden" name="vatPct" value="0" /> : <>
         <label><span>IVA</span><select name="vatPct" value={String(vatPct)} onChange={event => setVatPct(Number(event.target.value))}>
           {VAT_RATES.map(rate => <option key={rate} value={rate}>{rate ? `${String(rate).replace(".", ",")} %` : "Sin IVA"}</option>)}

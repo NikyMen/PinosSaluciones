@@ -96,7 +96,9 @@ Comercial › Seguimiento (venta) y Compras › Ruta de compras (compra).
 | Cotizado vigente, certificado, facturado, habilitado para facturar | ✅ (Seguimiento) |
 | Cobrado aplicado, anticipos no aplicados, pendiente de cobro, total recibido | ✅ |
 | % facturado y % cobrado sobre lo cotizado, % cobrado sobre lo facturado | ✅ |
-| Adicionales y reducciones de la cotización; notas de crédito y débito | ⏳ |
+| Adicionales y reducciones de la cotización; notas de crédito y débito | ✅ (cotización y Seguimiento, en neto; ver [[respuesta-v4]]) |
+| Bloqueo de la factura que pasa de lo pendiente (cotización, certificado o remitos), con autorización de Gerencia | ✅ |
+| Remito facturado en parte | ✅ |
 | Fondo de reparo y retenciones de venta por separado | ⏳ (existe la cuenta GGD - Fondo de Reparo) |
 
 ## 9. Tipos de comprobantes

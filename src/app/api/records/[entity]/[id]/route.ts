@@ -71,7 +71,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       else if (status !== "convertida") await releaseForQuote(id, session);
     }
     // Una factura anulada libera sus remitos: vuelven a estar pendientes de facturar.
-    if (entity === "invoices" && item && !VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status)) && String((item as Record<string, unknown>).status) === "anulada") await releaseRemitos(id);
+    if (entity === "invoices" && item && !VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status)) && String((item as Record<string, unknown>).status) === "anulada") await releaseRemitos(item as Record<string, unknown>);
     // Una nota de crédito anulada devuelve lo que había descontado de su factura (y al revés si se reactiva).
     if (entity === "invoices" && item) {
       const wasVoid = VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status));
@@ -119,7 +119,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
       await StockTrash.create({ entity, item: before, name, deletedById: session.userId, deletedByName: session.name });
     }
     await model.findByIdAndDelete(id);
-    if (entity === "invoices") await releaseRemitos(id);
+    if (entity === "invoices") await releaseRemitos(before as Record<string, unknown>);
     if (entity === "invoices" && !VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status))) await applyCreditNote(before as Record<string, unknown>, -1);
     if (entity === "invoices") await reopenCertificate(before as Record<string, unknown>);
     if (entity === "collections") await applyCollection(before as Record<string, unknown>, -1);

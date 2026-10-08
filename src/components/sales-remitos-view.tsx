@@ -7,13 +7,14 @@ import { date, money, qty, todayIso } from "@/lib/format";
 import { COMPANIES, COMPANY_KEYS, companyOf, type CompanyKey } from "@/lib/companies";
 import { downloadRemitoPdf } from "@/lib/remito-pdf";
 import { invoiceLabel } from "@/lib/invoice-labels";
+import { invoicedQtyOf, remitoPendingCents } from "@/lib/remito-billing";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
 import { StockPicker, type PickedItem } from "@/components/stock-picker";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
 
-type Line = { stockItemId: string; name: string; unit: string; quantity: number; unitPriceCents: number; totalCents: number };
+type Line = { stockItemId: string; name: string; unit: string; quantity: number; unitPriceCents: number; totalCents: number; invoicedQty?: number };
 type Remito = {
-  _id: string; number: string; kind: "salida" | "devolucion"; company: CompanyKey; clientId: string; date: string; status: "pendiente" | "facturado" | "anulado";
+  _id: string; number: string; kind: "salida" | "devolucion"; company: CompanyKey; clientId: string; date: string; status: "pendiente" | "parcial" | "facturado" | "anulado";
   lines: Line[]; totalCents: number; note?: string; userName?: string; returnsId?: string;
   client: { name?: string; cuit?: string } | null; invoices: Array<{ _id: string; number?: string; voucherType?: string; status?: string }>;
 };
@@ -22,7 +23,9 @@ const filters = [
   { value: "pendiente", label: "Para facturar" }, { value: "facturado", label: "Facturados" },
   { value: "devolucion", label: "Devoluciones" }, { value: "anulado", label: "Anulados" }, { value: "", label: "Todos" },
 ] as const;
-const statusLabels = { pendiente: "Para facturar", facturado: "Facturado", anulado: "Anulado" };
+const statusLabels = { pendiente: "Para facturar", parcial: "Facturado en parte", facturado: "Facturado", anulado: "Anulado" };
+/** Lo que todavía se puede facturar: lo pendiente y lo facturado en parte. */
+const billable = (status: string) => status === "pendiente" || status === "parcial";
 
 function pdfData(remito: Remito) {
   return {
@@ -54,7 +57,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
   }, []);
   useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, [load]);
 
-  const visible = useMemo(() => (rows || []).filter(row => filter === "" ? true : filter === "devolucion" ? row.kind === "devolucion" : row.kind === "salida" && row.status === filter), [rows, filter]);
+  const visible = useMemo(() => (rows || []).filter(row => filter === "" ? true : filter === "devolucion" ? row.kind === "devolucion" : row.kind === "salida" && (filter === "pendiente" ? billable(row.status) : row.status === filter)), [rows, filter]);
   const chosen = (rows || []).filter(row => selected.includes(row._id));
   const mixed = new Set(chosen.map(row => `${row.clientId}-${row.company}`)).size > 1;
 
@@ -83,7 +86,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
         {filters.map(option => <button key={option.value} type="button" className={filter === option.value ? "active" : ""} onClick={() => { setFilter(option.value); setSelected([]); }}>{option.label}</button>)}
       </div>
       {canInvoice && filter === "pendiente" && <button type="button" className="primary-btn" disabled={!chosen.length || mixed} title={mixed ? "Una factura junta remitos de un solo cliente y una sola empresa" : undefined}
-        onClick={() => router.push(`/app/invoices?remitos=${selected.join(",")}`)}><FileCheck2 size={17} /> Facturar {chosen.length ? `${chosen.length} remito${chosen.length > 1 ? "s" : ""} · ${money(chosen.reduce((total, row) => total + row.totalCents, 0))}` : "seleccionados"}</button>}
+        onClick={() => router.push(`/app/invoices?remitos=${selected.join(",")}`)}><FileCheck2 size={17} /> Facturar {chosen.length ? `${chosen.length} remito${chosen.length > 1 ? "s" : ""} · ${money(chosen.reduce((total, row) => total + remitoPendingCents(row), 0))}` : "seleccionados"}</button>}
     </div>
     {mixed && <div className="notice warning">Elegiste remitos de distintos clientes o empresas: una factura junta los de un solo cliente y una sola empresa.</div>}
     {error && <div className="notice error">{error}</div>}
@@ -97,8 +100,8 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
             <td data-label="Fecha">{date(row.date)}</td>
             <td data-label="Cliente">{row.client?.name || "—"}</td>
             <td data-label="Factura"><span className={`company-badge ${row.company}`}>{companyOf(row.company).short}</span>{row.invoices.map(invoice => <small key={invoice._id} className="tracking-sub">{invoiceLabel(invoice)}</small>)}</td>
-            <td data-label="Materiales"><ul className="transfer-lines">{row.lines.map(line => <li key={line.stockItemId}>{qty(line.quantity)} {line.unit} · {line.name}</li>)}</ul></td>
-            <td data-label="Total">{money(row.totalCents)}</td>
+            <td data-label="Materiales"><ul className="transfer-lines">{row.lines.map(line => <li key={line.stockItemId}>{qty(line.quantity)} {line.unit} · {line.name}{row.status === "parcial" && invoicedQtyOf(line, row.status) > 0 ? ` (facturado ${qty(invoicedQtyOf(line, row.status))})` : ""}</li>)}</ul></td>
+            <td data-label="Total">{money(row.totalCents)}{row.status === "parcial" && <small className="tracking-sub">Falta {money(remitoPendingCents(row))}</small>}</td>
             <td data-label="Estado">{row.kind === "devolucion" ? <span className="badge devolucion">Devolución</span> : <span className={`badge remito-${row.status}`}>{statusLabels[row.status]}</span>}</td>
             <td className="row-actions">
               <button className="row-action-wide" onClick={() => { void downloadRemitoPdf(pdfData(row)); }}><FileText size={15} /> PDF</button>
@@ -126,6 +129,9 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
   const [clients, setClients] = useState<Option[]>([]);
   const [clientId, setClientId] = useState("");
   const [company, setCompany] = useState<CompanyKey>("tvp");
+  // La cotización que entrega este remito, si la hay: queda habilitada para facturarlo.
+  const [quotes, setQuotes] = useState<Array<{ _id: string; number: string; title: string; clientId: string; company?: CompanyKey; status: string }>>([]);
+  const [quoteId, setQuoteId] = useState("");
   const [day, setDay] = useState(todayIso());
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<Array<{ item: PickedItem; available: number; quantity: string; price: number }>>([]);
@@ -135,7 +141,9 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
   useEffect(() => {
     void fetchAllRecords<{ _id: string; name: string; cuit?: string }>("clients").then(items => ({ items }))
       .then(result => setClients((result.items || []).map((client: { _id: string; name: string; cuit?: string }) => ({ value: client._id, label: client.name, hint: client.cuit }))));
+    void fetchAllRecords<{ _id: string; number: string; title: string; clientId: string; company?: CompanyKey; status: string }>("quotes").then(setQuotes);
   }, []);
+  const clientQuotes = quotes.filter(quote => quote.clientId === clientId && ["aprobada", "convertida"].includes(quote.status));
 
   const amount = (value: string) => Number(value.replace(",", ".")) || 0;
   const total = lines.reduce((sum, line) => sum + Math.round(amount(line.quantity) * line.price * 100), 0);
@@ -147,7 +155,7 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
     if (over) return setError(`De ${over.item.name} hay ${qty(over.available)} en el Salón`);
     setBusy(true); setError("");
     const response = await fetch("/api/remitos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-      company, clientId, date: day, note, lines: lines.map(line => ({ itemId: line.item._id, quantity: amount(line.quantity), unitPriceCents: Math.round(line.price * 100) })),
+      company, clientId, quoteId, date: day, note, lines: lines.map(line => ({ itemId: line.item._id, quantity: amount(line.quantity), unitPriceCents: Math.round(line.price * 100) })),
     }) });
     const result = await response.json();
     setBusy(false);
@@ -165,7 +173,11 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
       {/* El form es para el espaciado de los modales; se confirma con el botón, no con Enter (el buscador usa Enter). */}
       <form onSubmit={event => event.preventDefault()}><div className="modal-form-body">
         <div className="form-grid">
-          <label><span>Cliente *</span><SearchSelect name="clientId" options={clients} value={clientId} onChange={setClientId} placeholder="Elegí el cliente…" /></label>
+          <label><span>Cliente *</span><SearchSelect name="clientId" options={clients} value={clientId} onChange={value => { setClientId(value); setQuoteId(""); }} placeholder="Elegí el cliente…" /></label>
+          <label><span>Cotización<em className="field-hint">Si el remito entrega una cotización aprobada: la habilita para facturar</em></span>
+            <SearchSelect name="quoteId" options={clientQuotes.map(quote => ({ value: quote._id, label: `${quote.number} — ${quote.title}` }))} value={quoteId}
+              onChange={value => { setQuoteId(value); const quote = clientQuotes.find(candidate => candidate._id === value); if (quote?.company) setCompany(quote.company); }}
+              placeholder={clientId ? clientQuotes.length ? "Sin cotización" : "El cliente no tiene cotizaciones aprobadas" : "Elegí primero el cliente"} /></label>
           <label><span>Empresa que va a facturar *</span><select value={company} onChange={event => setCompany(event.target.value as CompanyKey)}>{COMPANY_KEYS.map(key => <option key={key} value={key}>{COMPANIES[key].legalName}</option>)}</select></label>
           <label><span>Fecha *</span><DateInput name="date" defaultValue={day} required recent onValueChange={setDay} /></label>
           <label><span>Observaciones</span><input value={note} onChange={event => setNote(event.target.value)} placeholder="Quién retira, entrega…" /></label>

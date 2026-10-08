@@ -392,8 +392,16 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       body[field.key] = value;
     }
     const url = editing ? `/api/records/${entity}/${editing._id}` : `/api/records/${entity}`;
-    const response = await fetch(url, { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const result = await response.json();
+    let response = await fetch(url, { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    let result = await response.json();
+    // Una factura que pasa de lo que queda por facturar: Gerencia la puede autorizar igual, con motivo.
+    if (!response.ok && result.excess && isAdmin) {
+      const reason = prompt(`${String(result.error || "")}\n\n¿Por qué se factura igual? (queda en el historial de la cotización)`);
+      if (reason && reason.trim().length >= 3) {
+        response = await fetch(url, { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, excessReason: reason.trim() }) });
+        result = await response.json();
+      }
+    }
     if (!response.ok) { setSaving(false); return setError(fieldErrors(result) || result.error || "No se pudo guardar"); }
     if (entity === "invoices" && !editing && result.cae) setNotice(`Emitida en ARCA: ${invoiceLabel(result)} · CAE ${String(result.cae)}. El PDF se baja con el botón "PDF fiscal" de la lista.`);
     setSaving(false); setModal(false); void load();
@@ -498,6 +506,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
             : item.status !== "cancelada" && <button className="row-action-wide approve" title="Llegó la mercadería: sumarla al stock" onClick={() => setReceiveFor(item)}><PackagePlus size={15} /> Pasar a stock</button>)}
           {entity === "invoices" && canEdit && item.voucherType === "factura_x" && !item.replacedById && item.status !== "anulada" && <button className="row-action-wide" title="Reemplazar esta X por una Factura A o B: lo cobrado pasa a la fiscal y la X deja de contar" onClick={() => { void substitute(item); }}><FileSymlink size={15} /> Sustituir</button>}
           {entity === "expenses" && canEdit && Boolean(item.voucherType) && item.status !== "pagado" && item.status !== "anulado" && <Link className="row-action-wide approve" title="Emitir la orden de pago de esta factura" href={`/app/payments?factura=${item._id}`}><HandCoins size={15} /> Orden de pago</Link>}
+          {/* De la factura a lo que la originó: la cotización y la obra (con su certificado). */}
+          {entity === "invoices" && Boolean(item.quoteId) && <Link className="row-action-wide" href={`/app/quotes/${String(item.quoteId)}`} title="Ver la cotización y cuánto queda por facturar"><Calculator size={15} /> Cotización</Link>}
+          {entity === "invoices" && Boolean(item.workId) && <Link className="row-action-wide" href={`/app/works/${String(item.workId)}`} title={item.certificateNumber ? `Ver la obra y el certificado ${String(item.certificateNumber)}` : "Ver la obra"}><HardHat size={15} /> Obra</Link>}
+          {entity === "invoices" && Array.isArray(item.remitoIds) && item.remitoIds.length > 0 && <Link className="row-action-wide" href="/app/remitos" title={`Factura ${item.remitoIds.length} remito${item.remitoIds.length === 1 ? "" : "s"} de venta`}><FileSymlink size={15} /> Remitos</Link>}
           {entity === "invoices" && Boolean(item.cae) && <button className="row-action-wide" title={`Descargar la factura emitida en ARCA (CAE ${String(item.cae)})`} onClick={() => { void downloadInvoice(item); }}><Download size={15} /> PDF fiscal</button>}
           {entity === "invoices" && canEdit && (item.status === "pendiente" || item.status === "parcial") && <button className="row-action-wide approve" title="Registrar un cobro de esta factura y hacer el recibo" onClick={() => setReceiptFor({ receipt: null, clientId: String(item.clientId || ""), invoiceId: item._id })}><HandCoins size={15} /> Cobrar</button>}
           {entity === "collections" && <button className="row-action-wide" title="Descargar el recibo en PDF" onClick={() => { void downloadReceipt(item); }}><Download size={15} /> Recibo</button>}

@@ -6,6 +6,7 @@ import { Download, Search } from "lucide-react";
 import { date, money } from "@/lib/format";
 import type { TrackingRow, TrackingState } from "@/lib/tracking";
 import { companyOf } from "@/lib/companies";
+import { billingStateLabels } from "@/lib/quote-billing";
 
 const stateLabels: Record<TrackingState, string> = { sin_facturar: "Sin facturar", facturado_parcial: "Falta facturar", por_cobrar: "Por cobrar", completa: "Cobrada" };
 const filters: Array<{ value: "" | "por_cobrar" | "por_facturar" | "completa"; label: string }> = [
@@ -47,20 +48,26 @@ export function TrackingView() {
     });
   }, [rows, search, filter]);
 
+  // Cotizado y facturado van en neto (sin IVA); lo cobrado y el saldo, con IVA, como se cobra.
   const totals = visible.reduce((sum, row) => ({
-    quoted: sum.quoted + row.quotedCents, invoiced: sum.invoiced + row.invoicedCents, collected: sum.collected + row.collectedCents,
+    current: sum.current + (row.billing?.currentCents || 0), invoicedNet: sum.invoicedNet + (row.billing?.invoicedCents || 0),
+    invoiced: sum.invoiced + row.invoicedCents, collected: sum.collected + row.collectedCents,
     balance: sum.balance + row.balanceCents, toInvoice: sum.toInvoice + row.toInvoiceCents,
     certified: sum.certified + row.certifiedCents, enabled: sum.enabled + row.enabledToInvoiceCents,
-  }), { quoted: 0, invoiced: 0, collected: 0, balance: 0, toInvoice: 0, certified: 0, enabled: 0 });
+    excess: sum.excess + (row.billing?.state === "exceso" ? 1 : 0),
+  }), { current: 0, invoicedNet: 0, invoiced: 0, collected: 0, balance: 0, toInvoice: 0, certified: 0, enabled: 0, excess: 0 });
   const pct = (part: number, whole: number) => whole > 0 ? `${(Math.round(part / whole * 1000) / 10).toString().replace(".", ",")} %` : "—";
 
   function exportExcel() {
-    const header = ["Cotización", "Título", "Cliente", "Obra", "Facturas", "Recibos", "Cotizado", "Certificado", "Habilitado para facturar", "Facturado", "Cobrado", "Saldo por cobrar", "Falta facturar", "% facturado", "% cobrado", "% cobrado de lo facturado", "Estado"];
+    const header = ["Cotización", "Título", "Cliente", "Obra", "Facturas", "Recibos", "Cotizado (con IVA)", "Cotizado original (neto)", "Adicionales (neto)", "Reducciones (neto)", "Cotizado vigente (neto)", "Facturado (neto)", "Pendiente total (neto)", "Habilitado para facturar (neto)", "% facturado", "Estado de facturación", "Certificado", "Facturado (con IVA)", "Cobrado", "Saldo por cobrar", "% cobrado", "% cobrado de lo facturado", "Estado"];
     const lines = visible.map(row => [
       row.quote?.number || "Sin cotización", row.quote?.title || "", row.client?.name || "", row.works.map(work => [work.code, work.name].filter(Boolean).join(" ")).join(" / "),
       row.invoices.map(invoice => invoice.label).join(" / "), row.receipts.map(receipt => receipt.number).join(" / "),
-      amount(row.quotedCents), amount(row.certifiedCents), amount(row.enabledToInvoiceCents), amount(row.invoicedCents), amount(row.collectedCents), amount(row.balanceCents), amount(row.toInvoiceCents),
-      row.invoicedPct ?? "", row.collectedPct ?? "", row.collectedOfInvoicedPct ?? "", stateLabels[row.state],
+      amount(row.quotedCents), row.billing ? amount(row.billing.originalCents) : "", row.billing ? amount(row.billing.additionsCents) : "", row.billing ? amount(row.billing.reductionsCents) : "",
+      row.billing ? amount(row.billing.currentCents) : "", row.billing ? amount(row.billing.invoicedCents) : "", amount(row.toInvoiceCents), amount(row.enabledToInvoiceCents),
+      row.invoicedPct ?? "", row.billing ? billingStateLabels[row.billing.state] : "",
+      amount(row.certifiedCents), amount(row.invoicedCents), amount(row.collectedCents), amount(row.balanceCents),
+      row.collectedPct ?? "", row.collectedOfInvoicedPct ?? "", stateLabels[row.state],
     ].map(value => cell(String(value))).join(";"));
     const blob = new Blob([`﻿${[header.join(";"), ...lines].join("\r\n")}`], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a");
@@ -74,14 +81,14 @@ export function TrackingView() {
     <div className="page-heading"><div>
       <p className="eyebrow">COMERCIAL</p>
       <h1>Seguimiento</h1>
-      <p>Cada cotización con su obra, lo certificado, las facturas (A, B y X) y los recibos que las cobraron, en una misma línea. El saldo pendiente total no es lo habilitado para facturar ya.</p>
+      <p>Cada cotización con su obra, lo certificado, las facturas (A, B y X) y los recibos que las cobraron, en una misma línea. Lo cotizado y lo facturado van en neto, sin IVA; lo cobrado y el saldo, con IVA. El pendiente total no es lo habilitado para facturar ya.</p>
     </div></div>
 
     <div className="price-kpis tracking-kpis">
-      <div className="stock-kpi"><span>Cotizado vigente</span><strong>{money(totals.quoted)}</strong><small>Certificado {money(totals.certified)}</small></div>
-      <div className="stock-kpi"><span>Facturado</span><strong>{money(totals.invoiced)}</strong><small>{pct(totals.invoiced, totals.quoted)} de lo cotizado · falta {money(totals.toInvoice)}</small></div>
-      <div className="stock-kpi"><span>Habilitado para facturar</span><strong>{money(totals.enabled)}</strong><small>Certificados aprobados sin facturar</small></div>
-      <div className="stock-kpi"><span>Cobrado aplicado</span><strong>{money(totals.collected)}</strong><small>{pct(totals.collected, totals.quoted)} de lo cotizado · {pct(totals.collected, totals.invoiced)} de lo facturado</small></div>
+      <div className="stock-kpi"><span>Cotizado vigente (neto)</span><strong>{money(totals.current)}</strong><small>Con adicionales y reducciones · certificado {money(totals.certified)}</small></div>
+      <div className={totals.excess ? "stock-kpi alert" : "stock-kpi"}><span>Facturado (neto)</span><strong>{money(totals.invoicedNet)}</strong><small>{pct(totals.invoicedNet, totals.current)} de lo vigente · falta {money(totals.toInvoice)}{totals.excess ? ` · ${totals.excess} en exceso` : ""}</small></div>
+      <div className="stock-kpi"><span>Habilitado para facturar</span><strong>{money(totals.enabled)}</strong><small>Certificados aprobados y remitos sin facturar</small></div>
+      <div className="stock-kpi"><span>Cobrado aplicado</span><strong>{money(totals.collected)}</strong><small>{pct(totals.collected, totals.invoiced)} de lo facturado (con IVA)</small></div>
       <div className={totals.balance ? "stock-kpi alert" : "stock-kpi"}><span>Pendiente de cobro</span><strong>{money(totals.balance)}</strong><small>Facturado sin cobrar</small></div>
       <div className="stock-kpi"><span>Anticipos no aplicados</span><strong>{money(advances.cents)}</strong><small>{advances.count} {advances.count === 1 ? "recibo" : "recibos"} a cuenta · total recibido {money(totals.collected + advances.cents)}</small></div>
     </div>
@@ -99,7 +106,7 @@ export function TrackingView() {
       {rows === null ? <div className="loading-state">Armando el seguimiento…</div>
         : !visible.length ? <div className="empty-state"><p>{rows.length ? "No hay cotizaciones que coincidan con la búsqueda." : "Todavía no hay cotizaciones aprobadas ni facturas cargadas."}</p></div>
           : <div className="table-scroll"><table className="tracking-table"><thead><tr>
-            <th>Cotización</th><th>Cliente</th><th>Obra</th><th>Facturas</th><th>Recibos</th><th>Certificado</th><th>Facturado</th><th>Cobrado</th><th>Saldo</th><th>Estado</th>
+            <th>Cotización</th><th>Cliente</th><th>Obra</th><th>Facturas</th><th>Recibos</th><th>Certificado</th><th>Facturación (neto)</th><th>Cobrado</th><th>Saldo</th><th>Estado</th>
           </tr></thead><tbody>{visible.map(row => <tr key={row.key}>
             <td data-label="Cotización">{row.quote
               ? <Link href={`/app/quotes/${row.quote._id}`} className="tracking-quote"><b>{row.quote.number} <span className={`company-badge ${row.quote.company}`}>{companyOf(row.quote.company).short}</span></b><small>{row.quote.title}</small><small>{money(row.quote.amountCents)}</small></Link>
@@ -109,7 +116,12 @@ export function TrackingView() {
             <td data-label="Facturas">{row.invoices.length ? <div className="tracking-list">{row.invoices.map(invoice => <span key={invoice._id} className={`tracking-chip ${invoice.status}`} title={`${companyOf(invoice.company).legalName} · ${invoice.issueDate ? date(invoice.issueDate) : ""} · ${money(invoice.amountCents)} · cobrado ${money(invoice.collectedCents)}`}><i className={`company-dot ${invoice.company}`} />{companyOf(invoice.company).short} · {invoice.label}</span>)}</div> : <span className="muted">—</span>}</td>
             <td data-label="Recibos">{row.receipts.length ? <div className="tracking-list">{row.receipts.map(receipt => <span key={receipt._id} className="tracking-chip receipt" title={`${date(receipt.date)} · ${money(receipt.amountCents)}`}>{receipt.number}</span>)}</div> : <span className="muted">—</span>}</td>
             <td data-label="Certificado">{row.certifiedCents ? money(row.certifiedCents) : "—"}{row.enabledToInvoiceCents > 0 && <small className="tracking-sub">Habilitado {money(row.enabledToInvoiceCents)}</small>}</td>
-            <td data-label="Facturado">{money(row.invoicedCents)}{row.invoicedPct !== null && <small className="tracking-sub">{String(row.invoicedPct).replace(".", ",")} % de lo cotizado</small>}{row.toInvoiceCents > 0 && <small className="tracking-sub">Falta {money(row.toInvoiceCents)}</small>}</td>
+            <td data-label="Facturación (neto)">{row.billing
+              ? <>{money(row.billing.invoicedCents)} <small className="tracking-sub">de {money(row.billing.currentCents)} vigente{row.billing.additionsCents || row.billing.reductionsCents ? ` (original ${money(row.billing.originalCents)})` : ""}</small>
+                {row.invoicedPct !== null && <small className="tracking-sub">{String(row.invoicedPct).replace(".", ",")} % facturado</small>}
+                {row.toInvoiceCents > 0 && <small className="tracking-sub">Falta {money(row.toInvoiceCents)}</small>}
+                <span className={`badge billing-${row.billing.state}`}>{billingStateLabels[row.billing.state]}{row.billing.excessCents > 0 ? ` · ${money(row.billing.excessCents)} de más` : ""}</span></>
+              : <>{money(row.invoicedCents)} <small className="tracking-sub">con IVA, sin cotización</small></>}</td>
             <td data-label="Cobrado">{money(row.collectedCents)}{row.collectedOfInvoicedPct !== null && <small className="tracking-sub">{String(row.collectedOfInvoicedPct).replace(".", ",")} % de lo facturado</small>}</td>
             <td data-label="Saldo"><b>{money(row.balanceCents)}</b></td>
             <td data-label="Estado"><span className={`badge tracking-${row.state}`}>{stateLabels[row.state]}</span></td>

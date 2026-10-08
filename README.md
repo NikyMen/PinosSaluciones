@@ -136,6 +136,16 @@ El sistema se conecta con ARCA por web services (WSAA + WSFEv1) con un certifica
 - Un comprobante con CAE no se borra, no se anula y no cambia cliente, fecha, número ni importes: una factura se anula con una nota de crédito. Una factura con notas asociadas no se borra. Su PDF, con CAE y QR, sale del botón "PDF fiscal" de la lista.
 - El servidor de WSFEv1 ofrece primero Diffie-Hellman de 1024 bits, que Node rechaza; `src/lib/arca.ts` pide solo cifrados ECDHE con AES-GCM o ChaCha20.
 
+## Facturación parcial
+
+Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisiones/2026-10-certificado-sobre-neto.md`.
+
+- La cotización guarda su neto (`netCents`: el subtotal 3 de la cascada, o importe / 1,21 si se cargó a mano) y la obra su presupuesto neto (`budgetNetCents`). El certificado es un porcentaje de ese neto: lo calcula el servidor, que no deja pasar del 100 %.
+- Adicionales y reducciones: en el detalle de la cotización, panel "Facturación" (`/api/quotes/[id]/adjustments`). Cambian lo cotizado vigente sin tocar la cotización original.
+- Cotizado vigente, facturado (− notas de crédito + notas de débito), pendiente total, habilitado para facturar (certificados aprobados y remitos sin facturar), % y estado: `src/lib/quote-billing.ts`, en el panel de la cotización y en Seguimiento.
+- Al guardar una factura, el servidor la frena si pasa de lo pendiente de su cotización, de su certificado o de lo elegido de sus remitos (`checkInvoiceExcess`). Gerencia la puede guardar igual con un motivo, que queda en el historial de la cotización.
+- Un remito de venta se puede facturar en partes: cada renglón lleva `invoicedQty` y la factura `remitoLines`. Al anular o borrar la factura, vuelve lo que facturaba.
+
 ## Backups
 
 En producción el host no tiene `mongodump`, porque Mongo corre en Docker, así que `deploy/backup.sh` no funciona tal cual. Backup manual:
