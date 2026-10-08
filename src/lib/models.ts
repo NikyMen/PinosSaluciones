@@ -625,6 +625,17 @@ const AssetSchema = new Schema({
 }, options);
 AssetSchema.index({ "plans.status": 1, "plans.dueDate": 1 });
 
+/*
+ * Un archivo adjunto a un documento (requerimiento integral v4, punto 5): con su
+ * nombre original, quién lo subió y cuándo. Reemplazar uno no lo borra: queda
+ * marcado como reemplazado, con quién y cuándo, y sigue en el historial.
+ */
+export const FileRefSchema = new Schema({
+  path: { type: String, required: true }, name: String, size: Number, label: String,
+  uploadedAt: { type: Date, default: Date.now }, uploadedById: Schema.Types.ObjectId, uploadedByName: String,
+  replacedAt: Date, replacedByName: String,
+});
+
 // Un renglón de una orden armada desde el buscador de precios. Los precios se
 // copian de la lista vigente al cerrar la orden y quedan congelados: si mañana
 // llega otra lista, la orden sigue diciendo lo que se le pidió al proveedor.
@@ -672,6 +683,7 @@ const PurchaseSchema = new Schema({
   receptionStatus: { type: String, enum: ["pendiente", "parcial", "recibida"], default: "pendiente" },
   closedAt: Date,
   history: { type: [{ _id: false, action: String, note: String, at: { type: Date, default: Date.now }, userName: String }], default: undefined },
+  files: { type: [FileRefSchema], default: undefined },
   requestedDate: { type: Date, required: true }, expectedDate: Date, receivedDate: Date, receiptNotes: String,
   // Lo que sigue lo llena la orden cerrada desde el buscador de precios.
   items: { type: [PurchaseLineSchema], default: undefined },
@@ -703,6 +715,7 @@ const PurchaseReceiptSchema = new Schema({
   status: { type: String, enum: ["conforme", "observada"], default: "conforme" },
   final: { type: Boolean, default: false },
   attachment: String, notes: String,
+  files: { type: [FileRefSchema], default: undefined },
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
 }, options);
 
@@ -735,6 +748,7 @@ const ExpenseSchema = new Schema({
   amountCents: money, issueDate: { type: Date, required: true }, dueDate: Date,
   status: { type: String, enum: ["pendiente", "parcial", "pagado", "anulado"], default: "pendiente" },
   paidCents: money, attachment: String,
+  files: { type: [FileRefSchema], default: undefined },
 }, options);
 
 // Las facturas A y B se emiten en ARCA desde acá (con CAE) o, las de Tango, se cargan
@@ -810,6 +824,8 @@ const PaymentSchema = new Schema({
   accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
   // El comprobante del pago (transferencia, cheque, depósito) o la constancia de entrega del efectivo.
   attachment: String, paidAt: Date, paidByName: String,
+  // Más comprobantes, con su historial; y, si se pagó en efectivo, la constancia de entrega firmada.
+  files: { type: [FileRefSchema], default: undefined },
 }, options);
 
 const CheckSchema = new Schema({
@@ -853,6 +869,7 @@ const CashSchema = new Schema({
   // Un movimiento entre cuentas propias son dos registros (egreso y ingreso) con el mismo identificador.
   transferId: String,
   amountCents: money, reference: String, reconciled: { type: Boolean, default: false },
+  files: { type: [FileRefSchema], default: undefined },
 }, options);
 CashSchema.index({ transferId: 1 }, { sparse: true });
 CashSchema.index({ cashAccountId: 1, date: 1 });

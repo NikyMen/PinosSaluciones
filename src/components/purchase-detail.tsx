@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Ban, CheckCircle2, ClipboardList, Download, FileText, HandCoins, PackagePlus, Paperclip, ReceiptText, Send, X, XCircle } from "lucide-react";
+import { Archive, Ban, CheckCircle2, ClipboardList, Download, FileStack, FileText, HandCoins, PackagePlus, Paperclip, ReceiptText, Send, X, XCircle } from "lucide-react";
+import { AttachmentsPanel } from "@/components/attachments-panel";
+import { downloadDossierZip, downloadOrderWithAttachments } from "@/lib/purchase-dossier";
+import { downloadPaymentOrderPdf, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
 import { DateInput, MoneyInput, SearchSelect } from "@/components/fields";
 import { CashAccountSelect } from "@/components/cash-account-select";
 import { useLedgerAccounts } from "@/components/ledger-account";
@@ -18,7 +21,7 @@ type Line = { code?: string; name: string; presentation?: string; quantity: numb
 type Detail = {
   request: Doc | null; order: Doc | null; payments: Doc[]; receipts: Doc[]; expenses: Doc[]; supplier: Doc | null; work: Doc | null;
   totals: { totalCents: number; paidCents: number; committedCents: number; withoutOrderCents: number; pendingCents: number };
-  can: { edit: boolean; emit: boolean; decide: boolean; cancel: boolean; paymentOrder: boolean; receive: boolean; invoice: boolean };
+  can: { edit: boolean; emit: boolean; decide: boolean; cancel: boolean; paymentOrder: boolean; receive: boolean; invoice: boolean; attachPayments: boolean; attachPurchase: boolean };
 };
 
 const paymentStatusLabels: Record<string, string> = { emitida: "Emitida, sin pagar", pagada: "Pagada", anulada: "Anulada" };
@@ -44,6 +47,8 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<"" | "pay" | "receive">("");
+  // Qué fila muestra sus adjuntos (una OP o un remito).
+  const [filesOf, setFilesOf] = useState("");
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/purchases/${purchaseId}/detail`);
@@ -95,6 +100,24 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
     catch { setError("No se pudo generar el PDF"); }
   }
 
+  async function paymentPdf(payment: Doc) {
+    try {
+      const response = await fetch(`/api/payments/${payment._id}/document`);
+      if (!response.ok) throw new Error();
+      await downloadPaymentOrderPdf(await response.json() as PaymentOrderPdfData);
+    } catch { setError("No se pudo generar el PDF de la orden de pago"); }
+  }
+
+  async function papers(kind: "pdf" | "zip") {
+    if (!detail) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const skipped = kind === "pdf" ? await downloadOrderWithAttachments(detail) : await downloadDossierZip(detail);
+      if (skipped.length) setNotice(kind === "pdf" ? `Listo. Quedaron afuera (no se pueden pasar a PDF): ${skipped.join(", ")}. Están en el expediente ZIP.` : `Listo. No se pudieron incluir: ${skipped.join(", ")}.`);
+    } catch (problem) { setError(problem instanceof Error ? problem.message : "No se pudo armar"); }
+    finally { setBusy(false); }
+  }
+
   const request = detail?.request || null;
   const order = detail?.order || null;
   const main = order || request;
@@ -133,6 +156,8 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
           <div className="purchase-actions">
             {request && <button type="button" className="secondary-btn" onClick={() => { void pdf(request); }}><Download size={15} /> PDF solicitud</button>}
             {order && <button type="button" className="secondary-btn" onClick={() => { void pdf(order); }}><Download size={15} /> PDF orden</button>}
+            <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void papers("pdf"); }} title="Un solo PDF con la orden y sus adjuntos (PDF y fotos)"><FileStack size={15} /> {order ? "OC" : "Solicitud"} con adjuntos</button>
+            <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void papers("zip"); }} title="Solicitud, orden, órdenes de pago, comprobantes, remitos, facturas y adjuntos"><Archive size={15} /> Expediente ZIP</button>
             {detail.can.emit && <button type="button" className="primary-btn" disabled={busy} onClick={() => { void emit(); }}><Send size={15} /> Emitir</button>}
             {detail.can.decide && <><button type="button" className="primary-btn" disabled={busy} onClick={() => { void decide(true); }}><CheckCircle2 size={15} /> Autorizar</button>
               <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void decide(false); }}><XCircle size={15} /> Rechazar</button></>}
@@ -160,9 +185,15 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
                 <td data-label="Fecha">{date(String(payment.date))}</td>
                 <td data-label="Medio">{methodLabels[String(payment.method)] || String(payment.method || "")}</td>
                 <td data-label="Importe">{money(Number(payment.amountCents || 0))}</td>
-                <td data-label="Comprobante">{payment.attachment ? <a href={String(payment.attachment)} target="_blank" rel="noreferrer"><Paperclip size={13} /> Ver</a> : "—"}</td>
+                <td data-label="Comprobante" className="row-actions">
+                  <button type="button" className="row-action-wide" onClick={() => { void paymentPdf(payment); }} title="La orden de pago en PDF, para imprimirla"><Download size={14} /> PDF</button>
+                  <button type="button" className="row-action-wide" onClick={() => setFilesOf(filesOf === payment._id ? "" : payment._id)}><Paperclip size={14} /> {((payment.files as unknown[] | undefined)?.length || 0) + (payment.attachment ? 1 : 0) || "Adjuntar"}</button>
+                </td>
               </tr>)}
             </tbody></table>}
+
+          {detail.payments.filter(payment => payment._id === filesOf).map(payment => <AttachmentsPanel key={payment._id} entity="payments" id={payment._id} canEdit={detail.can.attachPayments}
+            title={`Comprobantes de ${String(payment.number || "la OP")}${payment.method === "efectivo" ? " (y la constancia de entrega firmada)" : ""}`} label={payment.method === "efectivo" ? "Constancia de entrega" : "Comprobante de pago"} onChanged={() => { void load(); }} />)}
 
           <h3 className="purchase-section">Remitos</h3>
           {!detail.receipts.length ? <p className="muted">Todavía no llegó nada.</p>
@@ -172,9 +203,12 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
                 <td data-label="Fecha">{date(String(receipt.date))}</td>
                 <td data-label="Llegó">{((receipt.lines as Array<{ name: string; quantity: number; unit?: string }>) || []).map(line => `${qty(line.quantity)} ${line.unit || ""} ${line.name}`).join(" · ") || "—"}<small className="tracking-sub">{warehouseLabel(String(receipt.warehouse || "central"))}</small></td>
                 <td data-label="Estado">{receipt.status === "observada" ? `Observada: ${String(receipt.notes || "")}` : "Conforme"}{receipt.final ? <small className="tracking-sub">Final</small> : null}</td>
-                <td data-label="Archivo">{receipt.attachment ? <a href={String(receipt.attachment)} target="_blank" rel="noreferrer"><Paperclip size={13} /> Ver</a> : "—"}</td>
+                <td data-label="Archivo"><button type="button" className="row-action-wide" onClick={() => setFilesOf(filesOf === receipt._id ? "" : receipt._id)}><Paperclip size={14} /> {((receipt.files as unknown[] | undefined)?.length || 0) + (receipt.attachment ? 1 : 0) || "Adjuntar"}</button></td>
               </tr>)}
             </tbody></table>}
+          {detail.receipts.filter(receipt => receipt._id === filesOf).map(receipt => <AttachmentsPanel key={receipt._id} entity="purchaseReceipts" id={receipt._id} canEdit={detail.can.attachPurchase} title={`Archivos del remito ${String(receipt.supplierRemito || receipt.number)}`} onChanged={() => { void load(); }} />)}
+
+          {main && <AttachmentsPanel entity="purchases" id={String(main._id)} canEdit={detail.can.attachPurchase} title={`Adjuntos de la ${order ? "orden" : "solicitud"} (presupuestos, cotizaciones del proveedor…)`} />}
 
           {detail.expenses.length > 0 && <><h3 className="purchase-section">Facturas del proveedor</h3>
             <ul className="purchase-decisions">{detail.expenses.map(expense => <li key={expense._id}><FileText size={14} /> {String(expense.number || "Sin número")} · {money(Number(expense.amountCents || 0))} · {String(expense.status || "")}</li>)}</ul></>}

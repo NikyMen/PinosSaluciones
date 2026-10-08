@@ -151,6 +151,14 @@ Requerimiento integral v4, con lo acordado en el grupo de PINO (`src/lib/purchas
 4. **Compras** recibe el aviso y carga los remitos del proveedor (Compras › Remitos de compra, `PurchaseReceipt`). Pueden ser parciales y suman al stock; el remito final cierra la OC.
 5. **Facturas de compra:** Compras carga las de compras menores al límite; desde el límite, Tesorería.
 
+## Papeles de compras y adjuntos
+
+- **Adjuntos con historial** (`src/lib/attachments.ts`, `/api/files/[entity]/[id]`): en solicitudes y órdenes de compra, órdenes de pago, facturas de compra, movimientos de caja y remitos de compra. Cada archivo guarda su nombre original, quién lo subió y cuándo. No se borra: reemplazarlo deja el anterior en el historial, con quién y cuándo lo reemplazó. El archivo único de antes (`attachment`) se muestra como el primero.
+- **Orden de pago en PDF** (`src/lib/payment-order-pdf.ts`): proveedor, qué paga (OC, solicitud, factura), importe en letras, caja y cuenta del plan. Si es en efectivo, trae la constancia de entrega para firmar; la firmada se sube como adjunto de la OP.
+- **"OC con adjuntos"** (`src/lib/purchase-dossier.ts`, con `pdf-lib`): un solo PDF con la orden y sus adjuntos PDF y fotos. Lo que no se puede convertir (Excel, DWG) se lista en una hoja al final.
+- **Expediente ZIP** (con `fflate`): solicitud, orden, órdenes de pago, comprobantes, remitos, facturas y adjuntos, por carpeta y con un índice.
+- Las tres cosas se arman en el navegador, desde la ficha de la compra.
+
 ## Cajas y cuentas bancarias
 
 Tesorería › Cajas y cuentas bancarias es el maestro (`cashAccounts`): empresa titular, nombre, tipo, banco, moneda, CBU/alias, estado y saldo inicial con su fecha de corte.

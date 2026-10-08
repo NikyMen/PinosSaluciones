@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, ArrowRightLeft, FileSymlink, Tag, Tags, Wrench, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HandCoins, HardHat, History, UserMinus, UserPlus, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
+import { Paperclip, ArrowDownToLine, ArrowRightLeft, FileSymlink, Tag, Tags, Wrench, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HandCoins, HardHat, History, UserMinus, UserPlus, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
@@ -12,6 +12,8 @@ import { HistoryModal, RecordHistory } from "@/components/record-history";
 import { FormField, QuickCreateModal, fieldErrors, type FieldProps } from "@/components/record-form";
 import { StockMovementModal, type StockItem, type StockMovement } from "@/components/stock-movement";
 import { PurchaseDetailModal } from "@/components/purchase-detail";
+import { AttachmentsModal, type AttachmentEntity } from "@/components/attachments-panel";
+import { downloadPaymentOrderPdf, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
 import { purchaseStatusText } from "@/lib/purchase-flow-labels";
 import { levelsOf } from "@/lib/stock-levels";
 import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-owners";
@@ -123,6 +125,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [movementFor, setMovementFor] = useState<{ item: StockItem; kind: StockMovement["kind"] } | null>(null);
   // La ficha de una compra: la solicitud con su orden, sus pagos y sus remitos.
   const [purchaseFor, setPurchaseFor] = useState<string | null>(null);
+  // Los adjuntos de una fila (OP, factura de compra, movimiento de caja), con su historial.
+  const [attachmentsFor, setAttachmentsFor] = useState<{ entity: AttachmentEntity; id: string; label: string } | null>(null);
   // Compras: solicitudes, órdenes o todas.
   const [purchaseView, setPurchaseView] = useState<"" | "solicitud" | "orden">("");
   const [convertFor, setConvertFor] = useState<Item | null>(null);
@@ -320,6 +324,15 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     // Solo al entrar: después la dirección ya quedó limpia.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity, canEdit]);
+
+  /** La orden de pago en PDF: con el proveedor, qué paga, de qué cuenta sale y, en efectivo, la constancia para firmar. */
+  async function downloadPaymentOrder(item: Item) {
+    try {
+      const response = await fetch(`/api/payments/${item._id}/document`);
+      if (!response.ok) throw new Error();
+      await downloadPaymentOrderPdf(await response.json() as PaymentOrderPdfData);
+    } catch { setError("No se pudo generar el PDF de la orden de pago"); }
+  }
 
   /** La cotización para el cliente. El listado no trae los ítems: se pide entera, con su cliente. */
   async function downloadQuote(item: Item) {
@@ -551,6 +564,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "invoices" && Boolean(item.cae) && <button className="row-action-wide" title={`Descargar la factura emitida en ARCA (CAE ${String(item.cae)})`} onClick={() => { void downloadInvoice(item); }}><Download size={15} /> PDF fiscal</button>}
           {entity === "invoices" && canEdit && (item.status === "pendiente" || item.status === "parcial") && <button className="row-action-wide approve" title="Registrar un cobro de esta factura y hacer el recibo" onClick={() => setReceiptFor({ receipt: null, clientId: String(item.clientId || ""), invoiceId: item._id })}><HandCoins size={15} /> Cobrar</button>}
           {entity === "collections" && <button className="row-action-wide" title="Descargar el recibo en PDF" onClick={() => { void downloadReceipt(item); }}><Download size={15} /> Recibo</button>}
+          {entity === "payments" && <button className="row-action-wide" title="La orden de pago en PDF, para imprimirla (en efectivo, con la constancia de entrega)" onClick={() => { void downloadPaymentOrder(item); }}><Download size={15} /> PDF</button>}
+          {(entity === "payments" || entity === "expenses" || entity === "cash") && <button className="row-action-wide" title="Comprobantes y adjuntos, con su historial" onClick={() => setAttachmentsFor({ entity, id: item._id, label: itemLabel(item) })}><Paperclip size={15} /> {((item.files as unknown[] | undefined)?.length || 0) + (item.attachment ? 1 : 0) || ""} Adjuntos</button>}
           {entity !== "tasks" && <button title="Ver historial de cambios" onClick={() => setHistoryFor({ _id: item._id, label: itemLabel(item) })}><History size={16} /></button>}
           {entity === "workers" && canEdit && (item.active === false
             ? <button className="row-action-wide approve" title="Vuelve a trabajar: se le da un legajo nuevo" onClick={() => setStatusFor(item)}><UserPlus size={15} /> Reactivar</button>
@@ -614,6 +629,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {convertFor && <ConvertQuoteModal quote={convertFor} client={(relations.clients || []).find(row => row._id === String(convertFor.clientId || ""))}
       onClose={() => setConvertFor(null)} onDone={() => { setConvertFor(null); void load(); }} />}
 
+    {attachmentsFor && <AttachmentsModal entity={attachmentsFor.entity} id={attachmentsFor.id} label={attachmentsFor.label} canEdit={canEdit} onClose={() => { setAttachmentsFor(null); void load(); }} />}
     {purchaseFor && <PurchaseDetailModal purchaseId={purchaseFor} onClose={() => setPurchaseFor(null)} onChanged={() => { void load(); }} />}
     {movementFor && <StockMovementModal item={movementFor.item} initialKind={movementFor.kind}
       onClose={() => setMovementFor(null)}

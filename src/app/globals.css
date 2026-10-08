@@ -2130,3 +2130,14 @@ td > .company-badge:first-child { margin-left: 0; }
 .badge.purchase-autorizada, .badge.purchase-cerrada { background: #e6f6ec; color: #1d7a45; }
 .badge.purchase-rechazada, .badge.purchase-anulada { background: #fdecec; color: #b42318; }
 .badge.purchase-borrador, .badge.purchase-emitida { background: #eef2f7; color: #4a5568; }
+
+/* Adjuntos de un documento, con su historial de reemplazos */
+.attachments-panel { border: 1px dashed var(--line, #dfe5ec); border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: grid; gap: 6px; }
+.attachments-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+.attachments-head b { display: inline-flex; align-items: center; gap: 6px; }
+.attachments-panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.attachments-panel li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.attachments-panel li small { color: var(--muted); }
+.attachments-panel .icon-link { display: inline-flex; align-items: center; cursor: pointer; color: var(--muted); }
+.attachments-history li { opacity: .7; text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
+.attachments-add { justify-self: start; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }

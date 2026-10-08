@@ -322,6 +322,18 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
   };
 }
 
+/** El PDF armado en el navegador, en bytes: para unirlo con sus adjuntos o meterlo en el expediente. */
+export async function purchaseOrderPdfBytes(data: PurchaseOrderPdfData) {
+  const [{ jsPDF }, logo, session] = await Promise.all([
+    import("jspdf"),
+    readPdfLogo(),
+    fetch("/api/auth/me").then(response => response.ok ? response.json() : null).catch(() => null),
+  ]);
+  const doc = new jsPDF();
+  const filename = buildPurchaseOrderPdf(doc, data, { author: session?.name || data.userName || "el sistema", logo });
+  return { filename, bytes: new Uint8Array(doc.output("arraybuffer")) };
+}
+
 /** Arma el PDF en el navegador y lo descarga. */
 export async function downloadPurchaseOrderPdf(data: PurchaseOrderPdfData) {
   const [{ jsPDF }, logo, session] = await Promise.all([

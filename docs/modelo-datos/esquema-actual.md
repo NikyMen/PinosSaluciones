@@ -363,6 +363,16 @@ Colección `purchases` · entidad `purchases`
 | `history.note` | texto | — | — |
 | `history.at` | fecha | — | — |
 | `history.userName` | texto | — | — |
+| `files` | lista de objetos | — | — |
+| `files.path` | texto | sí | — |
+| `files.name` | texto | — | — |
+| `files.size` | número | — | — |
+| `files.label` | texto | — | — |
+| `files.uploadedAt` | fecha | — | — |
+| `files.uploadedById` | referencia | — | — |
+| `files.uploadedByName` | texto | — | — |
+| `files.replacedAt` | fecha | — | — |
+| `files.replacedByName` | texto | — | — |
 | `requestedDate` | fecha | sí | — |
 | `expectedDate` | fecha | — | — |
 | `receivedDate` | fecha | — | — |
@@ -426,6 +436,16 @@ Colección `expenses` · entidad `expenses`
 | `status` | texto | — | valores: `pendiente` · `parcial` · `pagado` · `anulado` · por defecto `"pendiente"` |
 | `paidCents` | número | — | mínimo 0 · por defecto `0` |
 | `attachment` | texto | — | — |
+| `files` | lista de objetos | — | — |
+| `files.path` | texto | sí | — |
+| `files.name` | texto | — | — |
+| `files.size` | número | — | — |
+| `files.label` | texto | — | — |
+| `files.uploadedAt` | fecha | — | — |
+| `files.uploadedById` | referencia | — | — |
+| `files.uploadedByName` | texto | — | — |
+| `files.replacedAt` | fecha | — | — |
+| `files.replacedByName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -537,6 +557,16 @@ Colección `payments` · entidad `payments`
 | `attachment` | texto | — | — |
 | `paidAt` | fecha | — | — |
 | `paidByName` | texto | — | — |
+| `files` | lista de objetos | — | — |
+| `files.path` | texto | sí | — |
+| `files.name` | texto | — | — |
+| `files.size` | número | — | — |
+| `files.label` | texto | — | — |
+| `files.uploadedAt` | fecha | — | — |
+| `files.uploadedById` | referencia | — | — |
+| `files.uploadedByName` | texto | — | — |
+| `files.replacedAt` | fecha | — | — |
+| `files.replacedByName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -586,6 +616,16 @@ Colección `cashmovements` · entidad `cash`
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `reference` | texto | — | — |
 | `reconciled` | sí/no | — | por defecto `false` |
+| `files` | lista de objetos | — | — |
+| `files.path` | texto | sí | — |
+| `files.name` | texto | — | — |
+| `files.size` | número | — | — |
+| `files.label` | texto | — | — |
+| `files.uploadedAt` | fecha | — | — |
+| `files.uploadedById` | referencia | — | — |
+| `files.uploadedByName` | texto | — | — |
+| `files.replacedAt` | fecha | — | — |
+| `files.replacedByName` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -1033,6 +1073,16 @@ Remitos del proveedor contra una orden de compra (RE-n). Suman al stock lo recib
 | `final` | sí/no | — | por defecto `false` |
 | `attachment` | texto | — | — |
 | `notes` | texto | — | — |
+| `files` | lista de objetos | — | — |
+| `files.path` | texto | sí | — |
+| `files.name` | texto | — | — |
+| `files.size` | número | — | — |
+| `files.label` | texto | — | — |
+| `files.uploadedAt` | fecha | — | — |
+| `files.uploadedById` | referencia | — | — |
+| `files.uploadedByName` | texto | — | — |
+| `files.replacedAt` | fecha | — | — |
+| `files.replacedByName` | texto | — | — |
 | `userId` | referencia | — | apunta a **User** |
 | `userName` | texto | — | — |
 | `createdAt` | fecha | — | — |

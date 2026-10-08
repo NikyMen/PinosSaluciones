@@ -51,6 +51,12 @@ La etapa 3 está desarrollada, con el circuito del grupo:
 - Una solicitud o una OC emitida sólo la anula Gerencia, con motivo. No se anula lo que ya tiene pagos o mercadería recibida.
 - Cada pago parcial es una OP propia; no hay OP "ejecutada parcialmente".
 
+La etapa 4 está desarrollada:
+- La solicitud, la OC y la OP se imprimen en PDF. La OP en efectivo trae la constancia de entrega para firmar.
+- "OC con adjuntos" baja un solo PDF con la orden y sus adjuntos convertibles.
+- El expediente completo se descarga en ZIP.
+- Los adjuntos de compras, pagos, facturas de compra, caja y remitos guardan nombre original, usuario, fecha y hora. Reemplazar uno deja el anterior en el historial.
+
 ## Respuestas a la sección 9
 
 1. **Maestro de Cajas y Bancos con permisos de alta, modificación e inactivación.** Sí (etapa 2).
