@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-10-08 · 28 colecciones.
+Generado el 2026-10-15 · 28 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -421,7 +421,7 @@ Colección `expenses` · entidad `expenses`
 | `supplierId` | referencia | — | apunta a **Supplier** |
 | `workId` | referencia | — | apunta a **Work** |
 | `company` | texto | — | valores: `tvp` · `constructora` |
-| `voucherType` | texto | — | valores: `factura_a` · `factura_c` · `factura_x` |
+| `voucherType` | texto | — | valores: `factura_a` · `nota_debito_a` · `nota_credito_a` · `factura_c` · `nota_debito_c` · `nota_credito_c` · `factura_x` |
 | `netCents` | número | — | — |
 | `vatPct` | número | — | — |
 | `vatCents` | número | — | — |
@@ -436,6 +436,8 @@ Colección `expenses` · entidad `expenses`
 | `status` | texto | — | valores: `pendiente` · `parcial` · `pagado` · `anulado` · por defecto `"pendiente"` |
 | `paidCents` | número | — | mínimo 0 · por defecto `0` |
 | `attachment` | texto | — | — |
+| `advanceCents` | número | — | por defecto `0` |
+| `associatedExpenseId` | referencia | — | apunta a **Expense** |
 | `files` | lista de objetos | — | — |
 | `files.path` | texto | sí | — |
 | `files.name` | texto | — | — |
@@ -533,6 +535,10 @@ Colección `payments` · entidad `payments`
 | `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
 | `supplierId` | referencia | — | apunta a **Supplier** |
 | `expenseId` | referencia | — | apunta a **Expense** |
+| `allocations` | lista de objetos | — | — |
+| `allocations.expenseId` | referencia | sí | apunta a **Expense** |
+| `allocations.amountCents` | número | sí | mínimo 0 |
+| `workId` | referencia | — | apunta a **Work** |
 | `purchaseId` | referencia | — | apunta a **Purchase** |
 | `requestId` | referencia | — | apunta a **Purchase** |
 | `status` | texto | — | valores: `emitida` · `pagada` · `anulada` · por defecto `"pagada"` |
@@ -540,7 +546,8 @@ Colección `payments` · entidad `payments`
 | `dueDate` | fecha | — | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `retentionsCents` | número | — | mínimo 0 · por defecto `0` |
-| `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `otro` |
+| `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `echeq` · `otro` |
+| `checkId` | referencia | — | apunta a **Check** |
 | `cashAccountId` | referencia | — | apunta a **CashAccount** |
 | `account` | texto | — | — |
 | `reference` | texto | — | — |
@@ -585,6 +592,8 @@ Colección `checks` · entidad `checks`
 | `status` | texto | — | valores: `cartera` · `depositado` · `cobrado` · `endosado` · `rechazado` · `emitido` · por defecto `"cartera"` |
 | `clientId` | referencia | — | apunta a **Client** |
 | `supplierId` | referencia | — | apunta a **Supplier** |
+| `format` | texto | — | valores: `fisico` · `echeq` · por defecto `"fisico"` |
+| `paymentId` | referencia | — | apunta a **Payment** |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 
@@ -925,7 +934,7 @@ Listas de precios de proveedores: el Excel que mandó cada uno y desde cuándo v
 
 ### PriceListItem
 
-Cada producto de una lista de precios. `listPriceCents` se guarda sin IVA; `consumerGrossCents` conserva el precio final al consumidor con IVA cuando viene en la planilla. El buscador recorre los productos de las listas vigentes. Colección `pricelistitems`.
+Cada producto de una lista de precios, sin IVA. El buscador de precios recorre los de las listas vigentes. Colección `pricelistitems`.
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
@@ -942,7 +951,7 @@ Cada producto de una lista de precios. `listPriceCents` se guarda sin IVA; `cons
 | `subcategory` | texto | — | — |
 | `kind` | texto | — | — |
 | `listPriceCents` | número | — | mínimo 0 · por defecto `0` |
-| `consumerGrossCents` | número | — | precio final al consumidor con IVA, si la planilla lo informa |
+| `consumerGrossCents` | número | — | — |
 | `previousPriceCents` | número | — | — |
 | `measureQty` | número | — | — |
 | `measureUnit` | texto | — | — |

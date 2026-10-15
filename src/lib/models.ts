@@ -669,7 +669,7 @@ const PurchaseSchema = new Schema({
   priority: { type: String, enum: ["alta", "media", "baja"], default: "media" },
   description: { type: String, required: true }, amountCents: money,
   // La solicitud (SC-n) y la orden de compra (OC-n) son documentos distintos: la OC nace cuando
-  // Tesorería emite la orden de pago de una solicitud autorizada y queda atada a ella (`requestId` / `orderId`).
+  // se autoriza la solicitud y queda atada a ella (`requestId` / `orderId`).
   // "recepcion" es de antes: una orden ya recibida (la migración la pasa a "orden" cerrada).
   stage: { type: String, enum: ["solicitud", "orden", "recepcion"], default: "solicitud" },
   status: { type: String, enum: [...new Set([...PURCHASE_REQUEST_STATUSES, ...PURCHASE_ORDER_STATUSES, ...LEGACY_PURCHASE_STATUSES])], default: "borrador" },
@@ -734,8 +734,10 @@ const AccountChangeSchema = new Schema({
 
 /*
  * Un gasto es una factura de compra (cuando tiene tipo de comprobante: A, C o
- * el registro interno X) o un costo interno, como el material que sale del
- * depósito a una obra. La factura de compra se ata a su orden de compra.
+ * el registro interno X, o una nota de débito o de crédito del proveedor) o un
+ * costo interno, como el material que sale del depósito a una obra. La factura
+ * de compra se ata a su orden de compra. En una nota de crédito, `paidCents`
+ * es lo que ya se descontó en órdenes de pago.
  */
 const ExpenseSchema = new Schema({
   number: String, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, workId: { type: Schema.Types.ObjectId, ref: "Work" },
@@ -751,6 +753,10 @@ const ExpenseSchema = new Schema({
   amountCents: money, issueDate: { type: Date, required: true }, dueDate: Date,
   status: { type: String, enum: ["pendiente", "parcial", "pagado", "anulado"], default: "pendiente" },
   paidCents: money, attachment: String,
+  // De `paidCents`, lo que cubren las OP de contado o anticipo de su orden de compra (se aplican solas).
+  advanceCents: { type: Number, default: 0 },
+  // Una nota de débito o de crédito, la factura del proveedor a la que corresponde (si se sabe).
+  associatedExpenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
   files: { type: [FileRefSchema], default: undefined },
 }, options);
 
@@ -807,20 +813,30 @@ const CollectionSchema = new Schema({
 }, options);
 
 /*
- * La orden de pago y su pago. Una OP sale de una factura de compra aprobada;
- * mientras está "emitida" no descuenta nada del saldo de la factura: lo hace
- * cuando se paga. Los pagos de antes no tienen estado y ya están pagados.
+ * La orden de pago y su pago. Una OP paga una o varias facturas del proveedor
+ * (`allocations`: cuánto de cada una, total o parcial) y puede descontar sus
+ * notas de crédito; `amountCents` es lo que cancela: facturas y notas de débito
+ * menos notas de crédito. Mientras está "emitida" no descuenta nada del saldo
+ * de las facturas: lo hace cuando se paga. Las de antes pagan una sola factura
+ * (`expenseId`, sin `allocations`); los pagos más viejos no tienen estado y ya
+ * están pagados.
  */
 const PaymentSchema = new Schema({
   number: String,
   // Qué empresa paga.
   company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
+  // `expenseId` es la primera factura que paga: lo que leen los reportes de antes.
   supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
+  allocations: { type: [{ _id: false, expenseId: { type: Schema.Types.ObjectId, ref: "Expense", required: true }, amountCents: { type: Number, min: 0, required: true } }], default: undefined },
+  // La obra a la que va el gasto. Un GGI o un bien de uso no va a ninguna.
+  workId: { type: Schema.Types.ObjectId, ref: "Work" },
   // La orden de compra que paga (y la solicitud de donde salió). Una OP contra la OC sin factura es un anticipo o un pago de contado.
   purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase", index: true }, requestId: { type: Schema.Types.ObjectId, ref: "Purchase" },
   status: { type: String, enum: ["emitida", "pagada", "anulada"], default: "pagada" },
   date: { type: Date, required: true }, dueDate: Date, amountCents: money, retentionsCents: money,
-  method: { type: String, enum: ["transferencia", "efectivo", "cheque", "otro"], required: true },
+  method: { type: String, enum: ["transferencia", "efectivo", "cheque", "echeq", "otro"], required: true },
+  // El cheque o e-Cheq que se le dio al proveedor (en Tesorería › Cheques).
+  checkId: { type: Schema.Types.ObjectId, ref: "Check" },
   // De qué caja o cuenta del maestro sale (`account` es su nombre, lo único que tienen los de antes).
   cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
   account: String, reference: String, notes: String,
@@ -837,6 +853,9 @@ const CheckSchema = new Schema({
   amountCents: money, dueDate: { type: Date, required: true },
   status: { type: String, enum: ["cartera", "depositado", "cobrado", "endosado", "rechazado", "emitido"], default: "cartera" },
   clientId: { type: Schema.Types.ObjectId, ref: "Client" }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
+  // Papel o electrónico; el emitido, la orden de pago con que se entregó.
+  format: { type: String, enum: ["fisico", "echeq"], default: "fisico" },
+  paymentId: { type: Schema.Types.ObjectId, ref: "Payment" },
 }, options);
 
 /*

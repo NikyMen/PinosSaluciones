@@ -5,9 +5,9 @@ import { apiError } from "@/lib/api";
 import { issuePaymentOrder, paymentOrderSchema } from "@/lib/purchase-flow";
 
 /**
- * Tesorería emite la orden de pago de una solicitud autorizada (o de su OC). Con
- * la primera nace la orden de compra. Se paga en el momento o queda emitida con
- * su vencimiento.
+ * Tesorería emite una orden de pago contra la OC de una solicitud autorizada,
+ * sin factura: de contado o como anticipo. Se paga en el momento o queda
+ * emitida con su vencimiento.
  */
 export async function POST(request: Request, context: RouteContext<"/api/purchases/[id]/payment-order">) {
   try {

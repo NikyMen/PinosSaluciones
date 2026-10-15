@@ -64,7 +64,10 @@ export async function ivaBook({ from, to, company }: Period): Promise<IvaBook> {
   });
   const purchases = fiscalExpenses.map(expense => {
     const supplier = supplierById.get(String(expense.supplierId));
-    return { _id: String(expense._id), date: iso(expense.issueDate), voucher: voucherLabels[String(expense.voucherType)] || "Factura", number: String(expense.number || "—"), party: String(supplier?.name || "—"), cuit: String(supplier?.cuit || ""), company: companyOf(expense.company).key, ...split(expense) };
+    const amounts = split(expense);
+    // La nota de crédito del proveedor resta, como en ventas.
+    const sign = isCreditNote(expense.voucherType) ? -1 : 1;
+    return { _id: String(expense._id), date: iso(expense.issueDate), voucher: voucherLabels[String(expense.voucherType)] || "Factura", number: String(expense.number || "—"), party: String(supplier?.name || "—"), cuit: String(supplier?.cuit || ""), company: companyOf(expense.company).key, netCents: sign * amounts.netCents, vatCents: sign * amounts.vatCents, totalCents: sign * amounts.totalCents };
   });
   return {
     sales, purchases, totals: { sales: sum(sales), purchases: sum(purchases) },

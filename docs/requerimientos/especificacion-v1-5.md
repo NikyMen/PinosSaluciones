@@ -74,9 +74,10 @@ exacto. Lo que no se encuentra cuenta como faltante entero.
 | Solicitud y OC atadas a cotización/obra, con fecha requerida y prioridad | ✅ | `Purchase.quoteId`, `neededBy`, `priority`, `requestLines` |
 | Factura de compra A/C/X atada a la OC y al remito o conformidad | ✅ | `Expense.purchaseId`, `receiptRef`; hereda empresa, proveedor y obra |
 | Orden de pago desde la factura; pago desde la OP | ✅ | `Payment.status`: emitida (no descuenta) → pagada. Número OP-n, retenciones, vencimiento |
-| Circuito del requerimiento v4: solicitud SC-n de sólo lectura, autorización desde $500.000, la OP de Tesorería genera la OC, pagos parciales, remitos de compra | ✅ | `src/lib/purchase-flow.ts`; ver [[respuesta-v4]] |
+| Circuito del requerimiento v4: solicitud SC-n de sólo lectura, autorización desde $500.000, la OC nace al autorizarse (desde oct. 2026; antes, con la OP), pagos parciales, remitos de compra | ✅ | `src/lib/purchase-flow.ts`; ver [[respuesta-v4]] |
 | Ruta cerrada, en los dos sentidos | ✅ | Compras › Ruta de compras, con control de tres vías y documentos sin vínculo |
-| Una OP que agrupa varias facturas | ⏳ | Hoy una OP es de una factura |
+| Una OP que agrupa varias facturas | ✅ | Tesorería › Órdenes de pago › Nueva: facturas del proveedor, total o parcial, y notas de crédito que restan (`Payment.allocations`); ver [[../decisiones/2026-10-orden-de-pago-varias-facturas]] |
+| Lo pagado de contado o como anticipo contra la OC cubre sus facturas | ✅ | Se aplica solo al cargar la factura (`Expense.advanceCents`) |
 
 ## 6. Venta de materiales: remito y factura
 
@@ -108,6 +109,7 @@ Comercial › Seguimiento (venta) y Compras › Ruta de compras (compra).
 |---|---|---|
 | Venta: A y B fiscales, X interna | ✅ | `factura_a`, `factura_b`, `factura_x` |
 | Compra: A y C fiscales, X interna | ✅ | En Facturas de compra |
+| Compra: notas de débito y de crédito del proveedor (A y C) | ✅ | En Facturas de compra; la de crédito se descuenta en la orden de pago y resta en costos y libro IVA |
 | Configurables por CUIT y punto de venta | ✅ | Configuración › Empresas y comprobantes (talonarios) |
 | La X con numeración interna | ✅ | Se toma del talonario al guardar, por empresa (`X-0001-00000001`) |
 | La X fuera de reportes fiscales | ✅ | Contabilidad › Libro IVA no la incluye nunca |
@@ -134,6 +136,8 @@ con mantenimiento) sigue igual. ⏳ material alternativo, costo para finalizar, 
 | Control de duplicados de movimientos entre cuentas | ✅ | Avisa y pide confirmar |
 | Control de duplicados de acreditación de cheques | ⏳ | |
 | Alerta si una operación de obra no tiene obra o centro de costo | ⏳ | El movimiento de caja ya tiene obra y centro de costo |
+| GGI y bienes de uso no van a una obra | ✅ | Orden de pago y factura de compra: con cuenta GGI o BB no se puede elegir obra ni se hereda de la OC |
+| Pago con e-Cheq | ✅ | Medio de pago de la OP; el cheque (físico o e-Cheq) queda emitido en Tesorería › Cheques, atado a la OP |
 
 Los movimientos cargados antes del plan de cuentas no tienen cuenta: aparecen como "Sin cuenta"
 en Movimientos por cuenta y se imputan editándolos.

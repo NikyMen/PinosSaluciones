@@ -8,7 +8,7 @@ import { canDelete, canRead, canWrite } from "@/lib/permissions";
 import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { canSeeTask, resolveTaskAssignee } from "@/lib/tasks";
-import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balances";
+import { applyCollection, applyPayment } from "@/lib/balances";
 import { beforeUpdate } from "@/lib/document-rules";
 import { releaseRemitos } from "@/lib/sales-remitos";
 import { releaseForQuote, reserveForQuote } from "@/lib/reservations";
@@ -20,7 +20,7 @@ import { refreshAssetSchedule } from "@/lib/asset-service";
 import { resolveWorkNetBudget } from "@/lib/work-budget";
 import { closeCertificate, reopenCertificate } from "@/lib/certificate-billing";
 import { checkCashAccountCanBeDeleted } from "@/lib/cash-accounts";
-import { afterPaymentChange, checkPurchaseDelete } from "@/lib/purchase-flow";
+import { afterPaymentChange, checkPurchaseDelete, refreshOrderPayment } from "@/lib/purchase-flow";
 import { noticeQuoteApproved, noticeWorkFinished } from "@/lib/event-notices";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
@@ -94,9 +94,12 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       await applyCollection(item as Record<string, unknown>, 1);
     }
     if (entity === "payments" && item) {
-      await applyExpensePayment((before as Record<string, unknown>).expenseId, -paidByPayment(before as Record<string, unknown>));
-      await applyExpensePayment((item as Record<string, unknown>).expenseId, paidByPayment(item as Record<string, unknown>));
+      await applyPayment(before as Record<string, unknown>, -1);
+      await applyPayment(item as Record<string, unknown>, 1);
       await afterPaymentChange(before as Record<string, unknown>, item as Record<string, unknown>, session);
+    }
+    if (entity === "expenses" && item) {
+      for (const orderId of new Set([(before as Record<string, unknown>).purchaseId, (item as Record<string, unknown>).purchaseId].filter(Boolean).map(String))) await refreshOrderPayment(orderId);
     }
     const action = entity === "tasks" && (before as Record<string, unknown>).status !== (item as Record<string, unknown> | null)?.status
       ? "status_change"
@@ -133,8 +136,9 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     if (entity === "invoices" && !VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status))) await applyCreditNote(before as Record<string, unknown>, -1);
     if (entity === "invoices") await reopenCertificate(before as Record<string, unknown>);
     if (entity === "collections") await applyCollection(before as Record<string, unknown>, -1);
-    if (entity === "payments") await applyExpensePayment((before as Record<string, unknown>).expenseId, -paidByPayment(before as Record<string, unknown>));
+    if (entity === "payments") await applyPayment(before as Record<string, unknown>, -1);
     if (entity === "payments") await afterPaymentChange(before as Record<string, unknown>, null, session);
+    if (entity === "expenses" && (before as Record<string, unknown>).purchaseId) await refreshOrderPayment((before as Record<string, unknown>).purchaseId);
     await audit(session, "delete", entity, id, before, null, request.headers.get("x-forwarded-for") || undefined);
     return Response.json({ ok: true });
   } catch (error) { return apiError(error); }

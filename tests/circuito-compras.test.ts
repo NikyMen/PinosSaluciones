@@ -76,8 +76,14 @@ describe("solicitud de compra", () => {
     const emitted = await action(emitRoute, request._id);
     expect(emitted.status).toBe(200);
     expect(emitted.body).toMatchObject({ status: "autorizada", approval: { automatic: true } });
-    // Pasa a Tesorería.
-    expect(await Notification.exists({ dedupeKey: `purchase-treasury-${request._id}`, roles: "administracion" })).toBeTruthy();
+    // Al autorizarse nace la OC, atada a la solicitud.
+    const order = await Purchase.findById(emitted.body.orderId).lean();
+    expect(order).toMatchObject({ number: "OC-1", stage: "orden", status: "emitida", requestId: new Types.ObjectId(request._id), amountCents: 499_999_99 });
+    // Tesorería sabe que es de contado; Compras, que ya puede pedir y recibir.
+    const treasury = await Notification.findOne({ dedupeKey: `purchase-treasury-${request._id}`, roles: "administracion" }).lean<{ title: string }>();
+    expect(treasury!.title).toContain("OC-1");
+    expect(treasury!.title).toContain("contado");
+    expect(await Notification.exists({ dedupeKey: `purchase-order-${request._id}`, roles: "compras" })).toBeTruthy();
     // Ya no se cambia ni se borra.
     const locked = await call(await recordRoute.PATCH(json("PATCH", { amountCents: 1_00 }), params({ entity: "purchases", id: request._id })));
     expect(locked.status).toBe(409);
@@ -107,22 +113,26 @@ describe("solicitud de compra", () => {
     expect((await action(decisionRoute, request._id, { approve: false })).status).toBe(400);
     const approved = await action(decisionRoute, request._id, { approve: true });
     expect(approved.body).toMatchObject({ status: "autorizada", approval: { userName: "Socio" } });
+    // Autorizada por el Socio, también nace la OC; esperando autorización, no.
+    expect((await Purchase.findById(request._id).lean<{ orderId?: unknown }>())!.orderId).toBeTruthy();
 
     const other = await newRequest(900_000_00);
     await action(emitRoute, other._id);
     as("gerencia", "Gerencia");
+    expect((await Purchase.findById(other._id).lean<{ orderId?: unknown }>())!.orderId).toBeUndefined();
     const rejected = await action(decisionRoute, other._id, { approve: false, reason: "Hay stock en el Salón" });
     expect(rejected.body).toMatchObject({ status: "rechazada", rejection: { reason: "Hay stock en el Salón" } });
+    expect(rejected.body.orderId).toBeUndefined();
     // Tesorería no le puede emitir OP a una rechazada.
     as("administracion", "Tesorería");
     expect((await action(paymentOrderRoute, other._id, { amountCents: 1_00, date: "2026-10-08", method: "transferencia", accountId: materiales })).status).toBe(409);
   });
 });
 
-describe("la orden de pago genera la orden de compra", () => {
-  it("Tesorería emite la OP, nace la OC; varias OP parciales suman a la misma OC y no pasan del total", async () => {
+describe("orden de pago contra la orden de compra", () => {
+  it("la OC ya nació al autorizar; varias OP parciales (contado o anticipo) suman a la misma OC y no pasan del total", async () => {
     const request = await newRequest(300_000_00, { paymentTerms: "cuenta_corriente" });
-    await action(emitRoute, request._id);
+    const ocNumber = String((await Purchase.findById((await action(emitRoute, request._id)).body.orderId).lean<{ number: string }>())!.number);
 
     // Compras no emite OP, aunque tenga permisos guardados de antes que se lo daban.
     as("compras", "Compras", { edit: [...defaultPermissionsForRole("compras").edit, "payments"] });
@@ -133,7 +143,7 @@ describe("la orden de pago genera la orden de compra", () => {
     // Anticipo de contado: pagada ya, desde el banco, con comprobante.
     const advance = await action(paymentOrderRoute, request._id, { amountCents: 100_000_00, date: "2026-10-08", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, attachment: "/api/uploads/comprobante.pdf" });
     expect(advance.status).toBe(201);
-    expect(advance.body.order).toMatchObject({ number: "OC-1", stage: "orden", status: "emitida", requestId: request._id, paymentTerms: "cuenta_corriente", paidCents: 100_000_00, paymentStatus: "parcial" });
+    expect(advance.body.order).toMatchObject({ number: ocNumber, stage: "orden", status: "emitida", requestId: request._id, paymentTerms: "cuenta_corriente", paidCents: 100_000_00, paymentStatus: "parcial" });
     expect(advance.body.payment).toMatchObject({ number: "OP-1", status: "pagada", purchaseId: advance.body.order._id, cashAccountId: banco, attachment: "/api/uploads/comprobante.pdf", paidByName: "Tesorería" });
     expect((await Purchase.findById(request._id).lean<{ orderId: unknown }>())!.orderId).toEqual(new Types.ObjectId(advance.body.order._id));
     // Compras se entera, con link a la OC.
@@ -142,7 +152,7 @@ describe("la orden de pago genera la orden de compra", () => {
     // El resto queda emitido, con vencimiento a 30 días por ser cuenta corriente. Desde la solicitud cae en la misma OC.
     const rest = await action(paymentOrderRoute, request._id, { amountCents: 200_000_00, date: "2026-10-08", method: "transferencia", accountId: materiales });
     expect(rest.status).toBe(201);
-    expect(rest.body.order.number).toBe("OC-1");
+    expect(rest.body.order.number).toBe(ocNumber);
     expect(rest.body.payment).toMatchObject({ status: "emitida", dueDate: "2026-11-07T00:00:00.000Z" });
     expect(await Purchase.countDocuments({ requestId: request._id })).toBe(1);
     // Ya no queda nada sin orden de pago.
@@ -156,7 +166,7 @@ describe("la orden de pago genera la orden de compra", () => {
     // La ficha muestra todo junto.
     as("compras", "Compras");
     const detail = await call(await detailRoute.GET(new Request("http://test"), params({ id: request._id })));
-    expect(detail.body).toMatchObject({ request: { number: request.number }, order: { number: "OC-1" }, totals: { totalCents: 300_000_00, paidCents: 300_000_00, pendingCents: 0 } });
+    expect(detail.body).toMatchObject({ request: { number: request.number }, order: { number: ocNumber }, totals: { totalCents: 300_000_00, paidCents: 300_000_00, pendingCents: 0 } });
     expect(detail.body.payments).toHaveLength(2);
     expect(detail.body.can).toMatchObject({ paymentOrder: false, receive: true, cancel: false });
   });
@@ -169,12 +179,11 @@ describe("remitos del proveedor", () => {
       number: "SC-90", company: "constructora", supplierId, description: "Pegamento", amountCents: 121_000_00, stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
       items: [{ code: "PEG-20", name: "Pegatex porcelanato", presentation: "Bolsa 20 KG", quantity: 10, listPriceCents: 10_000_00, discountPct: 0, unitCents: 10_000_00, totalCents: 100_000_00 }],
     });
-    await action(emitRoute, String(created._id));
-    // Sin OC todavía no se recibe.
+    const emitted = await action(emitRoute, String(created._id));
+    // Se recibe contra la OC, no contra la solicitud.
     expect((await action(receiveRoute, String(created._id), { lines: [{ line: 0, quantity: 1 }] })).status).toBe(409);
-    as("administracion", "Tesorería");
-    const op = await action(paymentOrderRoute, String(created._id), { amountCents: 121_000_00, date: "2026-10-08", method: "efectivo", accountId: materiales });
-    const orderId = op.body.order._id as string;
+    // La OC nació al autorizarse: se recibe sin esperar ninguna orden de pago.
+    const orderId = String(emitted.body.orderId);
 
     as("compras", "Compras");
     // No llega más de lo pedido.

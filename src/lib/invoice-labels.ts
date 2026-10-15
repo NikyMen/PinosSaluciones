@@ -2,7 +2,8 @@
  * Cómo se nombra cada comprobante. Sin nada de la base: lo usan también las pantallas.
  *
  * Ventas: Factura A y B son fiscales (pasan por ARCA); el comprobante interno X
- * no. Compras: Factura A y C fiscales recibidas y el registro interno X. La X
+ * no. Compras: Factura A y C fiscales recibidas, con sus notas de débito y de
+ * crédito, y el registro interno X. La X
  * cuenta para la gestión (cuentas corrientes, caja, costos, rentabilidad) pero
  * queda fuera de los reportes fiscales, como el libro IVA.
  */
@@ -12,18 +13,19 @@ export type VoucherType = (typeof VOUCHER_TYPES)[number];
 /** Ventas, en el orden en que se eligen: A con sus notas, B con sus notas y la X interna. */
 export const SALES_VOUCHER_TYPES = ["factura_a", "nota_debito_a", "nota_credito_a", "factura_b", "nota_debito_b", "nota_credito_b", "factura_x"] as const;
 export type SalesVoucherType = (typeof SALES_VOUCHER_TYPES)[number];
-export const PURCHASE_VOUCHER_TYPES = ["factura_a", "factura_c", "factura_x"] as const;
+export const PURCHASE_VOUCHER_TYPES = ["factura_a", "nota_debito_a", "nota_credito_a", "factura_c", "nota_debito_c", "nota_credito_c", "factura_x"] as const;
 /** Los talonarios son de facturas: las notas de débito y crédito usan el de la factura de su letra. */
 export const BOOK_VOUCHER_TYPES = ["factura_a", "factura_b", "factura_c", "factura_x"] as const;
 
 export const voucherLabels: Record<string, string> = {
   factura_a: "Factura A", nota_debito_a: "Nota de Débito A", nota_credito_a: "Nota de Crédito A",
   factura_b: "Factura B", nota_debito_b: "Nota de Débito B", nota_credito_b: "Nota de Crédito B",
-  factura_c: "Factura C", factura_x: "Factura X",
+  factura_c: "Factura C", nota_debito_c: "Nota de Débito C", nota_credito_c: "Nota de Crédito C", factura_x: "Factura X",
 };
 
-export const CREDIT_NOTE_TYPES = ["nota_credito_a", "nota_credito_b"];
-export const NOTE_TYPES = ["nota_debito_a", "nota_credito_a", "nota_debito_b", "nota_credito_b"];
+// Las C son sólo de compra: los proveedores monotributistas.
+export const CREDIT_NOTE_TYPES = ["nota_credito_a", "nota_credito_b", "nota_credito_c"];
+export const NOTE_TYPES = ["nota_debito_a", "nota_credito_a", "nota_debito_b", "nota_credito_b", "nota_debito_c", "nota_credito_c"];
 
 /** La nota de crédito resta: baja la venta, el IVA y lo que el cliente debe. */
 export function isCreditNote(voucherType: unknown) {

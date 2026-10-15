@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Archive, Ban, CheckCircle2, ClipboardList, Download, FileStack, FileText, HandCoins, PackagePlus, Paperclip, ReceiptText, Send, X, XCircle } from "lucide-react";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { downloadDossierZip, downloadOrderWithAttachments } from "@/lib/purchase-dossier";
-import { downloadPaymentOrderPdf, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
+import { downloadPaymentOrderPdf, paymentMethodLabels, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
 import { DateInput, MoneyInput, SearchSelect } from "@/components/fields";
 import { CashAccountSelect } from "@/components/cash-account-select";
 import { useLedgerAccounts } from "@/components/ledger-account";
@@ -25,7 +25,7 @@ type Detail = {
 };
 
 const paymentStatusLabels: Record<string, string> = { emitida: "Emitida, sin pagar", pagada: "Pagada", anulada: "Anulada" };
-const methodLabels: Record<string, string> = { transferencia: "Transferencia", efectivo: "Efectivo", cheque: "Cheque / eCheq", otro: "Otro" };
+const methodLabels = paymentMethodLabels;
 
 async function upload(file: File | null) {
   if (!file || !file.size) return "";
@@ -140,7 +140,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
             <div className="stock-kpi"><span>Solicitud {request ? String(request.number) : ""}</span><strong>{request ? requestStatusLabels[String(request.status)] || String(request.status) : "—"}</strong>
               <small>{request ? `${paymentTermLabels[String(request.paymentTerms || "contado")]}${request.paymentTerms === "plazo" && request.termDays ? ` a ${String(request.termDays)} días` : ""}${request.requiresAdvance ? " · con anticipo" : ""}${request.legacyNumber ? ` · antes ${String(request.legacyNumber)}` : ""}` : "Cargada como orden"}</small></div>
             <div className="stock-kpi"><span>Orden de compra</span><strong>{order ? `${String(order.number)} · ${orderStatusLabels[String(order.status)] || String(order.status)}` : "Todavía no"}</strong>
-              <small>{order ? `Recepción: ${String(order.receptionStatus || "pendiente")}` : request?.status === "autorizada" ? "La genera Tesorería con la orden de pago" : "Nace cuando Tesorería emite la orden de pago"}</small></div>
+              <small>{order ? `Recepción: ${String(order.receptionStatus || "pendiente")}` : request?.status === "autorizada" ? "Se genera al emitir la orden de pago (solicitud de antes)" : "Nace cuando se autoriza la solicitud"}</small></div>
             <div className="stock-kpi"><span>Total</span><strong>{money(detail.totals.totalCents)}</strong><small>Con IVA</small></div>
             <div className={detail.totals.pendingCents > 0 && order ? "stock-kpi alert" : "stock-kpi"}><span>Pagado</span><strong>{money(detail.totals.paidCents)}</strong>
               <small>Saldo {money(detail.totals.pendingCents)}{detail.totals.committedCents > detail.totals.paidCents ? ` · ${money(detail.totals.committedCents - detail.totals.paidCents)} en OP emitidas` : ""}</small></div>
@@ -161,7 +161,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
             {detail.can.emit && <button type="button" className="primary-btn" disabled={busy} onClick={() => { void emit(); }}><Send size={15} /> Emitir</button>}
             {detail.can.decide && <><button type="button" className="primary-btn" disabled={busy} onClick={() => { void decide(true); }}><CheckCircle2 size={15} /> Autorizar</button>
               <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void decide(false); }}><XCircle size={15} /> Rechazar</button></>}
-            {detail.can.paymentOrder && <button type="button" className="primary-btn" onClick={() => setPanel(panel === "pay" ? "" : "pay")}><HandCoins size={15} /> Emitir orden de pago</button>}
+            {detail.can.paymentOrder && <button type="button" className="primary-btn" onClick={() => setPanel(panel === "pay" ? "" : "pay")}><HandCoins size={15} /> Pago de contado o anticipo</button>}
             {detail.can.receive && <button type="button" className="primary-btn" onClick={() => setPanel(panel === "receive" ? "" : "receive")}><PackagePlus size={15} /> Cargar remito</button>}
             {detail.can.invoice && order && <Link className="secondary-btn" href={`/app/expenses?oc=${order._id}`}><ReceiptText size={15} /> Cargar factura</Link>}
             {detail.can.cancel && <button type="button" className="secondary-btn danger" disabled={busy} onClick={() => { void cancel(); }}><Ban size={15} /> Anular</button>}
@@ -222,7 +222,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
   </div>;
 }
 
-/** La orden de pago de Tesorería: con la primera nace la OC. Se paga ahora o queda emitida con su vencimiento. */
+/** La orden de pago contra la OC, sin factura (contado o anticipo): se paga ahora o queda emitida con su vencimiento. Cuando llega la factura, la cubre sola. Las facturas se pagan desde Tesorería › Órdenes de pago. */
 function PaymentOrderForm({ detail, busy, onSubmit, onError }: { detail: Detail; busy: boolean; onSubmit: (body: Record<string, unknown>) => Promise<boolean>; onError: (message: string) => void }) {
   const source = detail.order || detail.request;
   const terms = String(source?.paymentTerms || "contado");
@@ -245,7 +245,8 @@ function PaymentOrderForm({ detail, busy, onSubmit, onError }: { detail: Detail;
   }
 
   return <form className="purchase-panel" onSubmit={event => { void submit(event); }}>
-    <p className="eyebrow">ORDEN DE PAGO {detail.order ? `DE ${String(detail.order.number)}` : "· GENERA LA ORDEN DE COMPRA"}</p>
+    <p className="eyebrow">ORDEN DE PAGO {detail.order ? `DE ${String(detail.order.number)}` : "· GENERA LA ORDEN DE COMPRA"} · CONTADO O ANTICIPO</p>
+    <p className="muted">Sin factura todavía. Cuando llegue, lo pagado acá la cubre sola. Las facturas que ya llegaron se pagan desde Tesorería › Órdenes de pago.</p>
     <div className="form-grid">
       <label><span>Importe *<em className="field-hint">Sin OP quedan {money(detail.totals.withoutOrderCents)}</em></span><MoneyInput name="amountCents" defaultValue={amount} required onValueChange={setAmount} /></label>
       <label><span>Fecha *</span><DateInput name="date" defaultValue={todayIso()} required recent /></label>

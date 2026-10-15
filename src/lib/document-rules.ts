@@ -1,8 +1,8 @@
 import { HttpError } from "./api";
-import { accountChange, checkLedgerAccount } from "./account-service";
+import { accountChange, checkLedgerAccount, checkWorkForAccount, worklessAccount } from "./account-service";
 import { accountDirection } from "./account-catalog";
-import { Invoice, Purchase, Work } from "./models";
-import { VOID_INVOICE_STATUSES } from "./invoice-labels";
+import { Expense, Invoice, Purchase, Work } from "./models";
+import { isCreditNote, isNote, VOID_INVOICE_STATUSES, voucherLabels } from "./invoice-labels";
 import { money } from "./format";
 import { checkVoucherEnabled, takeInternalNumber } from "./voucher-books";
 import { companyOf } from "./companies";
@@ -40,6 +40,7 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
   if (entity === "payments" && !data.number) data.number = await nextPaymentOrderNumber();
   // La OP que paga una factura de una OC queda atada también a la OC.
   if (entity === "payments") await preparePaymentOrder(data);
+  if (entity === "payments") await checkWorkForAccount(data.accountId, data.workId);
   // Toda compra nueva es una solicitud en borrador (SC-n): la OC la genera Tesorería con la orden de pago.
   if (entity === "purchases" && session) await prepareNewRequest(data, session);
   if (entity === "expenses") await prepareExpense(data);
@@ -75,6 +76,13 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
   // Una solicitud emitida queda en sólo lectura; una orden, salvo la entrega y las notas.
   if (entity === "purchases") checkPurchaseChanges(before, changes);
   if (entity === "payments") await preparePaymentOrder(changes, before);
+  if (entity === "payments") {
+    // Una OP de varias facturas se cambia desde su pantalla: acá sólo el estado, la caja, la cuenta y los datos sueltos.
+    if (Array.isArray(before.allocations) && before.allocations.length && ["amountCents", "expenseId", "supplierId", "company"].some(key => key in changes && String(changes[key] ?? "") !== String(before[key] ?? ""))) {
+      throw new HttpError("Esta orden de pago aplica varios comprobantes: el importe, el proveedor y las facturas se cambian desde Editar");
+    }
+    if ("accountId" in changes || "workId" in changes) await checkWorkForAccount(merged.accountId, merged.workId);
+  }
   prepareNetAmounts(entity, changes, before);
   if (entity === "cash" || entity === "collections" || entity === "payments") await prepareCashAccount(entity, changes, before);
   if (entity === "cashAccounts") await prepareCashAccountRecord(changes, before, session.role);
@@ -121,8 +129,11 @@ async function prepareExpense(data: Record<string, unknown>, before: Record<stri
     if (!purchase) throw new HttpError("La orden de compra elegida no existe");
     if (!merged.company && purchase.company) data.company = purchase.company;
     if (!merged.supplierId && purchase.supplierId) data.supplierId = purchase.supplierId;
-    if (!merged.workId && purchase.workId) data.workId = purchase.workId;
+    // Un GGI o un bien de uso no hereda la obra de la OC.
+    if (!merged.workId && purchase.workId && !await worklessAccount(merged.accountId)) data.workId = purchase.workId;
   }
+  if ("accountId" in data || "workId" in data) await checkWorkForAccount(merged.accountId, data.workId ?? before.workId);
+  await checkPurchaseNote(data, before);
   const company = data.company ?? before.company;
   if (merged.voucherType) {
     if (!company) data.company = "tvp";
@@ -135,6 +146,25 @@ async function prepareExpense(data: Record<string, unknown>, before: Record<stri
     const vat = Math.round(net * pct / 100);
     Object.assign(data, { vatPct: pct, vatCents: vat, amountCents: net + vat });
   }
+}
+
+/**
+ * Una nota de débito o de crédito del proveedor puede decir a qué factura
+ * corresponde: tiene que ser una factura (no otra nota) del mismo proveedor y
+ * de la misma letra. Una que no es nota no lleva factura asociada.
+ */
+async function checkPurchaseNote(data: Record<string, unknown>, before: Record<string, unknown>) {
+  if (!("voucherType" in data || "associatedExpenseId" in data || "supplierId" in data)) return;
+  const merged = { ...before, ...data };
+  if (!isNote(merged.voucherType)) { if (before.associatedExpenseId || data.associatedExpenseId) data.associatedExpenseId = null; return; }
+  if (!merged.associatedExpenseId) return;
+  const invoice = await Expense.findById(merged.associatedExpenseId).select("voucherType supplierId number").lean<{ voucherType?: string; supplierId?: unknown; number?: string }>();
+  if (!invoice) throw new HttpError("La factura asociada no existe");
+  const letter = (type: unknown) => String(type || "").slice(-1);
+  if (!invoice.voucherType || isNote(invoice.voucherType) || String(invoice.supplierId || "") !== String(merged.supplierId || "") || letter(invoice.voucherType) !== letter(merged.voucherType)) {
+    throw new HttpError(`La ${voucherLabels[String(merged.voucherType)]} va asociada a una factura ${letter(merged.voucherType).toUpperCase()} del mismo proveedor`);
+  }
+  if (isCreditNote(invoice.voucherType)) throw new HttpError("Una nota no se asocia a una nota de crédito");
 }
 
 /**

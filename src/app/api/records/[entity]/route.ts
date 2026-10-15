@@ -1,14 +1,14 @@
 import { connectDB } from "@/lib/db";
 import { entities, type Entity } from "@/lib/constants";
 import { composeWorkerName, modelByEntity, nextReceiptNumber, nextQuoteNumber, nextQuoteVersion } from "@/lib/models";
-import { afterPaymentChange } from "@/lib/purchase-flow";
+import { afterPaymentChange, refreshOrderPayment } from "@/lib/purchase-flow";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/permissions";
 import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
-import { applyCollection, applyExpensePayment, paidByPayment } from "@/lib/balances";
+import { applyCollection, applyPayment } from "@/lib/balances";
 import { applyCreditNote, checkNote, checkSubstitution, completeSubstitution, emitInvoiceInArca, prepareInvoice } from "@/lib/invoice-service";
 import { beforeCreate } from "@/lib/document-rules";
 import { Types } from "mongoose";
@@ -128,8 +128,10 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     // La nota de crédito descuenta su importe de lo que se debe de la factura asociada.
     if (entity === "invoices") await applyCreditNote(item.toObject(), 1);
     if (entity === "collections") await applyCollection(item, 1);
-    if (entity === "payments") await applyExpensePayment(item.expenseId, paidByPayment(item));
+    if (entity === "payments") await applyPayment(item.toObject(), 1);
     if (entity === "payments") await afterPaymentChange(null, item.toObject(), session);
+    // Una factura de una OC ya pagada de contado o con anticipo queda cubierta por ese pago.
+    if (entity === "expenses" && item.purchaseId) await refreshOrderPayment(item.purchaseId);
     if (entity === "invoices" && item.workId && (item.certificateId || item.certificateNumber)) await closeCertificate(item.toObject());
     await audit(session, "create", entity, item._id, null, item.toObject(), request.headers.get("x-forwarded-for") || undefined);
     return Response.json(item, { status: 201 });
