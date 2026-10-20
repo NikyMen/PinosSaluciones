@@ -6,27 +6,31 @@ import { money, qty } from "./format";
 import { PURCHASE_APPROVAL_LIMIT_CENTS, type Role } from "./constants";
 import { canApprovePurchases, canWrite } from "./permissions";
 import { notify, usersWithAction } from "./notifications";
-import { paidByPayment } from "./balances";
+import { applyExpensePayment, paidByPayment, paymentAllocations } from "./balances";
+import { isCreditNote } from "./invoice-labels";
+import { worklessAccount } from "./account-service";
 import { beforeCreate } from "./document-rules";
 import { applyStockMovement, stockItemForPurchaseLine } from "./stock-service";
 import type { CompanyKey } from "./companies";
 import type { WarehouseKey } from "./warehouses";
 import type { Session } from "./auth";
-import { paymentTermLabels, requestStatusLabels } from "./purchase-flow-labels";
+import { purchaseTermsText, requestStatusLabels } from "./purchase-flow-labels";
+import { PURCHASE_TAX_PCT_KEYS, purchaseTaxFields, storedPurchaseTaxes, type TaxedLine } from "./purchase-taxes";
 
 /*
- * El circuito de compras (requerimiento integral v4, punto 2, con lo acordado
- * en el grupo de PINO):
+ * El circuito de compras (requerimiento integral v4, punto 2, con lo que
+ * dibujó Tesorería en la reunión de octubre de 2026):
  *
  *  1. Compras arma la solicitud (SC-n) con su condición de compra. Mientras es
  *     borrador se edita; al emitirla queda en sólo lectura.
- *  2. Por debajo de $500.000 queda autorizada sola y pasa a Tesorería. Desde
- *     $500.000 (inclusive) la autoriza Gerencia o quien tenga el permiso
- *     "Autorizar compras" (Socio, Presidencia).
- *  3. Tesorería emite la orden de pago y, con la primera, nace la orden de
- *     compra (OC-n), atada a la solicitud. Una OC puede tener varias OP.
- *  4. Compras ve la OC, la OP y el comprobante, y carga los remitos del
- *     proveedor: suman al stock y el remito final cierra la orden.
+ *  2. Por debajo de $500.000 queda autorizada sola. Desde $500.000 (inclusive)
+ *     la autoriza Gerencia o quien tenga el permiso "Autorizar compras"
+ *     (Socio, Presidencia).
+ *  3. Al autorizarse nace la orden de compra (OC-n), atada a la solicitud.
+ *  4. Compras carga los remitos del proveedor: suman al stock y el remito
+ *     final cierra la orden. Después llega la factura, con su remito.
+ *  5. Tesorería paga con la orden de pago: la de las facturas del proveedor o,
+ *     de contado o como anticipo, contra la OC. Una OC puede tener varias OP.
  *
  * Una solicitud emitida sólo la anula Gerencia, con motivo.
  */
@@ -71,7 +75,8 @@ export async function emitRequest(id: string, session: Session) {
   if (request.stage !== "solicitud") throw new HttpError("Sólo se emite una solicitud de compra");
   if (request.status !== "borrador") throw new HttpError(`La solicitud ${request.number} ya está ${requestStatusLabels[request.status]?.toLowerCase() || request.status}`, 409);
   if (!request.supplierId) throw new HttpError("Elegí el proveedor antes de emitirla: Tesorería le va a pagar a él");
-  if (!(Number(request.amountCents) > 0)) throw new HttpError("Poné el importe de la solicitud (con IVA) antes de emitirla");
+  if (!(Number(request.amountCents) > 0)) throw new HttpError("Poné el neto de la solicitud antes de emitirla: el total sale de ahí y de los impuestos");
+  if (String(request.paymentTerms || "contado") === "contado" && !request.cashMethod) throw new HttpError("Es de contado: elegí si se paga en efectivo o por transferencia");
   const approval = needsApproval(Number(request.amountCents));
   const update = approval
     ? { status: "pendiente_autorizacion", emittedAt: new Date() }
@@ -81,21 +86,31 @@ export async function emitRequest(id: string, session: Session) {
   }, { returnDocument: "after" }).lean<PurchaseDoc>();
   if (!saved) throw new HttpError("La solicitud ya se emitió", 409);
   const supplier = await Supplier.findById(request.supplierId).select("name").lean<{ name?: string }>();
+  if (!approval) await orderFor(saved, session);
   if (approval) {
     await notify({
       title: `Autorizar la solicitud ${saved.number} por ${money(Number(saved.amountCents))}`,
       body: `${supplier?.name || "Proveedor"} · ${String(saved.description || "")}. La emitió ${session.name}.`,
       kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: ["gerencia"], userIds: await usersWithAction("approvePurchases"), event: "compra.autorizar", exception: true, dedupeKey: `purchase-approve-${saved._id}`,
     });
-  } else await notifyTreasury(saved, supplier?.name);
-  return saved;
+  } else await notifyTreasury({ ...saved, orderId: (await Purchase.findById(saved._id).select("orderId").lean<{ orderId?: Types.ObjectId }>())?.orderId }, supplier?.name);
+  return Purchase.findById(saved._id).lean<PurchaseDoc>();
 }
 
+/** Autorizada la solicitud y generada la OC: Compras la gestiona con el proveedor y Tesorería sabe qué viene a pagar. */
 async function notifyTreasury(request: PurchaseDoc, supplierName?: string) {
+  const order = request.orderId ? await Purchase.findById(request.orderId).select("number").lean<{ number?: string }>() : null;
+  const cash = String(request.paymentTerms || "contado") === "contado";
+  const terms = purchaseTermsText(request);
   await notify({
-    title: `Solicitud ${request.number} autorizada: emitir la orden de pago`,
-    body: `${supplierName || "Proveedor"} · ${money(Number(request.amountCents))} · ${paymentTermLabels[String(request.paymentTerms || "contado")]}${request.paymentTerms === "plazo" && request.termDays ? ` a ${request.termDays} días` : ""}.`,
+    title: `Orden de compra ${order?.number || "nueva"} de la solicitud ${request.number}${cash ? ": pagar de contado" : ""}`,
+    body: `${supplierName || "Proveedor"} · ${money(Number(request.amountCents))} · ${terms}. ${cash ? "Se paga con una orden de pago contra la OC." : "Se paga con la orden de pago de sus facturas cuando lleguen."}`,
     kind: "compra", href: `/app/purchases?ver=${request._id}`, roles: ["administracion"], event: "compra.tesoreria", dedupeKey: `purchase-treasury-${request._id}`,
+  });
+  await notify({
+    title: `Orden de compra ${order?.number || "nueva"} lista para el proveedor`,
+    body: `${supplierName || "Proveedor"} · ${money(Number(request.amountCents))} · ${terms}. Cuando llegue la mercadería, cargá el remito.`,
+    kind: "compra", href: `/app/purchases?ver=${request._id}`, roles: ["compras"], userIds: request.userId ? [request.userId] : undefined, event: "compra.orden", dedupeKey: `purchase-order-${request._id}`,
   });
 }
 
@@ -113,7 +128,10 @@ export async function decideRequest(id: string, input: { approve: boolean; reaso
   }, { returnDocument: "after" }).lean<PurchaseDoc>();
   if (!saved) throw new HttpError("La solicitud ya se resolvió", 409);
   const supplier = await Supplier.findById(request.supplierId).select("name").lean<{ name?: string }>();
-  if (input.approve) await notifyTreasury(saved, supplier?.name);
+  if (input.approve) {
+    await orderFor(saved, session);
+    await notifyTreasury({ ...saved, orderId: (await Purchase.findById(saved._id).select("orderId").lean<{ orderId?: Types.ObjectId }>())?.orderId }, supplier?.name);
+  }
   else await notify({ title: `Solicitud ${saved.number} rechazada`, body: `${session.name}: ${reason}`, kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: ["compras"], userIds: request.userId ? [request.userId] : undefined, event: "compra.rechazada", dedupeKey: `purchase-rejected-${saved._id}` });
   return saved;
 }
@@ -146,7 +164,7 @@ export async function cancelPurchase(id: string, reasonInput: string, session: S
   return Purchase.find({ _id: { $in: ids } }).lean();
 }
 
-/* ── 3: la orden de pago genera la orden de compra ─────────────────────────── */
+/* ── 3 y 5: la orden de compra y la orden de pago contra ella ──────────────── */
 
 const id24 = z.string().regex(/^[a-f\d]{24}$/i);
 export const paymentOrderSchema = z.object({
@@ -154,7 +172,7 @@ export const paymentOrderSchema = z.object({
   retentionsCents: z.coerce.number().int().min(0).default(0),
   date: z.string({ error: "Poné la fecha" }).regex(/^\d{4}-\d{2}-\d{2}$/, "Poné la fecha"),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")).transform(value => value || undefined),
-  method: z.enum(["transferencia", "efectivo", "cheque", "otro"], { error: "Elegí el medio de pago" }),
+  method: z.enum(["transferencia", "efectivo", "cheque", "echeq", "otro"], { error: "Elegí el medio de pago" }),
   accountId: id24.or(z.literal("")).optional().transform(value => value || undefined),
   cashAccountId: id24.or(z.literal("")).optional().transform(value => value || undefined),
   // Pagarla ahora (contado, anticipo) o dejarla emitida para pagarla al vencimiento.
@@ -173,30 +191,32 @@ async function committedCents(orderId: unknown) {
   return payments.reduce((total, payment) => total + Number(payment.amountCents || 0), 0);
 }
 
-/** Crea la OC de una solicitud autorizada, una sola vez aunque dos personas emitan la OP a la vez. */
+/** Crea la OC de una solicitud autorizada, una sola vez aunque dos personas la autoricen o paguen a la vez. */
 async function orderFor(request: PurchaseDoc, session: Session) {
   if (request.orderId) return Purchase.findById(request.orderId).lean<PurchaseDoc>();
   const orderId = new Types.ObjectId();
   const claimed = await Purchase.updateOne({ _id: request._id, orderId: { $exists: false } }, { $set: { orderId } });
   if (!claimed.modifiedCount) return Purchase.findById((await Purchase.findById(request._id).select("orderId").lean<{ orderId: unknown }>())?.orderId).lean<PurchaseDoc>();
   const copy = ["company", "supplierId", "workId", "quoteId", "quoteNumber", "neededBy", "priority", "description", "amountCents", "subtotalCents", "vatCents", "notes",
+    "vatPct", "perceptionVatPct", "perceptionVatCents", "perceptionIibbPct", "perceptionIibbCents", "perceptionIibbProvPct", "perceptionIibbProvCents", "internalTaxPct", "internalTaxCents", "cashMethod",
     "priceListId", "priceListDate", "deliverTo", "paymentTerms", "termDays", "requiresAdvance", "requestedDate", "expectedDate"];
   const data: Record<string, unknown> = Object.fromEntries(copy.filter(key => request[key] !== undefined).map(key => [key, request[key]]));
   const order = await Purchase.create({
     ...data, _id: orderId, number: await nextPurchaseNumber(), stage: "orden", status: "emitida", requestId: request._id,
     items: (request.items || []).map(line => ({ ...line, receivedQty: 0 })),
     userId: session.userId, userName: session.name,
-    history: [history(`Generada con la orden de pago de Tesorería, desde la solicitud ${request.number}`, session)],
+    history: [history(`Generada al autorizarse la solicitud ${request.number}`, session)],
   });
   await Purchase.updateOne({ _id: request._id }, { $push: { history: history(`Orden de compra ${order.number}`, session) } });
   return order.toObject() as PurchaseDoc;
 }
 
 /**
- * Tesorería emite una orden de pago de una solicitud autorizada (o de una OC
- * que ya existe). Con la primera nace la OC. Se puede pagar en el momento
- * (contado, anticipo) o dejarla emitida con su vencimiento (cuenta corriente,
- * plazo). Nunca pasa del total de la orden.
+ * Tesorería emite una orden de pago contra la OC, sin factura: de contado o
+ * como anticipo. Se puede pagar en el momento o dejarla emitida con su
+ * vencimiento. Nunca pasa del total de la orden. Cuando llega la factura, lo
+ * pagado la cubre sola. Una solicitud autorizada antes de este circuito, que
+ * todavía no tiene OC, la recibe acá.
  */
 export async function issuePaymentOrder(id: string, input: PaymentOrderInput, session: Session) {
   if (!canWrite(session, "payments")) throw new HttpError("Las órdenes de pago las emite Tesorería", 403);
@@ -216,6 +236,8 @@ export async function issuePaymentOrder(id: string, input: PaymentOrderInput, se
   const days = order.paymentTerms === "plazo" ? Number(order.termDays || 0) : order.paymentTerms === "cuenta_corriente" ? 30 : 0;
   const data: Record<string, unknown> = {
     company: order.company || "tvp", supplierId: order.supplierId, purchaseId: order._id, requestId: request?._id ?? order.requestId,
+    // La obra de la OC, salvo que sea un GGI o un bien de uso, que no van a ninguna obra.
+    workId: order.workId && !await worklessAccount(input.accountId) ? order.workId : undefined,
     status: input.execute ? "pagada" : "emitida", date, dueDate: input.dueDate ? new Date(`${input.dueDate}T00:00:00.000Z`) : days ? addDays(date, days) : undefined,
     amountCents: input.amountCents, retentionsCents: input.retentionsCents, method: input.method, accountId: input.accountId, cashAccountId: input.cashAccountId,
     reference: input.reference, notes: input.notes, attachment: input.attachment,
@@ -233,22 +255,63 @@ export async function issuePaymentOrder(id: string, input: PaymentOrderInput, se
 async function notifyPurchasing(order: PurchaseDoc, payment: Lean, session: Session) {
   const paid = payment.status !== "emitida" && payment.status !== "anulada";
   await notify({
-    title: paid ? `Pago ${String(payment.number)} de la orden ${order.number}` : `Orden de compra ${order.number} con la orden de pago ${String(payment.number)}`,
-    body: `${money(Number(payment.amountCents || 0))} · ${paid ? `pagado por ${session.name}${payment.attachment ? ", con comprobante" : ""}` : `vence ${payment.dueDate ? new Date(payment.dueDate as Date).toLocaleDateString("es-AR") : "sin fecha"}`}. ${order.receptionStatus === "recibida" ? "" : "Ya se puede recibir la mercadería."}`.trim(),
+    title: paid ? `Pago ${String(payment.number)} de la orden ${order.number}` : `Orden de pago ${String(payment.number)} emitida para la orden ${order.number}`,
+    body: `${money(Number(payment.amountCents || 0))} · ${paid ? `pagado por ${session.name}${payment.attachment ? ", con comprobante" : ""}` : `vence ${payment.dueDate ? new Date(payment.dueDate as Date).toLocaleDateString("es-AR") : "sin fecha"}`}.`,
     kind: "compra", href: `/app/purchases?ver=${order._id}`, roles: ["compras"], event: "compra.pago", dedupeKey: `purchase-payment-${String(payment._id)}-${paid ? "pagada" : "emitida"}`,
   });
 }
 
-/** Lo pagado de una OC y su estado de pago: todas las OP ejecutadas atadas a ella (directas o por sus facturas). */
+/** Las OP de una OC que no pagan facturas: las de contado o anticipo, que se emiten antes de que llegue la factura. */
+const directPayments = (orderId: unknown) => ({ purchaseId: orderId, expenseId: null, "allocations.0": { $exists: false } });
+
+/**
+ * Lo que se pagó de contado o como anticipo contra una OC cubre solo sus
+ * facturas, la más vieja primero, para que no aparezcan otra vez como
+ * pendientes en la orden de pago. Lo que cubre cada una queda en `advanceCents`.
+ */
+async function syncOrderAdvances(orderId: unknown) {
+  const [direct, expenses] = await Promise.all([
+    Payment.find(directPayments(orderId)).select("status amountCents").lean<Array<{ status?: string; amountCents?: number }>>(),
+    Expense.find({ purchaseId: orderId }).sort({ issueDate: 1, createdAt: 1 }).select("voucherType status amountCents paidCents advanceCents").lean<Lean[]>(),
+  ]);
+  let left = direct.reduce((total, payment) => total + paidByPayment(payment), 0);
+  for (const expense of expenses) {
+    const current = Number(expense.advanceCents || 0);
+    const otherPaid = Number(expense.paidCents || 0) - current;
+    const share = expense.status === "anulado" || isCreditNote(expense.voucherType) ? 0 : Math.max(0, Math.min(left, Number(expense.amountCents || 0) - otherPaid));
+    left -= share;
+    if (share === current) continue;
+    await Expense.updateOne({ _id: expense._id }, { $set: { advanceCents: share } });
+    await applyExpensePayment(expense._id, share - current);
+  }
+}
+
+/**
+ * Lo pagado de una OC y su estado de pago: las OP de contado o anticipo más lo
+ * pagado de sus facturas (menos sus notas de crédito), sin contar dos veces lo
+ * que el anticipo ya cubrió.
+ */
 export async function refreshOrderPayment(orderId: unknown) {
   if (!orderId) return;
   const order = await Purchase.findById(orderId).select("amountCents stage").lean<{ amountCents?: number; stage?: string }>();
   if (!order || order.stage === "solicitud") return;
-  const payments = await Payment.find({ purchaseId: orderId }).select("status amountCents").lean<Array<{ status?: string; amountCents?: number }>>();
-  const paidCents = payments.reduce((total, payment) => total + paidByPayment(payment), 0);
+  await syncOrderAdvances(orderId);
+  const [direct, expenses] = await Promise.all([
+    Payment.find(directPayments(orderId)).select("status amountCents").lean<Array<{ status?: string; amountCents?: number }>>(),
+    Expense.find({ purchaseId: orderId, status: { $ne: "anulado" } }).select("voucherType paidCents advanceCents").lean<Lean[]>(),
+  ]);
+  const paidCents = direct.reduce((total, payment) => total + paidByPayment(payment), 0)
+    + expenses.reduce((total, expense) => total + (isCreditNote(expense.voucherType) ? -1 : 1) * (Number(expense.paidCents || 0) - Number(expense.advanceCents || 0)), 0);
   const total = Number(order.amountCents || 0);
   const paymentStatus = paidCents > 0 && paidCents >= total - TOLERANCE_CENTS ? "pagada" : paidCents > 0 ? "parcial" : "pendiente";
-  await Purchase.updateOne({ _id: orderId }, { $set: { paidCents, paymentStatus } });
+  await Purchase.updateOne({ _id: orderId }, { $set: { paidCents: Math.max(0, paidCents), paymentStatus } });
+}
+
+/** Las OC que toca una OP: la suya y las de las facturas que paga. */
+async function ordersOfPayment(payment: Record<string, unknown> | null) {
+  if (!payment) return [];
+  const expenses = await Expense.find({ _id: { $in: paymentAllocations(payment).map(allocation => allocation.expenseId) } }).select("purchaseId").lean<Array<{ purchaseId?: unknown }>>();
+  return [payment.purchaseId, ...expenses.map(expense => expense.purchaseId)].filter(Boolean).map(String);
 }
 
 /**
@@ -257,6 +320,9 @@ export async function refreshOrderPayment(orderId: unknown) {
  * pagado de las órdenes que tocó, y Compras se entera del pago.
  */
 export async function preparePaymentOrder(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
+  // La OP de varias facturas la arma su servicio: queda atada a la OC sólo si todas son de la misma.
+  const allocations = data.allocations ?? before.allocations;
+  if (Array.isArray(allocations) && allocations.length) return;
   const expenseId = data.expenseId ?? before.expenseId;
   if (!data.purchaseId && !before.purchaseId && expenseId) {
     const expense = await Expense.findById(expenseId).select("purchaseId").lean<{ purchaseId?: unknown }>();
@@ -265,7 +331,7 @@ export async function preparePaymentOrder(data: Record<string, unknown>, before:
 }
 
 export async function afterPaymentChange(before: Record<string, unknown> | null, after: Record<string, unknown> | null, session: Session) {
-  const orders = new Set([before?.purchaseId, after?.purchaseId].filter(Boolean).map(String));
+  const orders = new Set([...await ordersOfPayment(before), ...await ordersOfPayment(after)]);
   for (const orderId of orders) await refreshOrderPayment(orderId);
   const nowPaid = after && paidByPayment(after) > 0 && !(before && paidByPayment(before) > 0);
   if (nowPaid && after?.purchaseId) {
@@ -371,11 +437,39 @@ export function checkPurchaseChanges(before: Record<string, unknown>, changes: R
   for (const key of SYSTEM_FIELDS) delete changes[key];
   if (before.stage === "solicitud" && before.status === "borrador") return;
   const allowed = before.stage === "solicitud" ? ["notes"] : ORDER_EDITABLE;
-  const blocked = Object.keys(changes).filter(key => !allowed.includes(key) && String(changes[key] ?? "") !== String(before[key] ?? ""));
+  // El neto y los porcentajes se comparan con lo que vale la compra (una de antes no los tiene guardados: el formulario los trae calculados).
+  const stored = storedPurchaseTaxes(before) as Record<string, number>;
+  const same = (key: string) => key in stored ? Math.abs(Number(changes[key] ?? 0) - stored[key]) < 0.005 : String(changes[key] ?? "") === String(before[key] ?? "");
+  const blocked = Object.keys(changes).filter(key => !allowed.includes(key) && !same(key));
   if (blocked.length) throw new HttpError(before.stage === "solicitud"
     ? `La solicitud ${String(before.number)} ya se emitió: queda en sólo lectura. Si hay que cambiarla, Gerencia la anula y se hace una nueva.`
     : `La orden ${String(before.number)} ya está emitida: sólo se cambian la entrega esperada y las notas`, 409);
   for (const key of Object.keys(changes)) if (!allowed.includes(key)) delete changes[key];
+}
+
+/**
+ * El total de una solicitud en borrador no se escribe: sale de sus renglones
+ * (o del neto, si se cargó a mano), el IVA, las percepciones y el impuesto
+ * interno. Lo que llega por la API con sólo el total (de antes, o importado)
+ * se toma como total con IVA al 21 %. De contado lleva el medio; si no, no.
+ */
+export function preparePurchaseAmounts(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
+  if ("paymentTerms" in data && data.paymentTerms !== "contado") data.cashMethod = null;
+  if (before._id && !(before.stage === "solicitud" && before.status === "borrador")) return;
+  const touched = ["subtotalCents", "amountCents", ...PURCHASE_TAX_PCT_KEYS].some(key => key in data && data[key] !== undefined);
+  if (!touched) return;
+  const merged = { ...before, ...data };
+  const items = Array.isArray(merged.items) ? merged.items as TaxedLine[] : [];
+  if (!items.length && data.subtotalCents === undefined && data.amountCents !== undefined) {
+    // Sólo el total: con IVA al 21 % y sin percepciones, como antes.
+    const amountCents = Number(data.amountCents || 0);
+    const subtotalCents = Math.round(amountCents / 1.21);
+    Object.assign(data, { subtotalCents, vatCents: amountCents - subtotalCents, amountCents });
+    return;
+  }
+  const stored = storedPurchaseTaxes(merged);
+  const rates = Object.fromEntries(PURCHASE_TAX_PCT_KEYS.map(key => [key, data[key] ?? stored[key]]));
+  Object.assign(data, purchaseTaxFields(items.length ? items : [{ totalCents: Number(data.subtotalCents ?? stored.subtotalCents) }], rates));
 }
 
 /** Sólo se borra una solicitud en borrador; lo emitido se anula. */

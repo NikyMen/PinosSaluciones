@@ -290,7 +290,7 @@ describe("listas de precios (base)", () => {
     const old = await PriceListItem.find({ supplierId: sika._id, current: true }).lean() as Array<{ _id: Types.ObjectId; code: string }>;
     const idOf = (code: string) => String(old.find(row => row.code === code)!._id);
 
-    const order = (body: unknown) => ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestedDate: "2026-09-20", ...body as object }) }));
+    const order = (body: unknown) => ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestedDate: "2026-09-20", cashMethod: "transferencia", ...body as object }) }));
     // El mismo producto dos veces se junta en un renglón.
     const first = await call(await order({ supplierId: sikaId, workId: String(work._id), expectedDate: "2026-09-30", notes: "Entregar de 8 a 12",
       items: [{ itemId: idOf("SK1"), quantity: 2 }, { itemId: idOf("SK2"), quantity: 1.5 }, { itemId: idOf("SK1"), quantity: 1 }] }));
@@ -321,6 +321,18 @@ describe("listas de precios (base)", () => {
     const recordsRoute = await import("../src/app/api/records/[entity]/route");
     const manual = await call(await recordsRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ description: "Flete", amountCents: 500, stage: "solicitud", status: "borrador", requestedDate: "2026-09-20" }) }), params({ entity: "purchases" })));
     expect(manual.body).toMatchObject({ number: "SC-4", stage: "solicitud", status: "borrador" });
+
+    // Cada renglón con su IVA (el que no dice, el de la solicitud) y la percepción sobre el neto. De contado pide el medio.
+    const taxed = { supplierId: sikaId, vatPct: 27, perceptionIibbPct: 2, items: [{ itemId: idOf("SK1"), quantity: 1, vatPct: 10.5 }, { itemId: idOf("SK2"), quantity: 1 }] };
+    expect((await call(await order({ ...taxed, cashMethod: undefined }))).status).toBe(400);
+    const withTaxes = await call(await order({ ...taxed, cashMethod: "efectivo" }));
+    expect(withTaxes.status).toBe(201);
+    expect(withTaxes.body.purchase).toMatchObject({
+      number: "SC-5", cashMethod: "efectivo", vatPct: 27, subtotalCents: 11_700_000, vatCents: 1_377_000, perceptionIibbPct: 2, perceptionIibbCents: 234_000, amountCents: 13_311_000,
+      items: [{ code: "SK1", vatPct: 10.5 }, { code: "SK2", vatPct: 27 }],
+    });
+    expect(withTaxes.body.pdf).toMatchObject({ paymentTerms: "contado en efectivo", subtotalCents: 11_700_000, totalCents: 13_311_000, items: [{ vatPct: 10.5 }, { vatPct: 27 }] });
+    expect(withTaxes.body.pdf.taxes).toEqual([{ label: "IVA 10,5 %", cents: 1_134_000 }, { label: "IVA 27 %", cents: 243_000 }, { label: "Percepción de IIBB 2 %", cents: 234_000 }]);
   });
 
   it("el PDF de la orden pasa de página cuando hay muchos productos", async () => {
@@ -333,6 +345,16 @@ describe("listas de precios (base)", () => {
     }, { author: "Compras" });
     expect(filename).toBe("orden-de-compra-OC-12.pdf");
     expect(doc.getNumberOfPages()).toBeGreaterThan(1);
+
+    // Con IVA de dos alícuotas, percepciones e impuesto interno, el recuadro de totales crece y sigue entrando.
+    const taxed = new jsPDF();
+    buildPurchaseOrderPdf(taxed, {
+      kind: "solicitud", number: "SC-12", requestedDate: "2026-09-25T00:00:00.000Z", supplier: { name: "Protex" }, work: null, paymentTerms: "contado en efectivo",
+      items: [{ ...items[0], vatPct: 21 }, { ...items[1], vatPct: 10.5 }], subtotalCents: 3_400_000, vatCents: 535_500,
+      taxes: [{ label: "IVA 10,5 %", cents: 178_500 }, { label: "IVA 21 %", cents: 357_000 }, { label: "Percepción de IVA 3 %", cents: 102_000 }, { label: "Percepción de IIBB 2 %", cents: 68_000 }, { label: "IIBB provincial 1,5 %", cents: 51_000 }, { label: "Impuesto interno 1 %", cents: 34_000 }],
+      totalCents: 4_190_500,
+    }, { author: "Compras" });
+    expect(taxed.getNumberOfPages()).toBe(1);
   });
 
   it("el stock muestra el último precio de la lista que incluyó el material, aunque la siguiente no lo traiga", async () => {
@@ -368,7 +390,7 @@ describe("empresa que compra", () => {
     const supplier = await Supplier.create({ name: "Proveedor empresas" });
     await importList(String(supplier._id), "2026-09-01", [item("EMP1", "MEMBRANA EMP", "Balde", 1_000)]);
     const line = await PriceListItem.findOne({ supplierId: supplier._id, current: true }).lean() as { _id: Types.ObjectId };
-    const response = await call(await ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company: "constructora", requestedDate: "2026-09-30", supplierId: String(supplier._id), items: [{ itemId: String(line._id), quantity: 1 }] }) })));
+    const response = await call(await ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company: "constructora", requestedDate: "2026-09-30", cashMethod: "transferencia", supplierId: String(supplier._id), items: [{ itemId: String(line._id), quantity: 1 }] }) })));
     expect(response.status).toBe(201);
     expect(response.body.purchase.company).toBe("constructora");
     expect(response.body.pdf.company).toBe("constructora");

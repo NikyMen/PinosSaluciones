@@ -38,9 +38,9 @@ function as(role: Role, name: string, extra: Partial<UserPermissions> = {}, user
 
 async function newRequest(amountCents: number, extra: Record<string, unknown> = {}) {
   as("compras", "Compras");
-  const created = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId, description: "Membrana y selladores", amountCents, paymentTerms: "contado", requestedDate: "2026-10-08", ...extra }), params({ entity: "purchases" })));
+  const created = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId, description: "Membrana y selladores", amountCents, paymentTerms: "contado", cashMethod: "transferencia", requestedDate: "2026-10-08", ...extra }), params({ entity: "purchases" })));
   expect(created.status).toBe(201);
-  return created.body as { _id: string; number: string; status: string };
+  return created.body as { _id: string; number: string; status: string } & Record<string, unknown>;
 }
 
 beforeAll(async () => {
@@ -76,8 +76,14 @@ describe("solicitud de compra", () => {
     const emitted = await action(emitRoute, request._id);
     expect(emitted.status).toBe(200);
     expect(emitted.body).toMatchObject({ status: "autorizada", approval: { automatic: true } });
-    // Pasa a Tesorería.
-    expect(await Notification.exists({ dedupeKey: `purchase-treasury-${request._id}`, roles: "administracion" })).toBeTruthy();
+    // Al autorizarse nace la OC, atada a la solicitud.
+    const order = await Purchase.findById(emitted.body.orderId).lean();
+    expect(order).toMatchObject({ number: "OC-1", stage: "orden", status: "emitida", requestId: new Types.ObjectId(request._id), amountCents: 499_999_99 });
+    // Tesorería sabe que es de contado; Compras, que ya puede pedir y recibir.
+    const treasury = await Notification.findOne({ dedupeKey: `purchase-treasury-${request._id}`, roles: "administracion" }).lean<{ title: string }>();
+    expect(treasury!.title).toContain("OC-1");
+    expect(treasury!.title).toContain("contado");
+    expect(await Notification.exists({ dedupeKey: `purchase-order-${request._id}`, roles: "compras" })).toBeTruthy();
     // Ya no se cambia ni se borra.
     const locked = await call(await recordRoute.PATCH(json("PATCH", { amountCents: 1_00 }), params({ entity: "purchases", id: request._id })));
     expect(locked.status).toBe(409);
@@ -107,22 +113,26 @@ describe("solicitud de compra", () => {
     expect((await action(decisionRoute, request._id, { approve: false })).status).toBe(400);
     const approved = await action(decisionRoute, request._id, { approve: true });
     expect(approved.body).toMatchObject({ status: "autorizada", approval: { userName: "Socio" } });
+    // Autorizada por el Socio, también nace la OC; esperando autorización, no.
+    expect((await Purchase.findById(request._id).lean<{ orderId?: unknown }>())!.orderId).toBeTruthy();
 
     const other = await newRequest(900_000_00);
     await action(emitRoute, other._id);
     as("gerencia", "Gerencia");
+    expect((await Purchase.findById(other._id).lean<{ orderId?: unknown }>())!.orderId).toBeUndefined();
     const rejected = await action(decisionRoute, other._id, { approve: false, reason: "Hay stock en el Salón" });
     expect(rejected.body).toMatchObject({ status: "rechazada", rejection: { reason: "Hay stock en el Salón" } });
+    expect(rejected.body.orderId).toBeUndefined();
     // Tesorería no le puede emitir OP a una rechazada.
     as("administracion", "Tesorería");
     expect((await action(paymentOrderRoute, other._id, { amountCents: 1_00, date: "2026-10-08", method: "transferencia", accountId: materiales })).status).toBe(409);
   });
 });
 
-describe("la orden de pago genera la orden de compra", () => {
-  it("Tesorería emite la OP, nace la OC; varias OP parciales suman a la misma OC y no pasan del total", async () => {
+describe("orden de pago contra la orden de compra", () => {
+  it("la OC ya nació al autorizar; varias OP parciales (contado o anticipo) suman a la misma OC y no pasan del total", async () => {
     const request = await newRequest(300_000_00, { paymentTerms: "cuenta_corriente" });
-    await action(emitRoute, request._id);
+    const ocNumber = String((await Purchase.findById((await action(emitRoute, request._id)).body.orderId).lean<{ number: string }>())!.number);
 
     // Compras no emite OP, aunque tenga permisos guardados de antes que se lo daban.
     as("compras", "Compras", { edit: [...defaultPermissionsForRole("compras").edit, "payments"] });
@@ -133,7 +143,7 @@ describe("la orden de pago genera la orden de compra", () => {
     // Anticipo de contado: pagada ya, desde el banco, con comprobante.
     const advance = await action(paymentOrderRoute, request._id, { amountCents: 100_000_00, date: "2026-10-08", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, attachment: "/api/uploads/comprobante.pdf" });
     expect(advance.status).toBe(201);
-    expect(advance.body.order).toMatchObject({ number: "OC-1", stage: "orden", status: "emitida", requestId: request._id, paymentTerms: "cuenta_corriente", paidCents: 100_000_00, paymentStatus: "parcial" });
+    expect(advance.body.order).toMatchObject({ number: ocNumber, stage: "orden", status: "emitida", requestId: request._id, paymentTerms: "cuenta_corriente", paidCents: 100_000_00, paymentStatus: "parcial" });
     expect(advance.body.payment).toMatchObject({ number: "OP-1", status: "pagada", purchaseId: advance.body.order._id, cashAccountId: banco, attachment: "/api/uploads/comprobante.pdf", paidByName: "Tesorería" });
     expect((await Purchase.findById(request._id).lean<{ orderId: unknown }>())!.orderId).toEqual(new Types.ObjectId(advance.body.order._id));
     // Compras se entera, con link a la OC.
@@ -142,7 +152,7 @@ describe("la orden de pago genera la orden de compra", () => {
     // El resto queda emitido, con vencimiento a 30 días por ser cuenta corriente. Desde la solicitud cae en la misma OC.
     const rest = await action(paymentOrderRoute, request._id, { amountCents: 200_000_00, date: "2026-10-08", method: "transferencia", accountId: materiales });
     expect(rest.status).toBe(201);
-    expect(rest.body.order.number).toBe("OC-1");
+    expect(rest.body.order.number).toBe(ocNumber);
     expect(rest.body.payment).toMatchObject({ status: "emitida", dueDate: "2026-11-07T00:00:00.000Z" });
     expect(await Purchase.countDocuments({ requestId: request._id })).toBe(1);
     // Ya no queda nada sin orden de pago.
@@ -156,7 +166,7 @@ describe("la orden de pago genera la orden de compra", () => {
     // La ficha muestra todo junto.
     as("compras", "Compras");
     const detail = await call(await detailRoute.GET(new Request("http://test"), params({ id: request._id })));
-    expect(detail.body).toMatchObject({ request: { number: request.number }, order: { number: "OC-1" }, totals: { totalCents: 300_000_00, paidCents: 300_000_00, pendingCents: 0 } });
+    expect(detail.body).toMatchObject({ request: { number: request.number }, order: { number: ocNumber }, totals: { totalCents: 300_000_00, paidCents: 300_000_00, pendingCents: 0 } });
     expect(detail.body.payments).toHaveLength(2);
     expect(detail.body.can).toMatchObject({ paymentOrder: false, receive: true, cancel: false });
   });
@@ -166,15 +176,14 @@ describe("remitos del proveedor", () => {
   it("la recepción parcial suma al stock, el remito final cierra la orden y después no entra más", async () => {
     as("compras", "Compras");
     const created = await Purchase.create({
-      number: "SC-90", company: "constructora", supplierId, description: "Pegamento", amountCents: 121_000_00, stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
+      number: "SC-90", company: "constructora", supplierId, description: "Pegamento", amountCents: 121_000_00, cashMethod: "efectivo", stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
       items: [{ code: "PEG-20", name: "Pegatex porcelanato", presentation: "Bolsa 20 KG", quantity: 10, listPriceCents: 10_000_00, discountPct: 0, unitCents: 10_000_00, totalCents: 100_000_00 }],
     });
-    await action(emitRoute, String(created._id));
-    // Sin OC todavía no se recibe.
+    const emitted = await action(emitRoute, String(created._id));
+    // Se recibe contra la OC, no contra la solicitud.
     expect((await action(receiveRoute, String(created._id), { lines: [{ line: 0, quantity: 1 }] })).status).toBe(409);
-    as("administracion", "Tesorería");
-    const op = await action(paymentOrderRoute, String(created._id), { amountCents: 121_000_00, date: "2026-10-08", method: "efectivo", accountId: materiales });
-    const orderId = op.body.order._id as string;
+    // La OC nació al autorizarse: se recibe sin esperar ninguna orden de pago.
+    const orderId = String(emitted.body.orderId);
 
     as("compras", "Compras");
     // No llega más de lo pedido.
@@ -233,6 +242,71 @@ describe("anulación y facturas de compra", () => {
     expect(blocked.body.error).toContain("Tesorería");
     as("administracion", "Tesorería");
     expect((await invoice(String(big._id), "0001-00000002")).status).toBe(201);
+  });
+});
+
+describe("impuestos de la solicitud", () => {
+  it("el total sale del neto, el IVA, las percepciones y el impuesto interno; de contado pide el medio", async () => {
+    const patch = async (id: string, body: unknown) => call(await recordRoute.PATCH(json("PATCH", body), params({ entity: "purchases", id })));
+    // El total que llega a mano no vale: sale de la cuenta.
+    const request = await newRequest(1_00, { subtotalCents: 400_000_00, vatPct: "10.5", perceptionVatPct: 3, perceptionIibbProvPct: 1.5, internalTaxPct: 0, cashMethod: "" });
+    expect(request).toMatchObject({ subtotalCents: 400_000_00, vatPct: 10.5, vatCents: 42_000_00, perceptionVatCents: 12_000_00, perceptionIibbProvCents: 6_000_00, internalTaxCents: 0, amountCents: 460_000_00 });
+    expect((await call(await recordsRoute.POST(json("POST", { description: "x", subtotalCents: 1_00, vatPct: 5, requestedDate: "2026-10-08" }), params({ entity: "purchases" })))).status).toBe(400);
+    // De contado no se emite sin decir cómo se paga.
+    const noMethod = await action(emitRoute, request._id);
+    expect(noMethod.status).toBe(400);
+    expect(noMethod.body.error).toContain("efectivo o por transferencia");
+    // En borrador se recalcula con cada cambio; a plazo no lleva medio de contado.
+    expect((await patch(request._id, { perceptionIibbPct: 2, cashMethod: "efectivo" })).body).toMatchObject({ perceptionIibbCents: 8_000_00, amountCents: 468_000_00, cashMethod: "efectivo" });
+    expect((await patch(request._id, { paymentTerms: "plazo", termDays: 30 })).body.cashMethod).toBeNull();
+    expect((await patch(request._id, { paymentTerms: "contado", cashMethod: "efectivo", termDays: 0 })).body).toMatchObject({ cashMethod: "efectivo", amountCents: 468_000_00 });
+
+    const emitted = await action(emitRoute, request._id);
+    expect(emitted.body.status).toBe("autorizada");
+    // La OC hereda los impuestos y el medio; Tesorería lo ve en el aviso.
+    const orderId = String(emitted.body.orderId);
+    expect(await Purchase.findById(orderId).lean()).toMatchObject({ vatPct: 10.5, perceptionVatCents: 12_000_00, perceptionIibbCents: 8_000_00, cashMethod: "efectivo", amountCents: 468_000_00 });
+    expect((await Notification.findOne({ dedupeKey: `purchase-treasury-${request._id}` }).lean<{ body: string }>())!.body).toContain("Contado en efectivo");
+
+    // El formulario de la OC manda los impuestos como están: sólo cambia la entrega esperada.
+    const form = { subtotalCents: 400_000_00, vatPct: "10.5", perceptionVatPct: 3, perceptionIibbPct: 2, perceptionIibbProvPct: 1.5, internalTaxPct: 0, cashMethod: "efectivo" };
+    expect((await patch(orderId, { ...form, expectedDate: "2026-10-20" })).status).toBe(200);
+    expect((await patch(orderId, { ...form, vatPct: "21" })).status).toBe(409);
+    // Una OC de antes, con sólo el total, se abre con el neto que sale de él.
+    const old = await Purchase.create({ number: "OC-600", stage: "orden", status: "emitida", company: "tvp", supplierId, description: "De antes", amountCents: 121_000_00, requestedDate: new Date() });
+    expect((await patch(String(old._id), { subtotalCents: 100_000_00, vatPct: "21", perceptionVatPct: 0, internalTaxPct: 0, expectedDate: "2026-10-20" })).status).toBe(200);
+  });
+});
+
+describe("percepciones en la factura de compra", () => {
+  it("la factura hereda la alícuota y los porcentajes de la OC; la C no discrimina IVA; el libro IVA compras suma las percepciones", async () => {
+    const ivaRoute = await import("../src/app/api/accounting/iva/route");
+    const request = await newRequest(1_00, { subtotalCents: 200_000_00, vatPct: "27", perceptionIibbPct: 2, cashMethod: "efectivo" });
+    const orderId = String((await action(emitRoute, request._id)).body.orderId);
+    as("gerencia", "Gerencia");
+    const expense = async (body: Record<string, unknown>) => call(await recordsRoute.POST(json("POST", { description: "Factura del proveedor", category: "materiales", issueDate: "2026-11-03", status: "pendiente", amountCents: 0, ...body }), params({ entity: "expenses" })));
+
+    // Por la API, sin porcentajes: los toma de la OC. Factura parcial: lo calcula sobre su neto.
+    const invoice = await expense({ purchaseId: orderId, voucherType: "factura_a", number: "0005-00000001", netCents: 100_000_00 });
+    expect(invoice.status).toBe(201);
+    expect(invoice.body).toMatchObject({ vatPct: 27, vatCents: 27_000_00, perceptionIibbPct: 2, perceptionIibbCents: 2_000_00, perceptionVatCents: 0, amountCents: 129_000_00 });
+    // Como desde el formulario: la C no lleva IVA, pero sí percepciones.
+    const typeC = await expense({ supplierId, voucherType: "factura_c", number: "0002-00000077", netCents: 50_000_00, vatPct: "21", perceptionVatPct: 0, perceptionIibbPct: 0, perceptionIibbProvPct: 1.5, internalTaxPct: 0 });
+    expect(typeC.body).toMatchObject({ vatPct: 0, vatCents: 0, perceptionIibbProvCents: 750_00, amountCents: 50_750_00 });
+    // La nota de crédito A discrimina IVA y resta en el libro.
+    const credit = await expense({ supplierId, voucherType: "nota_credito_a", number: "0005-00000002", associatedExpenseId: invoice.body._id, netCents: 10_000_00, vatPct: "27", perceptionIibbPct: 2 });
+    expect(credit.body).toMatchObject({ vatCents: 2_700_00, perceptionIibbCents: 200_00, amountCents: 12_900_00 });
+    // Un costo interno, sin comprobante, no lleva IVA.
+    expect((await expense({ netCents: 5_000_00, perceptionVatPct: 0 })).body).toMatchObject({ vatCents: 0, amountCents: 5_000_00 });
+    // Cambiar un porcentaje recalcula el total.
+    expect((await call(await recordRoute.PATCH(json("PATCH", { perceptionVatPct: 3 }), params({ entity: "expenses", id: invoice.body._id })))).body).toMatchObject({ perceptionVatCents: 3_000_00, amountCents: 132_000_00 });
+
+    const book = await call(await ivaRoute.GET(new Request("http://test/api/accounting/iva?from=2026-11-01&to=2026-11-30")));
+    expect(book.body.purchases.find((row: { number: string }) => row.number === "0005-00000002")).toMatchObject({ netCents: -10_000_00, vatCents: -2_700_00, perceptionIibbCents: -200_00, totalCents: -12_900_00 });
+    expect(book.body.totals.purchases).toEqual({
+      netCents: 140_000_00, vatCents: 24_300_00, perceptionVatCents: 3_000_00, perceptionIibbCents: 1_800_00, perceptionIibbProvCents: 750_00, internalTaxCents: 0,
+      totalCents: 132_000_00 + 50_750_00 - 12_900_00,
+    });
   });
 });
 

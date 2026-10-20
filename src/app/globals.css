@@ -1479,7 +1479,7 @@ tbody tr.price-best:hover { background: #e8f6ef; }
 .cart-group-head strong { color: var(--brand-navy-deep); font-size: 1rem; text-align: right; }
 .cart-group-head strong small { display: block; font-weight: 700; }
 .cart-lines { padding: 4px 16px; }
-.cart-line { padding: 10px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto 128px 32px; align-items: center; gap: 12px; border-bottom: 1px solid #edf1f5; }
+.cart-line { padding: 10px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto 76px 128px 32px; align-items: center; gap: 12px; border-bottom: 1px solid #edf1f5; }
 .cart-line:last-child { border-bottom: 0; }
 .cart-line-product { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cart-line-product b { color: var(--ink); font-size: .76rem; }
@@ -1491,6 +1491,16 @@ tbody tr.price-best:hover { background: #e8f6ef; }
 .cart-line-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-variant-numeric: tabular-nums; }
 .cart-line-price small { color: var(--muted-2); font-size: .62rem; }
 .cart-line-price b { color: var(--brand-navy-deep); font-size: .8rem; }
+.cart-line-vat { display: flex; flex-direction: column; gap: 2px; color: var(--muted-2); font-size: .6rem; }
+.cart-line-vat select { height: 34px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; color: var(--ink); font-size: .74rem; font-variant-numeric: tabular-nums; }
+.cart-taxes { background: #fbfcfe; }
+.pct-input { display: flex; align-items: center; gap: 6px; }
+.pct-input input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+.pct-input > span { color: var(--muted); font-weight: 700; }
+.purchase-taxes-preview { grid-column: 1 / -1; margin: 0; padding: 10px 12px; display: grid; gap: 3px; border: 1px solid var(--line); border-radius: 10px; background: #f7f9fb; }
+.purchase-taxes-preview div { display: flex; justify-content: space-between; gap: 16px; color: var(--muted); font-size: .74rem; }
+.purchase-taxes-preview dd { margin: 0; font-variant-numeric: tabular-nums; }
+.purchase-taxes-preview .total { margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--line); color: var(--brand-navy-deep); font-size: .86rem; font-weight: 850; }
 .cart-remove { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; color: #8190a1; background: transparent; }
 .cart-remove:hover { color: var(--danger); background: var(--danger-soft); }
 .cart-totals { margin: 0; padding: 10px 16px 12px; display: grid; justify-content: end; gap: 4px; border-top: 1px solid var(--line); }
@@ -1556,6 +1566,7 @@ tbody tr.price-best:hover { background: #e8f6ef; }
   .cart-remove { grid-column: 2; grid-row: 1; justify-self: end; }
   .cart-qty { grid-column: 1; grid-row: 2; justify-self: start; }
   .cart-line-price { grid-column: 2; grid-row: 2; }
+  .cart-line-vat { grid-column: 1; grid-row: 3; flex-direction: row; align-items: center; gap: 8px; }
   .cart-totals div { min-width: 0; }
   .cart-totals { justify-content: stretch; }
   .cart-closed { flex-wrap: wrap; }
@@ -1780,6 +1791,19 @@ tbody tr.task-row.pendiente:hover { background: #e9ecf0; }
 .receipt-on-account { margin-top: 16px; display: grid; gap: 10px; max-width: 360px; }
 .receipt-on-account p { margin: 0; color: var(--muted); }
 .receipt-notes { margin-top: 16px; display: grid; gap: 6px; }
+
+/* Orden de pago: facturas del proveedor, total o parcial, y notas de crédito */
+.payment-order-modal { width: min(1120px, 100%); }
+.payment-order-modal .receipt-table td small { display: block; margin-top: 2px; font-size: .74rem; }
+.payment-order-modal .muted-line { color: var(--muted); }
+.payment-order-modal .warning-line { color: #9a6200; }
+.payment-order-modal .receipt-table select { min-width: 92px; }
+.payment-order-totals { margin: 16px 0 0 auto; display: grid; gap: 4px; max-width: 360px; }
+.payment-order-totals div { display: flex; justify-content: space-between; gap: 16px; }
+.payment-order-totals dt { color: var(--muted); }
+.payment-order-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.payment-order-totals .total { padding-top: 6px; border-top: 1px solid var(--line); font-weight: 700; }
+.payment-order-totals .total dt { color: var(--ink); }
 
 /* Seguimiento: cotización → facturas → recibos */
 .tracking-kpis { margin-bottom: 18px; }

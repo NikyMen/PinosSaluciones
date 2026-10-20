@@ -5,23 +5,29 @@ import { companyOf, type CompanyKey } from "./companies";
 
 /**
  * Orden de pago en PDF (requerimiento integral v4, puntos 3 y 5): a quién se le
- * paga, cuánto (también en letras), qué paga (la orden de compra, la factura),
- * con qué y de qué cuenta. Si es en efectivo, lleva la constancia de entrega
- * para que la firme quien recibe la plata.
+ * paga, cuánto (también en letras), qué paga (la orden de compra, la factura o
+ * el detalle de las facturas, con lo que se paga de cada una y las notas de
+ * crédito que se descuentan), con qué y de qué cuenta. Si es en efectivo, lleva
+ * la constancia de entrega para que la firme quien recibe la plata.
  */
 
 export type PaymentOrderPdfData = {
   company: CompanyKey; number: string; date: string; dueDate?: string; status: string;
   supplier: { name: string; cuit?: string; bank?: string; cbu?: string; alias?: string };
   orderNumber?: string; requestNumber?: string; invoiceLabel?: string;
+  /** Los comprobantes que paga, cuando son varios o alguno se paga en parte. */
+  lines?: Array<{ label: string; issueDate?: string; totalCents: number; appliedCents: number; credit: boolean }>;
+  workLabel?: string;
   amountCents: number; retentionsCents: number;
   method: string; cashAccount?: string; ledgerAccount?: string; reference?: string; notes?: string;
+  check?: { number: string; bank: string; dueDate?: string; electronic: boolean };
   paidAt?: string; paidByName?: string;
 };
 
 const { margin: MARGIN, width: WIDTH } = PAGE;
 const INNER = WIDTH - MARGIN * 2;
-const methodLabels: Record<string, string> = { transferencia: "Transferencia", efectivo: "Efectivo", cheque: "Cheque / eCheq", otro: "Otro" };
+export const paymentMethodLabels: Record<string, string> = { transferencia: "Transferencia", efectivo: "Efectivo", cheque: "Cheque", echeq: "e-Cheq", otro: "Otro" };
+const methodLabels = paymentMethodLabels;
 const statusLabels: Record<string, string> = { emitida: "Emitida, pendiente de pago", pagada: "Pagada", anulada: "ANULADA" };
 
 export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta: { author: string; logo?: string }) {
@@ -49,10 +55,12 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
   const rows: Array<[string, string]> = [
     ["Orden de compra", data.orderNumber || "-"],
     ["Solicitud", data.requestNumber || "-"],
-    ["Factura", data.invoiceLabel || "Sin factura (contado o anticipo)"],
+    ...(data.lines ? [] : [["Factura", data.invoiceLabel || "Sin factura (contado o anticipo)"] as [string, string]]),
     ["Forma de pago", [methodLabels[data.method] || data.method, data.reference && `Ref. ${data.reference}`].filter(Boolean).join(" · ")],
+    ...(data.check ? [[data.check.electronic ? "e-Cheq" : "Cheque", [`N° ${data.check.number}`, data.check.bank, data.check.dueDate && `cobro ${date(data.check.dueDate)}`].filter(Boolean).join(" · ")] as [string, string]] : []),
     ["Sale de", data.cashAccount || "-"],
-    ["Cuenta del plan", data.ledgerAccount || "-"],
+    ["Tipo de gasto", data.ledgerAccount || "-"],
+    ...(data.workLabel ? [["Obra", data.workLabel] as [string, string]] : []),
   ];
   for (const [label, value] of rows) {
     setColor(MUTED); doc.setFont("helvetica", "bold"); doc.setFontSize(7.4);
@@ -62,6 +70,27 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
     y += 6.4;
   }
   y += 4;
+
+  // Qué comprobantes paga y cuánto de cada uno; las notas de crédito restan.
+  if (data.lines?.length) {
+    const columns = [MARGIN + 2, MARGIN + 92, WIDTH - MARGIN - 52, WIDTH - MARGIN - 2];
+    setFill([241, 245, 249]); doc.rect(MARGIN, y - 4.5, INNER, 6.5, "F");
+    setColor(MUTED); doc.setFont("helvetica", "bold"); doc.setFontSize(7.2);
+    doc.text("COMPROBANTE", columns[0], y); doc.text("FECHA", columns[1], y);
+    doc.text("TOTAL", columns[2], y, { align: "right" }); doc.text("SE PAGA", columns[3], y, { align: "right" });
+    y += 6;
+    setColor(INK); doc.setFont("helvetica", "normal"); doc.setFontSize(8.2);
+    for (const line of data.lines.slice(0, 18)) {
+      doc.text(plain(line.label).slice(0, 52), columns[0], y);
+      doc.text(line.issueDate ? date(line.issueDate) : "-", columns[1], y);
+      doc.text(plain(money(line.totalCents)), columns[2], y, { align: "right" });
+      const partial = !line.credit && line.appliedCents < line.totalCents;
+      doc.text(plain(`${line.credit ? "- " : ""}${money(line.appliedCents)}${partial ? " (parcial)" : ""}`), columns[3], y, { align: "right" });
+      y += 5.4;
+    }
+    if (data.lines.length > 18) { setColor(MUTED); doc.text(plain(`y ${data.lines.length - 18} comprobantes más`), columns[0], y); y += 5.4; }
+    y += 4;
+  }
 
   // Los importes.
   setFill([248, 250, 252]);

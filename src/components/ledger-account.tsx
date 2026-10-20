@@ -25,3 +25,10 @@ export function useLedgerAccounts(direction?: "ingreso" | "egreso") {
     .filter(account => account.active !== false && (!direction || accountDirection(account.code) === direction))
     .map((account): Option => ({ value: account._id, label: account.name, hint: accountCodeLabels[account.code] }));
 }
+
+/** El código (CC, GGD, GGI, BB…) de cada cuenta del plan, por id: para saber si un gasto puede ir a una obra. */
+export function useLedgerAccountCodes() {
+  const [codes, setCodes] = useState<Record<string, AccountCode>>({});
+  useEffect(() => { let alive = true; void loadAccounts().then(items => { if (alive) setCodes(Object.fromEntries(items.map(account => [account._id, account.code]))); }); return () => { alive = false; }; }, []);
+  return codes;
+}

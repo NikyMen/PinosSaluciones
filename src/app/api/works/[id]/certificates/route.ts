@@ -5,6 +5,7 @@ import { canWrite } from "@/lib/permissions";
 import { connectDB } from "@/lib/db";
 import { Expense, Work, Task } from "@/lib/models";
 import { audit } from "@/lib/audit";
+import { SIGNED_AMOUNT } from "@/lib/invoice-labels";
 import { apiError } from "@/lib/api";
 import { notify } from "@/lib/notifications";
 import { money } from "@/lib/format";
@@ -20,7 +21,7 @@ export async function POST(request: Request, context: RouteContext<"/api/works/[
     const parsed = schema.safeParse(await request.json()); if (!parsed.success) return Response.json({ error: "Datos inválidos" }, { status: 400 });
     await connectDB(); const before = await Work.findById(id).lean(); if (!before) return Response.json({ error: "Obra no encontrada" }, { status: 404 });
     const [expenseTotal] = parsed.data.includeExpenses
-      ? await Expense.aggregate([{ $match: { workId: before._id, status: { $ne: "anulado" } } }, { $group: { _id: null, totalCents: { $sum: "$amountCents" } } }])
+      ? await Expense.aggregate([{ $match: { workId: before._id, status: { $ne: "anulado" } } }, { $group: { _id: null, totalCents: { $sum: SIGNED_AMOUNT } } }])
       : [];
     // Lo certificado no pasa del 100 % de la obra: antes lo controlaba sólo la pantalla.
     const certificates = (before.certificates || []) as Array<{ number?: string; percentage?: number }>;

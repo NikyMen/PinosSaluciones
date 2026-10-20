@@ -83,7 +83,7 @@ export async function GET(request: Request) {
       Work.find({ status: "en_curso", _id: { $nin: excluded.works } }).select("name code progress progressMode budgetCents status endDate updatedAt").sort({ updatedAt: -1 }).limit(4).lean(),
       Expense.aggregate([
         { $match: { ...notTrashed.expense, workId: { $ne: null }, status: { $ne: "anulado" } } },
-        { $group: { _id: "$workId", total: { $sum: "$amountCents" } } },
+        { $group: { _id: "$workId", total: { $sum: SIGNED_AMOUNT } } },
       ]),
       Quote.aggregate([
         { $match: { ...notTrashed.quote, status: "aprobada", updatedAt: { $gte: from, $lte: to } } },
@@ -103,11 +103,11 @@ export async function GET(request: Request) {
       ]),
       Expense.aggregate([
         { $match: { ...notTrashed.expense, status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
-        { $group: { _id: null, total: { $sum: "$amountCents" } } },
+        { $group: { _id: null, total: { $sum: SIGNED_AMOUNT } } },
       ]),
       Expense.aggregate([
         { $match: { ...notTrashed.expense, status: { $ne: "anulado" }, issueDate: { $gte: previousFrom, $lte: previousTo } } },
-        { $group: { _id: null, total: { $sum: "$amountCents" } } },
+        { $group: { _id: null, total: { $sum: SIGNED_AMOUNT } } },
       ]),
       Collection.aggregate([
         { $match: { ...notTrashed.collection, date: { $gte: from, $lte: to } } },
@@ -146,7 +146,7 @@ export async function GET(request: Request) {
       ]),
       Expense.aggregate([
         { $match: { ...notTrashed.expense, status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } } },
-        { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate", timezone } }, value: { $sum: "$amountCents" } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate", timezone } }, value: { $sum: SIGNED_AMOUNT } } },
       ]),
     ]);
 

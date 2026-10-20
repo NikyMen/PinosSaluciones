@@ -13,7 +13,7 @@ import { FormField, QuickCreateModal, fieldErrors, type FieldProps } from "@/com
 import { StockMovementModal, type StockItem, type StockMovement } from "@/components/stock-movement";
 import { PurchaseDetailModal } from "@/components/purchase-detail";
 import { AttachmentsModal, type AttachmentEntity } from "@/components/attachments-panel";
-import { downloadPaymentOrderPdf, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
+import { downloadPaymentOrderPdf, paymentMethodLabels, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
 import { purchaseStatusText } from "@/lib/purchase-flow-labels";
 import { levelsOf } from "@/lib/stock-levels";
 import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-owners";
@@ -26,9 +26,13 @@ import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-o
 import { downloadQuotePdf, quotePdfData } from "@/lib/quote-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
 import { InvoiceFields } from "@/components/invoice-fields";
+import { ExpenseFields, PurchaseFields } from "@/components/purchase-fields";
+import { storedPurchaseTaxes } from "@/lib/purchase-taxes";
 import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { WorkTypesModal } from "@/components/work-types-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
+import { PaymentOrderModal } from "@/components/payment-order-modal";
+import { isCreditNote } from "@/lib/invoice-labels";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
 import { invoiceLabel, voucherLabels } from "@/lib/invoice-labels";
 import { companyOf } from "@/lib/companies";
@@ -137,6 +141,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [notice, setNotice] = useState("");
   // El recibo abierto: uno para editar, o uno nuevo (desde una factura viene con su cliente y la factura).
   const [receiptFor, setReceiptFor] = useState<{ receipt: Item | null; clientId?: string; invoiceId?: string } | null>(null);
+  // La orden de pago abierta: una para editar, o una nueva (desde una factura viene con su proveedor y la factura).
+  const [paymentFor, setPaymentFor] = useState<{ payment: Item | null; supplierId?: string; expenseId?: string } | null>(null);
   // Estado elegido en una fila que todavía espera el visto bueno.
   const [pendingStatus, setPendingStatus] = useState<{ id: string; status: string } | null>(null);
   // Filtros de Tareas: el atajo elegido y, para gerencia, área y persona.
@@ -214,6 +220,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     // Un recibo puede cancelar varias facturas.
     if (entity === "collections" && key === "invoiceId" && Array.isArray(item.allocations) && item.allocations.length > 1) return `${item.allocations.length} facturas`;
     if (entity === "collections" && key === "method") return methodLabels[String(value)] || titleCase(String(value || ""));
+    if (entity === "payments" && key === "method") return paymentMethodLabels[String(value)] || titleCase(String(value || ""));
     // El legajo, y si la persona está dada de baja, se ve ahí mismo.
     if (entity === "workers" && key === "fileNumber") return <span className="file-number"><b>{value ? String(value) : "—"}</b>{item.active === false && <span className="badge anulada" title={item.leftAt ? `Baja el ${date(String(item.leftAt))}` : "Dada de baja"}>Baja</span>}</span>;
     if (entity === "purchases" && key === "stage") return value === "solicitud" ? "Solicitud" : "Orden de compra";
@@ -242,6 +249,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     if (key === "minQuantity") return Number(value || 0) || "—";
     if (key === "discountPct") return Number(value || 0) ? `${qty(Number(value))} %` : "—";
     if (key.toLowerCase().includes("date") || key === "validUntil") return date(value as string);
+    // Una OP de varias facturas: la primera y cuántas más.
+    if (entity === "payments" && key === "expenseId" && Array.isArray(item.allocations) && item.allocations.length > 1) return `${relationLabel(key, value)} y ${item.allocations.length - 1} más`;
     if (key.endsWith("Id")) return relationLabel(key, value);
     if (key === "status" || key === "type" || key === "method" || key === "direction" || key === "assigneeRole") return <span className={`badge ${value}`}>{titleCase(String(value || ""))}</span>;
     return value ? String(value) : "—";
@@ -251,6 +260,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     if (!canEdit) return;
     // Un cobro es un recibo: tiene su propia ventana, con las facturas del cliente.
     if (entity === "collections") { setReceiptFor({ receipt: item || null }); return; }
+    // Una OP que paga facturas tiene su propia ventana. La de contado o anticipo contra una OC sigue en el formulario.
+    if (entity === "payments" && (!item || item.expenseId || (Array.isArray(item.allocations) && item.allocations.length)) && item?.status !== "anulada") { setPaymentFor({ payment: item || null }); return; }
     setEditing(item || null);
     setDraft(item ? {} : defaults);
     setRelationValues(Object.fromEntries(config.fields.filter(field => field.relation || field.type === "user").map(field => [field.key, String(item?.[field.key] ?? defaults[field.key] ?? "")])));
@@ -292,7 +303,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity]);
 
-  // "Cargar factura" desde la ficha de una OC llega con ?oc=: la factura ya atada a la orden.
+  // "Cargar factura" desde la ficha de una OC llega con ?oc=: la factura ya atada a la orden, con su neto, su IVA y sus percepciones.
   useEffect(() => {
     if (entity !== "expenses" || !canEdit) return;
     const orderId = new URLSearchParams(window.location.search).get("oc");
@@ -300,14 +311,20 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     router.replace("/app/expenses");
     void fetch(`/api/records/purchases/${orderId}`)
       .then(response => response.ok ? response.json() as Promise<Item> : null)
-      .then(order => open(undefined, order ? {
-        purchaseId: order._id, company: order.company, supplierId: order.supplierId, workId: order.workId, voucherType: "factura_a",
-        category: "materiales", issueDate: new Date().toISOString().slice(0, 10), description: String(order.description || ""),
-      } : {}), () => open());
+      .then(order => {
+        if (!order) return open(undefined, {});
+        const taxes = storedPurchaseTaxes(order);
+        open(undefined, {
+          purchaseId: order._id, company: order.company, supplierId: order.supplierId, workId: order.workId, voucherType: "factura_a",
+          category: "materiales", issueDate: new Date().toISOString().slice(0, 10), description: String(order.description || ""), status: "pendiente",
+          netCents: taxes.subtotalCents, vatPct: String(taxes.vatPct), perceptionVatPct: taxes.perceptionVatPct, perceptionIibbPct: taxes.perceptionIibbPct,
+          perceptionIibbProvPct: taxes.perceptionIibbProvPct, internalTaxPct: taxes.internalTaxPct,
+        });
+      }, () => open());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity, canEdit]);
 
-  // "Orden de pago" desde una factura de compra llega con ?factura=: se abre la OP ya cargada con su saldo.
+  // "Orden de pago" desde una factura de compra llega con ?factura=: se abre la OP con su proveedor y esa factura elegida.
   useEffect(() => {
     if (entity !== "payments" || !canEdit) return;
     const expenseId = new URLSearchParams(window.location.search).get("factura");
@@ -315,12 +332,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     router.replace("/app/payments");
     void fetch(`/api/records/expenses/${expenseId}`)
       .then(response => response.ok ? response.json() as Promise<Item> : null)
-      .then(expense => open(undefined, expense ? {
-        company: expense.company, supplierId: expense.supplierId, expenseId: expense._id, status: "emitida",
-        date: new Date().toISOString().slice(0, 10), dueDate: expense.dueDate,
-        amountCents: Math.max(0, Number(expense.amountCents || 0) - Number(expense.paidCents || 0)),
-        accountId: expense.accountId, notes: `Factura ${String(expense.number || "")} · ${String(expense.description || "")}`.trim(),
-      } : {}), () => open());
+      .then(expense => setPaymentFor({ payment: null, supplierId: expense?.supplierId ? String(expense.supplierId) : "", expenseId: expense?._id }), () => setPaymentFor({ payment: null }));
     // Solo al entrar: después la dirección ya quedó limpia.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity, canEdit]);
@@ -556,7 +568,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "assets" && <button className="row-action-wide labor" title="Services, arreglos y próximos mantenimientos" onClick={() => setMaintenanceFor(item._id)}><Wrench size={15} /> Mantenimiento</button>}
           {entity === "purchases" && Boolean(item.stockedAt) && <span className="row-stocked" title={`Recibida por ${String(item.stockedByName || "")}`}><PackageCheck size={14} /> {item.receptionStatus === "parcial" ? "Recibida en parte" : "En stock"} · {warehouseLabel(String(item.stockedWarehouse || ""))}</span>}
           {entity === "invoices" && canEdit && item.voucherType === "factura_x" && !item.replacedById && item.status !== "anulada" && <button className="row-action-wide" title="Reemplazar esta X por una Factura A o B: lo cobrado pasa a la fiscal y la X deja de contar" onClick={() => { void substitute(item); }}><FileSymlink size={15} /> Sustituir</button>}
-          {entity === "expenses" && canEdit && Boolean(item.voucherType) && item.status !== "pagado" && item.status !== "anulado" && <Link className="row-action-wide approve" title="Emitir la orden de pago de esta factura" href={`/app/payments?factura=${item._id}`}><HandCoins size={15} /> Orden de pago</Link>}
+          {entity === "expenses" && canEdit && Boolean(item.voucherType) && !isCreditNote(item.voucherType) && item.status !== "pagado" && item.status !== "anulado" && <Link className="row-action-wide approve" title="Emitir la orden de pago de esta factura" href={`/app/payments?factura=${item._id}`}><HandCoins size={15} /> Orden de pago</Link>}
           {/* De la factura a lo que la originó: la cotización y la obra (con su certificado). */}
           {entity === "invoices" && Boolean(item.quoteId) && <Link className="row-action-wide" href={`/app/quotes/${String(item.quoteId)}`} title="Ver la cotización y cuánto queda por facturar"><Calculator size={15} /> Cotización</Link>}
           {entity === "invoices" && Boolean(item.workId) && <Link className="row-action-wide" href={`/app/works/${String(item.workId)}`} title={item.certificateNumber ? `Ver la obra y el certificado ${String(item.certificateNumber)}` : "Ver la obra"}><HardHat size={15} /> Obra</Link>}
@@ -597,7 +609,11 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           : entity === "invoices"
             ? <InvoiceFields fields={config.fields} fieldProps={fieldProps} editing={editing} draft={draft} quotes={relations.quotes || []} works={relations.works || []}
               onRelations={patch => setRelationValues(current => ({ ...current, ...patch }))} />
-            : <div className="form-grid">{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
+            : entity === "purchases"
+              ? <PurchaseFields fields={formFields} fieldProps={fieldProps} editing={editing} />
+              : entity === "expenses"
+                ? <ExpenseFields fields={formFields} fieldProps={fieldProps} />
+                : <div className="form-grid">{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
         </div>
         {error && <p className="form-error modal-error">{error}</p>}
         <footer><span>Los cambios quedan registrados automáticamente.</span><button type="button" className="secondary-btn" onClick={() => setModal(false)}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></footer>
@@ -613,6 +629,11 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {receiptFor && <ReceiptModal receipt={receiptFor.receipt} initialClientId={receiptFor.clientId} initialInvoiceId={receiptFor.invoiceId}
       clients={(relations.clients || []).map(client => ({ value: client._id, label: itemLabel(client), hint: String(client.cuit || "") || undefined }))}
       onClose={() => setReceiptFor(null)} onSaved={() => { setReceiptFor(null); void load(); }} />}
+
+    {paymentFor && <PaymentOrderModal payment={paymentFor.payment} initialSupplierId={paymentFor.supplierId} initialExpenseId={paymentFor.expenseId}
+      suppliers={(relations.suppliers || []).map(supplier => ({ value: supplier._id, label: itemLabel(supplier), hint: String(supplier.cuit || "") || undefined }))}
+      works={(relations.works || []).map(work => ({ value: work._id, label: itemLabel(work), hint: String(work.code || "") || undefined }))}
+      onClose={() => setPaymentFor(null)} onSaved={() => { setPaymentFor(null); void load(); }} />}
 
     {trashOpen && hasTrash && <TrashModal entity={entity} canRestore={canEdit} onClose={() => setTrashOpen(false)} onRestored={() => { void load(); }} />}
 

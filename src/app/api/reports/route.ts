@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "ingreso", transferId: { $exists: false } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
       CashMovement.aggregate([{ $match: { date: { $gte: from, $lte: to }, direction: "egreso", transferId: { $exists: false } } }, { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$date" } }, value: { $sum: "$amountCents" } } }]),
       Invoice.aggregate([{ $match: { _id: { $nin: excluded.invoices }, issueDate: { $gte: from, $lte: to }, status: { $nin: VOID_INVOICE_STATUSES } } }, { $group: { _id: "$workId", revenue: { $sum: SIGNED_AMOUNT } } }]),
-      Expense.aggregate([{ $match: { _id: { $nin: excluded.expenses }, issueDate: { $gte: from, $lte: to }, status: { $ne: "anulado" } } }, { $group: { _id: "$workId", cost: { $sum: "$amountCents" } } }]),
+      Expense.aggregate([{ $match: { _id: { $nin: excluded.expenses }, issueDate: { $gte: from, $lte: to }, status: { $ne: "anulado" } } }, { $group: { _id: "$workId", cost: { $sum: SIGNED_AMOUNT } } }]),
       Work.find({ _id: { $nin: excluded.works } }).select("name budgetCents").lean(),
     ]);
     const costs = new Map(expenses.map(x => [String(x._id), x.cost]));

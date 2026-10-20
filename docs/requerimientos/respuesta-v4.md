@@ -41,6 +41,9 @@ La etapa 2 está desarrollada:
 - Los nombres que ya se usaban se migran al maestro, con una lista previa para revisar.
 
 La etapa 3 está desarrollada, con el circuito del grupo:
+
+> **Actualizado el 15/10/2026:** en la reunión con Tesorería se cambió el punto de la OC. Ahora **la OC nace al autorizarse la solicitud** y la OP paga (de contado o anticipo contra la OC, o las facturas cuando llegan). Ver [[../decisiones/2026-10-orden-de-pago-varias-facturas]].
+
 - La solicitud se numera SC-n, lleva su condición de compra y, una vez emitida, queda en sólo lectura.
 - Por debajo de $500.000 queda autorizada sola y pasa a Tesorería. Desde $500.000 la autoriza Gerencia o quien tenga el permiso "Autorizar compras" (Socio, Presidencia), que se da por usuario en Configuración › Usuarios.
 - Tesorería emite la orden de pago y con ella nace la OC (OC-n), atada a la solicitud.
@@ -86,6 +89,7 @@ La etapa 4 está desarrollada:
 5. **¿La OC se genera desde la Solicitud autorizada y antes de la OP?** Se implementa como lo pidieron
    en el grupo (ver abajo): **la OC se genera cuando Tesorería emite la OP** de una solicitud autorizada.
    La solicitud, la OC y la OP quedan vinculadas y la OC tiene numeración propia.
+   *Actualizado el 15/10/2026: la OC pasó a generarse al autorizarse la solicitud, como en el PDF.*
 6. **Límite de $500.000.** Tomado así: hasta $499.999,99 no requiere autorización; desde $500.000
    inclusive la autoriza Gerencia o quien tenga el permiso "Autorizar compras" (Socio / Presidencia).
    Los dos tienen el mismo nivel.
@@ -105,6 +109,8 @@ La etapa 4 está desarrollada:
 
 Donde el PDF y lo conversado en el grupo no coinciden, seguimos lo del grupo:
 
+> **Actualizado el 15/10/2026:** en la reunión con Tesorería se cambió el punto de la OC. Ahora **la OC nace al autorizarse la solicitud** y la OP paga (de contado o anticipo contra la OC, o las facturas cuando llegan). Ver [[../decisiones/2026-10-orden-de-pago-varias-facturas]].
+
 1. **Compras** genera la solicitud según la necesidad, con su condición de compra (contado, cuenta
    corriente o plazo). Una vez generada queda en **sólo lectura**: no se modifica, sólo la anula Gerencia, con motivo.
 2. Si el monto es **desde $500.000**, la autoriza Gerencia o Presidencia. Por debajo, pasa directo a Tesorería.
@@ -123,7 +129,7 @@ Donde el PDF y lo conversado en el grupo no coinciden, seguimos lo del grupo:
 
 ## Preguntas que necesitamos que nos respondan
 
-1. El límite de $500.000, ¿es **con IVA o sin IVA**? Por ahora lo tomamos con IVA (el total de la solicitud).
+1. El límite de $500.000, ¿es **con IVA o sin IVA**? Por ahora lo tomamos sobre el total de la solicitud: con IVA y, desde el 19/10/2026, también con las percepciones y el impuesto interno (ver [[../decisiones/2026-10-impuestos-solicitud-compra]]).
 2. En la sección 7, la fila **"Orden de Compra"** tiene un texto que parece pegado de otra sección
    ("Se genera al autorizarse o habilitarse la compra…"). ¿Qué clasificación financiera corresponde a la OC?
 3. La **redeterminación por índice CAC** del certificado, ¿entra en el alcance o se sigue calculando

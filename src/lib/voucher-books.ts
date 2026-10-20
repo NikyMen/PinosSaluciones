@@ -16,7 +16,8 @@ export async function ensureVoucherBooks() {
   if (await VoucherBook.exists({})) return;
   const defaults = COMPANY_KEYS.flatMap(company => [
     ...(["factura_a", "factura_b", "factura_x"] as const).map(voucherType => ({ company, scope: "venta", voucherType })),
-    ...PURCHASE_VOUCHER_TYPES.map(voucherType => ({ company, scope: "compra", voucherType })),
+    // Los talonarios son de facturas: las notas usan el de su letra.
+    ...PURCHASE_VOUCHER_TYPES.filter(voucherType => !isNote(voucherType)).map(voucherType => ({ company, scope: "compra", voucherType })),
   ]);
   await VoucherBook.bulkWrite(defaults.map(book => ({
     updateOne: {

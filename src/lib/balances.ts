@@ -32,7 +32,8 @@ export async function applyExpensePayment(expenseId: unknown, deltaCents: number
   const expense = await Expense.findByIdAndUpdate(expenseId, { $inc: { paidCents: deltaCents } }, { new: true });
   if (!expense) return;
   expense.paidCents = Math.max(0, expense.paidCents);
-  expense.status = expense.paidCents >= expense.amountCents ? "pagado" : expense.paidCents > 0 ? "parcial" : "pendiente";
+  // Una factura anulada sigue así aunque se le mueva un pago.
+  if (expense.status !== "anulado") expense.status = expense.paidCents >= expense.amountCents ? "pagado" : expense.paidCents > 0 ? "parcial" : "pendiente";
   await expense.save();
 }
 
@@ -40,6 +41,26 @@ export async function applyExpensePayment(expenseId: unknown, deltaCents: number
 export function paidByPayment(payment: { status?: unknown; amountCents?: unknown; [key: string]: unknown } | null | undefined) {
   if (!payment) return 0;
   return payment.status === "emitida" || payment.status === "anulada" ? 0 : Number(payment.amountCents || 0);
+}
+
+type PaymentLike = { status?: unknown; expenseId?: unknown; amountCents?: unknown; allocations?: unknown; [key: string]: unknown };
+
+/** A qué comprobantes del proveedor se aplica una OP: los de la OP o, en una de antes, su única factura. */
+export function paymentAllocations(payment: PaymentLike) {
+  if (Array.isArray(payment.allocations) && payment.allocations.length) {
+    return (payment.allocations as Array<{ expenseId: unknown; amountCents: unknown }>).map(allocation => ({ expenseId: allocation.expenseId, amountCents: Number(allocation.amountCents || 0) }));
+  }
+  return payment.expenseId ? [{ expenseId: payment.expenseId, amountCents: Number(payment.amountCents || 0) }] : [];
+}
+
+/**
+ * Suma (1) o descuenta (-1) una OP del saldo de cada comprobante que paga,
+ * notas de crédito incluidas (lo que se les aplicó). Emitida o anulada no mueve
+ * nada; una OP que una nota de crédito deja en cero, pagada, sí.
+ */
+export async function applyPayment(payment: PaymentLike | null | undefined, sign: 1 | -1) {
+  if (!payment || payment.status === "emitida" || payment.status === "anulada") return;
+  for (const allocation of paymentAllocations(payment)) await applyExpensePayment(allocation.expenseId, sign * allocation.amountCents);
 }
 
 /** Los pagos que cuentan como plata que salió: los de antes (sin estado) y los pagados. */

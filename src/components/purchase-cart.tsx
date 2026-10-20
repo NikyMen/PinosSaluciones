@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Download, Minus, Plus, ShoppingCart, Trash2, X } from "lucide-react";
 import { money, qty } from "@/lib/format";
-import { VAT_RATE } from "@/lib/price-lists";
+import { DEFAULT_PURCHASE_VAT_PCT, PURCHASE_PERCEPTIONS, PURCHASE_VAT_RATES, lineVatPct, pctLabel, purchaseTotals } from "@/lib/purchase-taxes";
 import { purchaseCart, usePurchaseCart, type CartLine } from "@/lib/purchase-cart";
 import { downloadPurchaseOrderPdf, type PurchaseOrderPdfData } from "@/lib/purchase-order-pdf";
 import { DateInput, SearchSelect, type Option } from "@/components/fields";
@@ -17,8 +17,10 @@ import { PURCHASE_APPROVAL_LIMIT_CENTS } from "@/lib/constants";
  * El pedido de compra: lo que se fue agregando desde el buscador, separado por
  * proveedor, porque a cada proveedor se le manda su propia orden. Cerrar el
  * pedido emite la solicitud de compra (SC-n) y descarga su PDF. Por debajo de
- * $500.000 pasa sola a Tesorería; desde ahí espera la autorización. La orden
- * de compra la genera Tesorería con la orden de pago.
+ * $500.000 queda autorizada y nace la orden de compra; desde ahí espera la
+ * autorización. Cada renglón lleva su IVA (por defecto, el de la solicitud) y
+ * sobre el neto van las percepciones y el impuesto interno: el total no se
+ * escribe, sale de la cuenta.
  */
 
 type Closed = { number: string; supplierName: string; totalCents: number; status?: string; pdf: PurchaseOrderPdfData; pdfFailed: boolean };
@@ -78,7 +80,7 @@ function PurchaseCartModal({ onClose }: { onClose: () => void }) {
       <div className="modal-form-body cart-body">
         {closed.map(order => <div className="notice success cart-closed" key={order.number}>
           <CheckCircle2 size={18} />
-          <span><b>Solicitud {order.number} emitida</b> · {order.supplierName} · {money(order.totalCents)} con IVA · {order.status === "pendiente_autorizacion" ? "espera la autorización de Gerencia o Presidencia" : "autorizada: pasó a Tesorería"}.{" "}
+          <span><b>Solicitud {order.number} emitida</b> · {order.supplierName} · {money(order.totalCents)} con impuestos · {order.status === "pendiente_autorizacion" ? "espera la autorización de Gerencia o Presidencia" : "autorizada: ya tiene su orden de compra"}.{" "}
             {order.pdfFailed ? "No se pudo generar el PDF: bajalo de nuevo." : "El PDF ya se descargó."}{" "}
             <Link href="/app/purchases">Ver en Solicitudes y órdenes</Link></span>
           <button type="button" className="secondary-btn" onClick={() => { void downloadPurchaseOrderPdf(order.pdf); }}><Download size={15} /> PDF</button>
@@ -111,6 +113,14 @@ function QuantityInput({ line }: { line: CartLine }) {
   </div>;
 }
 
+/** Un porcentaje que se tipea con coma ("1,5"). Vacío es cero. */
+function PctInput({ id, label, hint, value, onChange }: { id: string; label: string; hint?: string; value: string; onChange: (value: string) => void }) {
+  return <label htmlFor={id}><span>{label}{hint && <em className="field-hint">{hint}</em>}</span>
+    <span className="pct-input"><input id={id} inputMode="decimal" value={value} placeholder="0" onChange={event => onChange(event.target.value.replace(/[^\d,.]/g, ""))} /><span>%</span></span></label>;
+}
+
+const pctNumber = (value: string) => { const number = Number(value.replace(",", ".")); return Number.isFinite(number) && number > 0 ? number : 0; };
+
 function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: Option[]; onClosed: (order: Closed) => void }) {
   const [workId, setWorkId] = useState("");
   const [deliverTo, setDeliverTo] = useState("central");
@@ -121,21 +131,31 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
   // La condición de compra: va en la solicitud y Tesorería la usa para el vencimiento de la orden de pago.
   const [paymentTerms, setPaymentTerms] = useState("contado");
   const [termDays, setTermDays] = useState("");
+  const [cashMethod, setCashMethod] = useState("");
   const [requiresAdvance, setRequiresAdvance] = useState(false);
+  // Los impuestos: el IVA de la solicitud (los renglones pueden tener otro) y, sobre el neto, las percepciones y el impuesto interno.
+  const [vatPct, setVatPct] = useState<number>(DEFAULT_PURCHASE_VAT_PCT);
+  const [rates, setRates] = useState({ perceptionVatPct: "", perceptionIibbPct: "", perceptionIibbProvPct: "", internalTaxPct: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const { supplierId, supplierName, discountPct } = lines[0];
-  const subtotal = lines.reduce((total, line) => total + Math.round(line.ownCents * line.quantity), 0);
-  const vat = Math.round(subtotal * VAT_RATE);
+  const taxRates = { vatPct, perceptionVatPct: pctNumber(rates.perceptionVatPct), perceptionIibbPct: pctNumber(rates.perceptionIibbPct), perceptionIibbProvPct: pctNumber(rates.perceptionIibbProvPct), internalTaxPct: pctNumber(rates.internalTaxPct) };
+  const totals = purchaseTotals(lines.map(line => ({ totalCents: Math.round(line.ownCents * line.quantity), vatPct: line.vatPct })), taxRates);
+  const setRate = (key: keyof typeof rates) => (value: string) => setRates(current => ({ ...current, [key]: value }));
 
   async function close() {
     if (!orderDate) return setError("Poné la fecha de la solicitud");
     if (paymentTerms === "plazo" && !(Number(termDays) > 0)) return setError("Poné a cuántos días es el plazo");
+    if (paymentTerms === "contado" && !cashMethod) return setError("Es de contado: elegí si se paga en efectivo o por transferencia");
+    if (Object.values(taxRates).some(value => value > 100)) return setError("Un porcentaje no puede pasar el 100 %");
     if (deliverTo === "obra" && !workId) return setError("Elegí a qué obra se entrega");
     setBusy(true); setError("");
     const response = await fetch("/api/purchases/orders", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ supplierId, items: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })), company, workId, requestedDate: orderDate, expectedDate, deliverTo, notes, paymentTerms, termDays: paymentTerms === "plazo" ? Number(termDays) : undefined, requiresAdvance }),
+      body: JSON.stringify({
+        supplierId, items: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity, vatPct: lineVatPct(line, vatPct) })), company, workId, requestedDate: orderDate, expectedDate, deliverTo, notes,
+        paymentTerms, termDays: paymentTerms === "plazo" ? Number(termDays) : undefined, cashMethod: paymentTerms === "contado" ? cashMethod : undefined, requiresAdvance, ...taxRates,
+      }),
     });
     const result = await response.json();
     if (!response.ok) { setBusy(false); return setError(result.error || "No se pudo emitir la solicitud"); }
@@ -149,19 +169,34 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
   return <section className="cart-group">
     <header className="cart-group-head">
       <div><b>{supplierName}</b><small>{lines.length} {lines.length === 1 ? "producto" : "productos"} · {discountPct ? `descuento ${qty(discountPct)} %` : "sin descuento cargado"}</small></div>
-      <strong>{money(subtotal + vat)}<small>con IVA</small></strong>
+      <strong>{money(totals.amountCents)}<small>con impuestos</small></strong>
     </header>
     <div className="cart-lines">{lines.map(line => <div className="cart-line" key={line.itemId}>
       <div className="cart-line-product"><b>{line.name}</b><small>{[line.code && `Cód. ${line.code}`, line.presentation, line.minSale && `Mínimo: ${line.minSale}`].filter(Boolean).join(" · ")}</small></div>
       <QuantityInput line={line} />
+      <label className="cart-line-vat"><span>IVA</span>
+        <select value={lineVatPct(line, vatPct)} aria-label={`IVA de ${line.name}`}
+          onChange={event => { const rate = Number(event.target.value); purchaseCart.setVatPct(line.itemId, rate === vatPct ? undefined : rate); }}>
+          {PURCHASE_VAT_RATES.map(rate => <option key={rate} value={rate}>{pctLabel(rate)}</option>)}
+        </select></label>
       <div className="cart-line-price"><small>{money(line.ownCents)} c/u</small><b>{money(Math.round(line.ownCents * line.quantity))}</b></div>
       <button type="button" className="cart-remove" aria-label={`Sacar ${line.name} del pedido`} title="Sacar del pedido" onClick={() => purchaseCart.remove(line.itemId)}><Trash2 size={15} /></button>
     </div>)}</div>
     <dl className="cart-totals">
-      <div><dt>Subtotal sin IVA</dt><dd>{money(subtotal)}</dd></div>
-      <div><dt>IVA {Math.round(VAT_RATE * 100)} %</dt><dd>{money(vat)}</dd></div>
-      <div className="total"><dt>Total</dt><dd>{money(subtotal + vat)}</dd></div>
+      <div><dt>Neto (sin IVA)</dt><dd>{money(totals.subtotalCents)}</dd></div>
+      {totals.vatByRate.map(row => <div key={row.pct}><dt>IVA {pctLabel(row.pct)}</dt><dd>{money(row.vatCents)}</dd></div>)}
+      {PURCHASE_PERCEPTIONS.map(({ key, label }) => taxRates[`${key}Pct`] > 0 && <div key={key}><dt>{label} {pctLabel(taxRates[`${key}Pct`])}</dt><dd>{money(totals[`${key}Cents`])}</dd></div>)}
+      {taxRates.internalTaxPct > 0 && <div><dt>Impuesto interno {pctLabel(taxRates.internalTaxPct)}</dt><dd>{money(totals.internalTaxCents)}</dd></div>}
+      <div className="total"><dt>Total</dt><dd>{money(totals.amountCents)}</dd></div>
     </dl>
+    <div className="form-grid cart-form cart-taxes">
+      <label htmlFor={`vat-${supplierId}`}><span>IVA de la solicitud<em className="field-hint">El de los renglones que no dicen otro</em></span>
+        <select id={`vat-${supplierId}`} value={vatPct} onChange={event => setVatPct(Number(event.target.value))}>{PURCHASE_VAT_RATES.map(rate => <option key={rate} value={rate}>{pctLabel(rate)}</option>)}</select></label>
+      <PctInput id={`perc-vat-${supplierId}`} label="Percepción de IVA" hint="Sobre el neto" value={rates.perceptionVatPct} onChange={setRate("perceptionVatPct")} />
+      <PctInput id={`perc-iibb-${supplierId}`} label="Percepción de IIBB" hint="Sobre el neto" value={rates.perceptionIibbPct} onChange={setRate("perceptionIibbPct")} />
+      <PctInput id={`perc-prov-${supplierId}`} label="IIBB provincial" hint="Sobre el neto" value={rates.perceptionIibbProvPct} onChange={setRate("perceptionIibbProvPct")} />
+      <PctInput id={`internal-${supplierId}`} label="Impuesto interno" hint="Arranca en 0 %" value={rates.internalTaxPct} onChange={setRate("internalTaxPct")} />
+    </div>
     <div className="form-grid cart-form">
       <label><span>Empresa que compra *<em className="field-hint">A su nombre va la factura del proveedor</em></span>
         <SearchSelect name={`company-${supplierId}`} value={company} onChange={value => setCompany(value || "tvp")}
@@ -177,6 +212,8 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
       <label><span>Condición de compra *</span>
         <select value={paymentTerms} onChange={event => setPaymentTerms(event.target.value)}><option value="contado">Contado</option><option value="cuenta_corriente">Cuenta corriente</option><option value="plazo">A plazo</option></select></label>
       {paymentTerms === "plazo" && <label><span>Plazo en días *</span><input inputMode="numeric" value={termDays} onChange={event => setTermDays(event.target.value.replace(/\D/g, ""))} placeholder="30" /></label>}
+      {paymentTerms === "contado" && <label><span>Medio de pago *<em className="field-hint">Tesorería lo ve en la orden de pago</em></span>
+        <select value={cashMethod} onChange={event => setCashMethod(event.target.value)} required><option value="" disabled>Elegí…</option><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select></label>}
       <label className="invoice-expenses-check"><input type="checkbox" checked={requiresAdvance} onChange={event => setRequiresAdvance(event.target.checked)} />
         <span><b>Pide anticipo</b><small>Se paga antes de la entrega</small></span></label>
       <label className="wide"><span>Observaciones para el proveedor<em className="field-hint">Salen en el PDF: lugar de entrega, horario, contacto…</em></span>
@@ -184,7 +221,7 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
     </div>
     {error && <p className="form-error">{error}</p>}
     <div className="cart-group-foot">
-      <span>Queda emitida en Solicitudes y órdenes, en sólo lectura, y se descarga el PDF. {subtotal + vat >= PURCHASE_APPROVAL_LIMIT_CENTS ? `Desde ${money(PURCHASE_APPROVAL_LIMIT_CENTS)} la autoriza Gerencia o Presidencia.` : "Pasa directo a Tesorería."}</span>
+      <span>Queda emitida en Solicitudes y órdenes, en sólo lectura, y se descarga el PDF. {totals.amountCents >= PURCHASE_APPROVAL_LIMIT_CENTS ? `Desde ${money(PURCHASE_APPROVAL_LIMIT_CENTS)} la autoriza Gerencia o Presidencia.` : "Queda autorizada y nace la orden de compra."}</span>
       <button type="button" className="primary-btn" disabled={busy} onClick={() => { void close(); }}>{busy ? "Emitiendo…" : "Emitir solicitud de compra"}</button>
     </div>
   </section>;

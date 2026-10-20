@@ -11,7 +11,8 @@ import { excludedFromTotals } from "./trash";
  * Contabilidad: lo que se mira, no se carga.
  *
  * - Libro IVA: solo los comprobantes fiscales (A, B, C). La X queda afuera
- *   siempre: no pasa por ARCA.
+ *   siempre: no pasa por ARCA. En compras van también las percepciones (de
+ *   IVA, de IIBB e IIBB provincial) y el impuesto interno de cada comprobante.
  * - Movimientos por cuenta: cada peso que entró o salió (caja y bancos,
  *   recibos y pagos) agrupado por código y cuenta del plan.
  */
@@ -19,24 +20,33 @@ import { excludedFromTotals } from "./trash";
 type Lean = Record<string, unknown> & { _id: Types.ObjectId };
 export type Period = { from: Date; to: Date; company?: CompanyKey | "" };
 
-export type IvaRow = { _id: string; date: string; voucher: string; number: string; party: string; cuit: string; company: CompanyKey; netCents: number; vatCents: number; totalCents: number };
+/** Los importes de un renglón del libro. Las percepciones y el impuesto interno son de compras: en ventas, cero. */
+export const IVA_AMOUNT_KEYS = ["netCents", "vatCents", "perceptionVatCents", "perceptionIibbCents", "perceptionIibbProvCents", "internalTaxCents", "totalCents"] as const;
+type Totals = Record<typeof IVA_AMOUNT_KEYS[number], number>;
+export type IvaRow = { _id: string; date: string; voucher: string; number: string; party: string; cuit: string; company: CompanyKey } & Totals;
 export type IvaBook = { sales: IvaRow[]; purchases: IvaRow[]; totals: { sales: Totals; purchases: Totals }; excludedX: { sales: number; purchases: number } };
-type Totals = { netCents: number; vatCents: number; totalCents: number };
 
 const iso = (value: unknown) => value ? new Date(value as Date).toISOString() : "";
-const sum = (rows: IvaRow[]): Totals => rows.reduce((total, row) => ({ netCents: total.netCents + row.netCents, vatCents: total.vatCents + row.vatCents, totalCents: total.totalCents + row.totalCents }), { netCents: 0, vatCents: 0, totalCents: 0 });
+const zero = () => Object.fromEntries(IVA_AMOUNT_KEYS.map(key => [key, 0])) as Totals;
+const sum = (rows: IvaRow[]): Totals => rows.reduce((total, row) => Object.fromEntries(IVA_AMOUNT_KEYS.map(key => [key, total[key] + row[key]])) as Totals, zero());
 
 function companyFilter(company?: string) {
   if (!company) return {};
   return company === "tvp" ? { company: { $in: ["tvp", null] } } : { company };
 }
 
-/** Neto e IVA de un comprobante: si se cargó solo el total, el total es neto (no se inventa IVA). */
-function split(record: Record<string, unknown>) {
+/**
+ * Neto, IVA, percepciones e impuesto interno de un comprobante, con su signo
+ * (la nota de crédito resta). Si se cargó solo el total, el total es neto: no
+ * se inventa IVA.
+ */
+function split(record: Record<string, unknown>, sign: number): Totals {
   const total = Number(record.amountCents || 0);
   const net = Number(record.netCents || 0);
-  const vat = Number(record.vatCents || 0);
-  return net > 0 ? { netCents: net, vatCents: vat, totalCents: total || net + vat } : { netCents: total, vatCents: 0, totalCents: total };
+  if (!(net > 0)) return { ...zero(), netCents: sign * total, totalCents: sign * total };
+  const amounts = { ...zero(), netCents: net, vatCents: Number(record.vatCents || 0), perceptionVatCents: Number(record.perceptionVatCents || 0), perceptionIibbCents: Number(record.perceptionIibbCents || 0), perceptionIibbProvCents: Number(record.perceptionIibbProvCents || 0), internalTaxCents: Number(record.internalTaxCents || 0) };
+  amounts.totalCents = total || amounts.netCents + amounts.vatCents + amounts.perceptionVatCents + amounts.perceptionIibbCents + amounts.perceptionIibbProvCents + amounts.internalTaxCents;
+  return Object.fromEntries(IVA_AMOUNT_KEYS.map(key => [key, sign * amounts[key]])) as Totals;
 }
 
 export async function ivaBook({ from, to, company }: Period): Promise<IvaBook> {
@@ -57,14 +67,14 @@ export async function ivaBook({ from, to, company }: Period): Promise<IvaBook> {
   const fiscalExpenses = expenses.filter(expense => isFiscalVoucher(expense.voucherType));
   const sales = fiscalInvoices.map(invoice => {
     const client = clientById.get(String(invoice.clientId));
-    const amounts = split(invoice);
-    // La nota de crédito resta: neto, IVA y total en negativo.
-    const sign = isCreditNote(invoice.voucherType) ? -1 : 1;
-    return { _id: String(invoice._id), date: iso(invoice.issueDate), voucher: voucherLabels[String(invoice.voucherType || "factura_a")] || "Factura", number: invoiceLabel({ number: invoice.number }), party: String(client?.name || "—"), cuit: String(client?.cuit || ""), company: companyOf(invoice.company).key, netCents: sign * amounts.netCents, vatCents: sign * amounts.vatCents, totalCents: sign * amounts.totalCents };
+    // La nota de crédito resta: neto, IVA y total en negativo. En ventas no hay percepciones.
+    const { netCents, vatCents, totalCents } = split(invoice, isCreditNote(invoice.voucherType) ? -1 : 1);
+    return { _id: String(invoice._id), date: iso(invoice.issueDate), voucher: voucherLabels[String(invoice.voucherType || "factura_a")] || "Factura", number: invoiceLabel({ number: invoice.number }), party: String(client?.name || "—"), cuit: String(client?.cuit || ""), company: companyOf(invoice.company).key, ...zero(), netCents, vatCents, totalCents };
   });
   const purchases = fiscalExpenses.map(expense => {
     const supplier = supplierById.get(String(expense.supplierId));
-    return { _id: String(expense._id), date: iso(expense.issueDate), voucher: voucherLabels[String(expense.voucherType)] || "Factura", number: String(expense.number || "—"), party: String(supplier?.name || "—"), cuit: String(supplier?.cuit || ""), company: companyOf(expense.company).key, ...split(expense) };
+    // La nota de crédito del proveedor resta, como en ventas, con sus percepciones.
+    return { _id: String(expense._id), date: iso(expense.issueDate), voucher: voucherLabels[String(expense.voucherType)] || "Factura", number: String(expense.number || "—"), party: String(supplier?.name || "—"), cuit: String(supplier?.cuit || ""), company: companyOf(expense.company).key, ...split(expense, isCreditNote(expense.voucherType) ? -1 : 1) };
   });
   return {
     sales, purchases, totals: { sales: sum(sales), purchases: sum(purchases) },

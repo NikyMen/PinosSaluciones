@@ -59,3 +59,23 @@ export async function accountChange(before: Record<string, unknown>, changes: Re
   ]);
   return { fromId: before.accountId || undefined, fromName: from?.name || "", toId: changes.accountId, toName: to?.name || "", reason: text || "Primera imputación", userName: session.name, at: new Date() };
 }
+
+/** Los gastos generales indirectos y los bienes de uso son de la empresa: no van a ninguna obra. */
+const WORKLESS_CODES = new Set(["GGI", "BB"]);
+
+/** Si la cuenta es de las que no van a una obra (GGI o bienes de uso). */
+export async function worklessAccount(accountId: unknown) {
+  if (!accountId || !isValidObjectId(String(accountId))) return false;
+  const account = await Account.findById(accountId).select("code").lean<{ code?: string }>();
+  return WORKLESS_CODES.has(String(account?.code || ""));
+}
+
+/**
+ * Un GGI (librería, una silla, una computadora) o un bien de uso (un taladro
+ * que va de obra en obra) no se imputa a una obra ni a una cotización. CC y GGD
+ * pueden ir sin obra: una compra para el depósito todavía no es de ninguna.
+ */
+export async function checkWorkForAccount(accountId: unknown, workId: unknown) {
+  if (!workId || !await worklessAccount(accountId)) return;
+  throw new HttpError("Un gasto GGI o un bien de uso no va a una obra: sacá la obra o elegí una cuenta CC o GGD");
+}

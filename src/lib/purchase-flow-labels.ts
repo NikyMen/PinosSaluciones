@@ -7,6 +7,16 @@ export const requestStatusLabels: Record<string, string> = {
 };
 export const orderStatusLabels: Record<string, string> = { emitida: "Emitida", cerrada: "Cerrada", anulada: "Anulada", aprobada: "Aprobada", enviada: "Enviada", recibida: "Recibida", cancelada: "Cancelada" };
 export const paymentTermLabels: Record<string, string> = { contado: "Contado", cuenta_corriente: "Cuenta corriente", plazo: "A plazo" };
+/** De contado: cómo se paga. */
+export const cashMethodLabels: Record<string, string> = { efectivo: "Efectivo", transferencia: "Transferencia" };
+
+/** La condición de compra en una línea: "Contado en efectivo", "A plazo a 30 días", "Cuenta corriente". */
+export function purchaseTermsText(purchase: Record<string, unknown>) {
+  const terms = String(purchase.paymentTerms || "contado");
+  if (terms === "plazo") return `A plazo${purchase.termDays ? ` a ${String(purchase.termDays)} días` : ""}`;
+  if (terms === "contado") return purchase.cashMethod === "efectivo" ? "Contado en efectivo" : purchase.cashMethod === "transferencia" ? "Contado por transferencia" : "Contado";
+  return paymentTermLabels[terms] || terms;
+}
 export const orderPaymentLabels: Record<string, string> = { pendiente: "Sin pagar", parcial: "Pagada en parte", pagada: "Pagada" };
 export const orderReceptionLabels: Record<string, string> = { pendiente: "Sin recibir", parcial: "Recibida en parte", recibida: "Recibida" };
 
