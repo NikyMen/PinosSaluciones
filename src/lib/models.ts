@@ -759,8 +759,10 @@ const ExpenseSchema = new Schema({
   // Con el neto cargado, el total es neto + IVA + percepciones + impuesto interno.
   perceptionVatPct: Number, perceptionVatCents: Number, perceptionIibbPct: Number, perceptionIibbCents: Number,
   perceptionIibbProvPct: Number, perceptionIibbProvCents: Number, internalTaxPct: Number, internalTaxCents: Number,
-  // La orden de compra de donde sale y el remito o la conformidad de lo recibido.
+  // La orden de compra de donde sale y el remito o la conformidad de lo recibido: los remitos de
+  // compra que factura (elegidos de los de su OC) y, como texto, su número o una conformidad.
   purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase" }, receiptRef: String,
+  purchaseReceiptIds: { type: [{ type: Schema.Types.ObjectId, ref: "PurchaseReceipt" }], default: undefined },
   accountId: { type: Schema.Types.ObjectId, ref: "Account" },
   description: { type: String, required: true },
   category: { type: String, enum: ["materiales", "transporte", "combustible", "servicios", "costo_indirecto", "gasto_fijo", "mano_obra"], required: true },

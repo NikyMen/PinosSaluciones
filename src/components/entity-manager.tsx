@@ -557,7 +557,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "suppliers" && <Link className="row-action-wide" title="Subir y ver las listas de precios del proveedor" href={`/app/suppliers/${item._id}`}><FileSpreadsheet size={15} /> Listas de precios</Link>}
           {entity === "purchases" && <button className="row-action-wide approve" title="La compra de punta a punta: autorizar, orden de pago, remitos" onClick={() => setPurchaseFor(item._id)}><Eye size={15} /> Ver</button>}
           {entity === "purchases" && <button className="row-action-wide" title={item.stage === "solicitud" ? "Descargar la solicitud en PDF" : "Descargar la orden de compra en PDF para mandársela al proveedor"}
-            onClick={() => { void downloadPurchaseOrderPdf(purchaseOrderPdfData(item, relations.suppliers?.find(row => row._id === String(item.supplierId || "")), relations.works?.find(row => row._id === String(item.workId || "")))).catch(() => setError("No se pudo generar el PDF de la orden")); }}>
+            onClick={() => { void downloadPurchaseOrderPdf(purchaseOrderPdfData(item, relations.suppliers?.find(row => row._id === String(item.supplierId || "")), relations.works?.find(row => row._id === String(item.workId || "")), String(relations.quotes?.find(row => row._id === String(item.quoteId || ""))?.number || "") || undefined)).catch(() => setError("No se pudo generar el PDF de la orden")); }}>
             <Download size={15} /> PDF</button>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
           {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void approveQuote(item); }}><CheckCircle2 size={15} /> Aprobar</button>}
@@ -612,7 +612,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
             : entity === "purchases"
               ? <PurchaseFields fields={formFields} fieldProps={fieldProps} editing={editing} />
               : entity === "expenses"
-                ? <ExpenseFields fields={formFields} fieldProps={fieldProps} />
+                ? <ExpenseFields fields={formFields} fieldProps={fieldProps} editing={editing} />
                 : <div className="form-grid">{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
         </div>
         {error && <p className="form-error modal-error">{error}</p>}

@@ -80,7 +80,7 @@ export async function createPurchaseOrder({ company = "tvp", supplierId, lines, 
   const summary = items.slice(0, 3).map(item => `${qty(item.quantity)} x ${item.name}`).join(", ");
   const purchase = await Purchase.create({
     number: await nextRequestNumber(), company,
-    supplierId, workId: work ? workId : undefined,
+    supplierId, workId: work ? workId : undefined, quoteId: work?.quoteId,
     description: `${items.length} ${items.length === 1 ? "producto" : "productos"} de ${supplier.name}: ${summary}${items.length > 3 ? ` y ${items.length - 3} más` : ""}`,
     ...purchaseTaxFields(items, taxes), items, notes: notes || "",
     deliverTo, quoteNumber: quote?.number || undefined,

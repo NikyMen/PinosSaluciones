@@ -20,7 +20,7 @@ import { PURCHASE_APPROVAL_LIMIT_CENTS } from "@/lib/constants";
 type Doc = Record<string, unknown> & { _id: string };
 type Line = { code?: string; name: string; presentation?: string; quantity: number; unitCents: number; totalCents: number; receivedQty?: number; vatPct?: number };
 type Detail = {
-  request: Doc | null; order: Doc | null; payments: Doc[]; receipts: Doc[]; expenses: Doc[]; supplier: Doc | null; work: Doc | null;
+  request: Doc | null; order: Doc | null; payments: Doc[]; receipts: Doc[]; expenses: Doc[]; supplier: Doc | null; work: Doc | null; quote: Doc | null;
   totals: { totalCents: number; paidCents: number; committedCents: number; withoutOrderCents: number; pendingCents: number };
   can: { edit: boolean; emit: boolean; decide: boolean; cancel: boolean; paymentOrder: boolean; receive: boolean; invoice: boolean; attachPayments: boolean; attachPurchase: boolean };
 };
@@ -97,7 +97,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
   }
 
   async function pdf(doc: Doc) {
-    try { await downloadPurchaseOrderPdf(purchaseOrderPdfData(doc, detail?.supplier, detail?.work)); }
+    try { await downloadPurchaseOrderPdf(purchaseOrderPdfData(doc, detail?.supplier, detail?.work, detail?.quote?.number ? String(detail.quote.number) : undefined)); }
     catch { setError("No se pudo generar el PDF"); }
   }
 
@@ -131,6 +131,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
         <p className="eyebrow">{order ? "ORDEN DE COMPRA" : "SOLICITUD DE COMPRA"}</p>
         <h2 id="purchase-detail-title">{main ? `${String(main.number)} · ${String(detail?.supplier?.name || "Sin proveedor")}` : "Cargando…"}</h2>
         {main && <small><span className={`company-badge ${companyOf(main.company).key}`}>{companyOf(main.company).short}</span> {String(main.description || "")}</small>}
+        {main && (detail?.quote || main.quoteNumber) ? <small className="purchase-quote-ref">Para la cotización de venta <b>{String(detail?.quote?.number || main.quoteNumber)}</b>{detail?.quote?.title ? ` · ${String(detail.quote.title)}` : ""}{detail?.work ? ` · obra ${String(detail.work.code || "")}` : ""}</small> : null}
       </div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
 
       <div className="modal-form-body">

@@ -446,6 +446,7 @@ Colección `expenses` · entidad `expenses`
 | `internalTaxCents` | número | — | — |
 | `purchaseId` | referencia | — | apunta a **Purchase** |
 | `receiptRef` | texto | — | — |
+| `purchaseReceiptIds` | lista | — | — |
 | `accountId` | referencia | — | apunta a **Account** |
 | `description` | texto | sí | — |
 | `category` | texto | sí | valores: `materiales` · `transporte` · `combustible` · `servicios` · `costo_indirecto` · `gasto_fijo` · `mano_obra` |

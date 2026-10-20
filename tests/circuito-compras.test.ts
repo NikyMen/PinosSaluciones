@@ -310,6 +310,48 @@ describe("percepciones en la factura de compra", () => {
   });
 });
 
+describe("remitos en la factura y cotización de venta en la OC", () => {
+  it("la factura elige remitos de su OC; la cotización de venta queda en la OC, en la ficha y en el PDF", async () => {
+    const { Client, Quote } = await import("../src/lib/models");
+    const { purchaseOrderPdfData } = await import("../src/lib/purchase-order-pdf");
+    const client = await Client.create({ name: "Consorcio Rivadavia", cuit: "30-71234567-8" });
+    const quote = await Quote.create({ number: "COT-4120", clientId: client._id, title: "Impermeabilización de terraza", status: "aprobada" });
+
+    // Elegida a mano en la solicitud, guarda el número; sin obra, igual sale en la ficha y en el PDF.
+    const request = await newRequest(1_00, { subtotalCents: 80_000_00, quoteId: String(quote._id), cashMethod: "efectivo" });
+    expect(request).toMatchObject({ quoteNumber: "COT-4120" });
+    const orderId = String((await action(emitRoute, request._id)).body.orderId);
+    expect(await Purchase.findById(orderId).lean()).toMatchObject({ quoteNumber: "COT-4120" });
+    const detail = await call(await detailRoute.GET(new Request("http://test"), params({ id: orderId })));
+    expect(detail.body.quote).toMatchObject({ number: "COT-4120", title: "Impermeabilización de terraza" });
+    expect(purchaseOrderPdfData(detail.body.order, detail.body.supplier, null, detail.body.quote.number)).toMatchObject({ work: null, quoteNumber: "COT-4120" });
+
+    // Dos OC con remitos: la factura sólo puede elegir los de la suya.
+    const withItems = async (number: string) => {
+      const draft = await Purchase.create({ number, company: "tvp", supplierId, description: "Membrana", amountCents: 121_000_00, cashMethod: "efectivo", stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
+        items: [{ code: `MEM-${number}`, name: "Membrana 4 mm", quantity: 10, listPriceCents: 10_000_00, discountPct: 0, unitCents: 10_000_00, totalCents: 100_000_00 }] });
+      as("compras", "Compras");
+      const order = String((await action(emitRoute, String(draft._id))).body.orderId);
+      const receipt = await action(receiveRoute, order, { supplierRemito: `0001-${number}`, date: "2026-11-05", lines: [{ line: 0, quantity: 4 }] });
+      return { order, receiptId: String(receipt.body.receipt._id) };
+    };
+    const first = await withItems("SC-950");
+    const second = await withItems("SC-951");
+    as("gerencia", "Gerencia");
+    const expense = (body: Record<string, unknown>) => recordsRoute.POST(json("POST", { voucherType: "factura_a", description: "Membrana", category: "materiales", issueDate: "2026-11-06", status: "pendiente", amountCents: 0, netCents: 40_000_00, ...body }), params({ entity: "expenses" }));
+    const foreign = await call(await expense({ purchaseId: first.order, number: "0007-00000001", purchaseReceiptIds: second.receiptId }));
+    expect(foreign.status).toBe(400);
+    expect(foreign.body.error).toContain("0001-SC-951");
+    // Llega como en el formulario: los ids separados por coma. Sin texto, queda el número del remito.
+    const ok = await call(await expense({ purchaseId: first.order, number: "0007-00000002", purchaseReceiptIds: first.receiptId, receiptRef: "" }));
+    expect(ok.status).toBe(201);
+    expect(ok.body).toMatchObject({ purchaseReceiptIds: [first.receiptId], receiptRef: "0001-SC-950" });
+    // Si cambia la OC, los remitos de la anterior se sueltan.
+    const moved = await call(await recordRoute.PATCH(json("PATCH", { purchaseId: second.order }), params({ entity: "expenses", id: ok.body._id })));
+    expect(moved.body.purchaseReceiptIds).toEqual([]);
+  });
+});
+
 describe("migración de las compras de antes", () => {
   it("renumera las solicitudes, pasa los estados y ata las OP a su OC", async () => {
     const db = mongoose.connection;

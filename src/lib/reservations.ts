@@ -118,7 +118,7 @@ export async function reserveForQuote(quoteId: string, session: Session) {
   let purchase: Lean | null = null;
   if (short.length) {
     purchase = (await Purchase.create({
-      number: await nextRequestNumber(), company: quote.company || "tvp", quoteId: quote._id, workId: work?._id,
+      number: await nextRequestNumber(), company: quote.company || "tvp", quoteId: quote._id, quoteNumber: quote.number, workId: work?._id,
       description: `Faltante de materiales para ${quote.number} — ${quote.title}: ${short.map(line => `${line.shortageQty} ${line.unit} de ${line.name}`).join("; ")}`,
       // El neto estimado con el precio de la cotización, al 21 %: Compras lo ajusta con el del proveedor.
       ...purchaseTaxFields([{ totalCents: Math.round(short.reduce((total, line) => total + line.shortageQty * line.unitPriceCents, 0)) }], { vatPct: DEFAULT_PURCHASE_VAT_PCT }),
