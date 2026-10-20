@@ -26,7 +26,8 @@ import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-o
 import { downloadQuotePdf, quotePdfData } from "@/lib/quote-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
 import { InvoiceFields } from "@/components/invoice-fields";
-import { PurchaseFields } from "@/components/purchase-fields";
+import { ExpenseFields, PurchaseFields } from "@/components/purchase-fields";
+import { storedPurchaseTaxes } from "@/lib/purchase-taxes";
 import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { WorkTypesModal } from "@/components/work-types-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
@@ -302,7 +303,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity]);
 
-  // "Cargar factura" desde la ficha de una OC llega con ?oc=: la factura ya atada a la orden.
+  // "Cargar factura" desde la ficha de una OC llega con ?oc=: la factura ya atada a la orden, con su neto, su IVA y sus percepciones.
   useEffect(() => {
     if (entity !== "expenses" || !canEdit) return;
     const orderId = new URLSearchParams(window.location.search).get("oc");
@@ -310,10 +311,16 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     router.replace("/app/expenses");
     void fetch(`/api/records/purchases/${orderId}`)
       .then(response => response.ok ? response.json() as Promise<Item> : null)
-      .then(order => open(undefined, order ? {
-        purchaseId: order._id, company: order.company, supplierId: order.supplierId, workId: order.workId, voucherType: "factura_a",
-        category: "materiales", issueDate: new Date().toISOString().slice(0, 10), description: String(order.description || ""),
-      } : {}), () => open());
+      .then(order => {
+        if (!order) return open(undefined, {});
+        const taxes = storedPurchaseTaxes(order);
+        open(undefined, {
+          purchaseId: order._id, company: order.company, supplierId: order.supplierId, workId: order.workId, voucherType: "factura_a",
+          category: "materiales", issueDate: new Date().toISOString().slice(0, 10), description: String(order.description || ""), status: "pendiente",
+          netCents: taxes.subtotalCents, vatPct: String(taxes.vatPct), perceptionVatPct: taxes.perceptionVatPct, perceptionIibbPct: taxes.perceptionIibbPct,
+          perceptionIibbProvPct: taxes.perceptionIibbProvPct, internalTaxPct: taxes.internalTaxPct,
+        });
+      }, () => open());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity, canEdit]);
 
@@ -604,7 +611,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
               onRelations={patch => setRelationValues(current => ({ ...current, ...patch }))} />
             : entity === "purchases"
               ? <PurchaseFields fields={formFields} fieldProps={fieldProps} editing={editing} />
-              : <div className="form-grid">{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
+              : entity === "expenses"
+                ? <ExpenseFields fields={formFields} fieldProps={fieldProps} />
+                : <div className="form-grid">{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
         </div>
         {error && <p className="form-error modal-error">{error}</p>}
         <footer><span>Los cambios quedan registrados automáticamente.</span><button type="button" className="secondary-btn" onClick={() => setModal(false)}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></footer>

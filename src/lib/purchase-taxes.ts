@@ -100,6 +100,27 @@ export function purchaseTaxFields(lines: TaxedLine[], rates: PurchaseTaxRates) {
 }
 
 /**
+ * Los importes de un comprobante del proveedor (factura o nota de compra) a
+ * partir de su neto: el IVA a su alícuota sólo si lo discrimina (la A; la C y
+ * la X no), y las percepciones y el impuesto interno sobre el neto, en
+ * cualquier comprobante. El total es la suma.
+ */
+export function voucherTaxFields(netCents: number, rates: PurchaseTaxRates, discriminatesVat: boolean) {
+  const net = Math.round(Number(netCents || 0));
+  // Sin alícuota, 21 %; una A exenta puede venir al 0 %.
+  const vatPct = !discriminatesVat ? 0 : rates.vatPct === undefined || rates.vatPct === null || !Number.isFinite(Number(rates.vatPct)) ? DEFAULT_PURCHASE_VAT_PCT : pct(rates.vatPct);
+  const vatCents = share(net, vatPct);
+  const fields = {
+    netCents: net, vatPct, vatCents,
+    perceptionVatPct: pct(rates.perceptionVatPct), perceptionVatCents: share(net, pct(rates.perceptionVatPct)),
+    perceptionIibbPct: pct(rates.perceptionIibbPct), perceptionIibbCents: share(net, pct(rates.perceptionIibbPct)),
+    perceptionIibbProvPct: pct(rates.perceptionIibbProvPct), perceptionIibbProvCents: share(net, pct(rates.perceptionIibbProvPct)),
+    internalTaxPct: pct(rates.internalTaxPct), internalTaxCents: share(net, pct(rates.internalTaxPct)),
+  };
+  return { ...fields, amountCents: net + vatCents + fields.perceptionVatCents + fields.perceptionIibbCents + fields.perceptionIibbProvCents + fields.internalTaxCents };
+}
+
+/**
  * Los renglones de impuestos de una compra guardada, para mostrarla (ficha,
  * PDF): el IVA de cada alícuota y las percepciones y el impuesto interno que
  * no son cero. Una compra de antes, sin el detalle, muestra sólo el IVA.

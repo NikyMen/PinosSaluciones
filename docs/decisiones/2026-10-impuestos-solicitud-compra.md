@@ -54,8 +54,22 @@ cuenta corriente no lleva medio.
 **Lo de antes no cambia.** Las solicitudes y OC que ya existen conservan su total. Las que no tienen
 el detalle se leen al 21 %, con el neto que sale del total, en la ficha, el PDF y el formulario.
 
+**La factura de compra lleva lo mismo** (20/10/2026). `Expense` guarda las percepciones y el impuesto
+interno como la solicitud (porcentaje e importe). Con el neto cargado, el total es neto + IVA +
+percepciones + impuesto interno (`voucherTaxFields`). El IVA va sólo en la A y sus notas (antes las
+notas A quedaban sin IVA); la C y la X no lo discriminan, pero sí pueden traer percepciones. Un costo
+interno, sin comprobante, no lleva IVA. Sin neto (un costo interno, una factura de antes) se sigue
+cargando el total.
+
+**La factura sale de su OC.** "Cargar factura" desde la ficha de la OC abre la factura con el neto, la
+alícuota y los porcentajes de la OC; se ajusta el neto si la factura es parcial y las percepciones
+se recalculan. Por la API, lo que no venga (alícuota, porcentajes) se toma de la OC.
+
+**El libro IVA compras suma columnas.** Además de neto, IVA y total: percepción de IVA, percepción de
+IIBB, IIBB provincial e impuesto interno, también en la exportación. La nota de crédito las resta.
+
 ## Pendiente
 
-- Percepciones en la factura de compra y su columna en el libro IVA compras.
-- Que la factura de compra se cargue con los importes de su OC.
+- Una factura con dos alícuotas de IVA: hoy lleva una sola. Si la OC mezcla alícuotas, la factura
+  se abre con la de la solicitud y hay que cargarla como dos comprobantes o ajustar a mano.
 - Guardar en cada proveedor los porcentajes que suele percibir, para que se carguen solos.

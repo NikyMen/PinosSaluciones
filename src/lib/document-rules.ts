@@ -2,7 +2,8 @@ import { HttpError } from "./api";
 import { accountChange, checkLedgerAccount, checkWorkForAccount, worklessAccount } from "./account-service";
 import { accountDirection } from "./account-catalog";
 import { Expense, Invoice, Purchase, Work } from "./models";
-import { isCreditNote, isNote, VOID_INVOICE_STATUSES, voucherLabels } from "./invoice-labels";
+import { baseInvoiceType, isCreditNote, isNote, VOID_INVOICE_STATUSES, voucherLabels } from "./invoice-labels";
+import { PURCHASE_TAX_PCT_KEYS, storedPurchaseTaxes, voucherTaxFields } from "./purchase-taxes";
 import { money } from "./format";
 import { checkVoucherEnabled, takeInternalNumber } from "./voucher-books";
 import { companyOf } from "./companies";
@@ -122,14 +123,21 @@ function prepareNetAmounts(entity: Entity, data: Record<string, unknown>, before
 
 /**
  * Una factura de compra: el tipo tiene que estar habilitado para la empresa
- * que compra, el IVA sale del neto y, si viene de una orden de compra, hereda
- * su empresa, su proveedor y su obra.
+ * que compra y, si viene de una orden de compra, hereda su empresa, su
+ * proveedor y su obra (y, por la API, la alícuota y los porcentajes que no
+ * traiga). Con el neto cargado, el total sale del neto, el IVA (sólo en la A
+ * y sus notas), las percepciones y el impuesto interno.
  */
 async function prepareExpense(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
   const merged = { ...before, ...data };
   if (data.purchaseId) {
-    const purchase = await Purchase.findById(data.purchaseId).select("company supplierId workId").lean<{ company?: string; supplierId?: unknown; workId?: unknown }>();
+    const purchase = await Purchase.findById(data.purchaseId).select("company supplierId workId amountCents subtotalCents items vatPct perceptionVatPct perceptionIibbPct perceptionIibbProvPct internalTaxPct").lean<Record<string, unknown> & { company?: string; supplierId?: unknown; workId?: unknown }>();
     if (!purchase) throw new HttpError("La orden de compra elegida no existe");
+    // Lo que no vino (una carga por la API): la alícuota y los porcentajes de la OC.
+    if (!before._id) {
+      const taxes = storedPurchaseTaxes(purchase);
+      for (const key of PURCHASE_TAX_PCT_KEYS) if (data[key] === undefined && (key !== "vatPct" || purchase.vatPct !== undefined)) data[key] = taxes[key];
+    }
     if (!merged.company && purchase.company) data.company = purchase.company;
     if (!merged.supplierId && purchase.supplierId) data.supplierId = purchase.supplierId;
     // Un GGI o un bien de uso no hereda la obra de la OC.
@@ -142,12 +150,11 @@ async function prepareExpense(data: Record<string, unknown>, before: Record<stri
     if (!company) data.company = "tvp";
     if ("voucherType" in data || "company" in data) await checkVoucherEnabled(companyOf(data.company ?? company).key, "compra", merged.voucherType);
   }
-  const net = Number(merged.netCents || 0);
-  if (("netCents" in data || "vatPct" in data) && net > 0) {
-    // La C y la X no discriminan IVA.
-    const pct = merged.voucherType === "factura_a" ? Number(merged.vatPct ?? 21) : 0;
-    const vat = Math.round(net * pct / 100);
-    Object.assign(data, { vatPct: pct, vatCents: vat, amountCents: net + vat });
+  const net = Number({ ...before, ...data }.netCents || 0);
+  if (["netCents", "voucherType", ...PURCHASE_TAX_PCT_KEYS].some(key => key in data) && net > 0) {
+    // La C y la X no discriminan IVA; la A y sus notas, sí.
+    const rates = { ...before, ...data } as Record<string, number | undefined>;
+    Object.assign(data, voucherTaxFields(net, rates, Boolean(rates.voucherType) && baseInvoiceType(rates.voucherType) === "factura_a"));
   }
 }
 

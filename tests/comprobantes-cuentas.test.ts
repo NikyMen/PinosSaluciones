@@ -128,7 +128,7 @@ describe("Factura X", () => {
 
     const iva = await call(await ivaRoute.GET(new Request("http://test/api/accounting/iva?from=2026-10-01&to=2026-10-31")));
     expect(iva.body.sales.map((row: { number: string }) => row.number)).toEqual(["0003-00000900"]);
-    expect(iva.body.totals.sales).toEqual({ netCents: 100_000_00, vatCents: 21_000_00, totalCents: 121_000_00 });
+    expect(iva.body.totals.sales).toEqual({ netCents: 100_000_00, vatCents: 21_000_00, perceptionVatCents: 0, perceptionIibbCents: 0, perceptionIibbProvCents: 0, internalTaxCents: 0, totalCents: 121_000_00 });
     expect(iva.body.excludedX.sales).toBe(3);
     expect(fiscal.status).toBe(201);
   });

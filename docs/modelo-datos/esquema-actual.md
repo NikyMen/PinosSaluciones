@@ -436,6 +436,14 @@ Colección `expenses` · entidad `expenses`
 | `netCents` | número | — | — |
 | `vatPct` | número | — | — |
 | `vatCents` | número | — | — |
+| `perceptionVatPct` | número | — | — |
+| `perceptionVatCents` | número | — | — |
+| `perceptionIibbPct` | número | — | — |
+| `perceptionIibbCents` | número | — | — |
+| `perceptionIibbProvPct` | número | — | — |
+| `perceptionIibbProvCents` | número | — | — |
+| `internalTaxPct` | número | — | — |
+| `internalTaxCents` | número | — | — |
 | `purchaseId` | referencia | — | apunta a **Purchase** |
 | `receiptRef` | texto | — | — |
 | `accountId` | referencia | — | apunta a **Account** |

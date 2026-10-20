@@ -278,6 +278,38 @@ describe("impuestos de la solicitud", () => {
   });
 });
 
+describe("percepciones en la factura de compra", () => {
+  it("la factura hereda la alícuota y los porcentajes de la OC; la C no discrimina IVA; el libro IVA compras suma las percepciones", async () => {
+    const ivaRoute = await import("../src/app/api/accounting/iva/route");
+    const request = await newRequest(1_00, { subtotalCents: 200_000_00, vatPct: "27", perceptionIibbPct: 2, cashMethod: "efectivo" });
+    const orderId = String((await action(emitRoute, request._id)).body.orderId);
+    as("gerencia", "Gerencia");
+    const expense = async (body: Record<string, unknown>) => call(await recordsRoute.POST(json("POST", { description: "Factura del proveedor", category: "materiales", issueDate: "2026-11-03", status: "pendiente", amountCents: 0, ...body }), params({ entity: "expenses" })));
+
+    // Por la API, sin porcentajes: los toma de la OC. Factura parcial: lo calcula sobre su neto.
+    const invoice = await expense({ purchaseId: orderId, voucherType: "factura_a", number: "0005-00000001", netCents: 100_000_00 });
+    expect(invoice.status).toBe(201);
+    expect(invoice.body).toMatchObject({ vatPct: 27, vatCents: 27_000_00, perceptionIibbPct: 2, perceptionIibbCents: 2_000_00, perceptionVatCents: 0, amountCents: 129_000_00 });
+    // Como desde el formulario: la C no lleva IVA, pero sí percepciones.
+    const typeC = await expense({ supplierId, voucherType: "factura_c", number: "0002-00000077", netCents: 50_000_00, vatPct: "21", perceptionVatPct: 0, perceptionIibbPct: 0, perceptionIibbProvPct: 1.5, internalTaxPct: 0 });
+    expect(typeC.body).toMatchObject({ vatPct: 0, vatCents: 0, perceptionIibbProvCents: 750_00, amountCents: 50_750_00 });
+    // La nota de crédito A discrimina IVA y resta en el libro.
+    const credit = await expense({ supplierId, voucherType: "nota_credito_a", number: "0005-00000002", associatedExpenseId: invoice.body._id, netCents: 10_000_00, vatPct: "27", perceptionIibbPct: 2 });
+    expect(credit.body).toMatchObject({ vatCents: 2_700_00, perceptionIibbCents: 200_00, amountCents: 12_900_00 });
+    // Un costo interno, sin comprobante, no lleva IVA.
+    expect((await expense({ netCents: 5_000_00, perceptionVatPct: 0 })).body).toMatchObject({ vatCents: 0, amountCents: 5_000_00 });
+    // Cambiar un porcentaje recalcula el total.
+    expect((await call(await recordRoute.PATCH(json("PATCH", { perceptionVatPct: 3 }), params({ entity: "expenses", id: invoice.body._id })))).body).toMatchObject({ perceptionVatCents: 3_000_00, amountCents: 132_000_00 });
+
+    const book = await call(await ivaRoute.GET(new Request("http://test/api/accounting/iva?from=2026-11-01&to=2026-11-30")));
+    expect(book.body.purchases.find((row: { number: string }) => row.number === "0005-00000002")).toMatchObject({ netCents: -10_000_00, vatCents: -2_700_00, perceptionIibbCents: -200_00, totalCents: -12_900_00 });
+    expect(book.body.totals.purchases).toEqual({
+      netCents: 140_000_00, vatCents: 24_300_00, perceptionVatCents: 3_000_00, perceptionIibbCents: 1_800_00, perceptionIibbProvCents: 750_00, internalTaxCents: 0,
+      totalCents: 132_000_00 + 50_750_00 - 12_900_00,
+    });
+  });
+});
+
 describe("migración de las compras de antes", () => {
   it("renumera las solicitudes, pasa los estados y ata las OP a su OC", async () => {
     const db = mongoose.connection;

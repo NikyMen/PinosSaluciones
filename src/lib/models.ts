@@ -755,6 +755,10 @@ const ExpenseSchema = new Schema({
   company: { type: String, enum: ["tvp", "constructora"] },
   voucherType: { type: String, enum: PURCHASE_VOUCHER_TYPES },
   netCents: Number, vatPct: Number, vatCents: Number,
+  // Las percepciones y el impuesto interno del comprobante, con su porcentaje sobre el neto (src/lib/purchase-taxes.ts).
+  // Con el neto cargado, el total es neto + IVA + percepciones + impuesto interno.
+  perceptionVatPct: Number, perceptionVatCents: Number, perceptionIibbPct: Number, perceptionIibbCents: Number,
+  perceptionIibbProvPct: Number, perceptionIibbProvCents: Number, internalTaxPct: Number, internalTaxCents: Number,
   // La orden de compra de donde sale y el remito o la conformidad de lo recibido.
   purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase" }, receiptRef: String,
   accountId: { type: Schema.Types.ObjectId, ref: "Account" },

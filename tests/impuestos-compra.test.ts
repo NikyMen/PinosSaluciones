@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { purchaseTaxFields, purchaseTaxRows, purchaseTotals, storedPurchaseTaxes } from "../src/lib/purchase-taxes";
+import { purchaseTaxFields, purchaseTaxRows, purchaseTotals, storedPurchaseTaxes, voucherTaxFields } from "../src/lib/purchase-taxes";
 
 describe("impuestos de la solicitud de compra", () => {
   it("el total sale del neto, el IVA, las percepciones y el impuesto interno", () => {
@@ -23,6 +23,14 @@ describe("impuestos de la solicitud de compra", () => {
     expect(totals.amountCents).toBe(160_000_00 + 28_950_00 + 6_400_00);
     // Una alícuota que no es de las tres vale como la de la solicitud.
     expect(purchaseTotals([{ totalCents: 100_00, vatPct: 5 }], { vatPct: 27 }).vatCents).toBe(27_00);
+  });
+
+  it("en un comprobante del proveedor, el IVA sólo si lo discrimina; las percepciones siempre", () => {
+    expect(voucherTaxFields(1_000_00, { vatPct: 10.5, perceptionVatPct: 3, internalTaxPct: 1 }, true)).toMatchObject({ vatPct: 10.5, vatCents: 105_00, perceptionVatCents: 30_00, internalTaxCents: 10_00, amountCents: 1_145_00 });
+    expect(voucherTaxFields(1_000_00, { vatPct: 21, perceptionIibbPct: 2 }, false)).toMatchObject({ vatPct: 0, vatCents: 0, perceptionIibbCents: 20_00, amountCents: 1_020_00 });
+    // Sin alícuota, 21 %; una A exenta, 0 %.
+    expect(voucherTaxFields(100_00, {}, true).vatCents).toBe(21_00);
+    expect(voucherTaxFields(100_00, { vatPct: 0 }, true).vatCents).toBe(0);
   });
 
   it("guarda los porcentajes y los importes; una compra de antes vale al 21 % con el neto de su total", () => {

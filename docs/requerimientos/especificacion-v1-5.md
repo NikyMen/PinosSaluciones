@@ -114,6 +114,7 @@ Comercial › Seguimiento (venta) y Compras › Ruta de compras (compra).
 | Configurables por CUIT y punto de venta | ✅ | Configuración › Empresas y comprobantes (talonarios) |
 | La X con numeración interna | ✅ | Se toma del talonario al guardar, por empresa (`X-0001-00000001`) |
 | La X fuera de reportes fiscales | ✅ | Contabilidad › Libro IVA no la incluye nunca |
+| Percepciones e impuesto interno en la factura de compra y en el libro IVA compras | ✅ | `Expense.perception*`, `internalTax*`; se precargan desde la OC; ver [[../decisiones/2026-10-impuestos-solicitud-compra]] |
 | La X sí cuenta para gestión | ✅ | Cuentas corrientes, recibos, tablero, rentabilidad |
 | X sustituida por fiscal sin duplicar | ✅ | Botón "Sustituir": la X queda sustituida y lo cobrado pasa a la fiscal |
 
