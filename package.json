@@ -23,7 +23,8 @@
     "migrate:clients": "node --env-file-if-exists=.env scripts/migrate-client-phones.mjs",
     "migrate:progress": "node --env-file-if-exists=.env scripts/migrate-work-progress.mjs",
     "migrate:cash-accounts": "node --env-file-if-exists=.env scripts/migrate-cash-accounts.mjs",
-    "migrate:purchases": "node --env-file-if-exists=.env scripts/migrate-purchases.mjs"
+    "migrate:purchases": "node --env-file-if-exists=.env scripts/migrate-purchases.mjs",
+    "migrate:heic": "tsx --env-file-if-exists=.env scripts/convert-heic-uploads.ts"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",
@@ -32,6 +33,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "fflate": "0.8.2",
+    "heic-convert": "^2.1.0",
     "jose": "^6.2.8",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.31.0",

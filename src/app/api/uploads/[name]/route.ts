@@ -3,6 +3,7 @@ import path from "node:path";
 import { requireSession } from "@/lib/auth";
 import { apiError } from "@/lib/api";
 import { UPLOAD_TYPES } from "@/lib/upload-types";
+import { sniffImageType } from "@/lib/heic";
 
 const validName = new RegExp(`^[a-f\\d-]+(${Object.keys(UPLOAD_TYPES).map(extension => `\\${extension}`).join("|")})$`, "i");
 
@@ -23,7 +24,8 @@ export async function GET(request: Request, context: RouteContext<"/api/uploads/
     const disposition = download || !type?.inline ? "attachment" : "inline";
     return new Response(file, {
       headers: {
-        "content-type": type?.mime || "application/octet-stream",
+        // Una foto con la extensión cambiada (un JPEG guardado como .png) se sirve con su tipo real.
+        "content-type": (type?.mime.startsWith("image/") && sniffImageType(file)) || type?.mime || "application/octet-stream",
         "content-disposition": `${disposition}; filename="${filename.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
         "x-content-type-options": "nosniff",
         "cache-control": "private, max-age=3600",

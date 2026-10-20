@@ -622,7 +622,7 @@ function PhotosEditor({ draft, change, compact = false }: StepProps & { compact?
   const content = <>
     <div className="insp-photos">
       {draft.photos.map((photo, index) => <figure key={photo}><Image src={photo} alt={`Foto ${index + 1}`} width={240} height={160} unoptimized /><button type="button" aria-label="Quitar foto" onClick={() => change({ photos: draft.photos.filter(item => item !== photo) })}><X size={14} /></button></figure>)}
-      <label className="photo-picker insp-photo-add"><ImagePlus /> {busy ? "Subiendo…" : "Agregar fotos"}<input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy} onChange={event => { void upload(event.target.files); }} /></label>
+      <label className="photo-picker insp-photo-add"><ImagePlus /> {busy ? "Subiendo…" : "Agregar fotos"}<input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple disabled={busy} onChange={event => { void upload(event.target.files); }} /></label>
     </div>
     {error && <p className="form-error">{error}</p>}
   </>;

@@ -52,7 +52,7 @@ Producción corre en un VPS propio (el que resuelve `pinosoluciones.consultoriad
 - PM2 corre `pinos-web` (puerto `3515`) y `pinos-worker`, y arranca solo con el servidor (`pm2 startup` + `pm2 save`).
 - Nginx atiende el 80 y el 443 y hace proxy a `127.0.0.1:3515`; el certificado lo emite y renueva Certbot. La base de `deploy/pinosoluciones.nginx.conf` es el bloque `:80`: Certbot agrega solo el 443 y la redirección.
 - MongoDB 7 corre en Docker (container `mongodb`), escuchando solo en `127.0.0.1:27017`.
-- Los archivos subidos van a `/var/lib/pinos/uploads` (`UPLOAD_DIR`).
+- Los archivos subidos van a `/var/lib/pinos/uploads` (`UPLOAD_DIR`). Las fotos HEIC del iPhone se pasan a JPEG al subirlas (`src/lib/heic.ts`), porque Chrome y Edge no las muestran; se reconocen por el contenido, aunque vengan con extensión `.jpg` o `.png`.
 - PM2 está instalado con pnpm global y en una sesión SSH sin terminal interactiva no está en el `PATH`: usar `/root/.local/share/pnpm/bin/pm2` o hacer antes `export PATH=/root/.local/share/pnpm:/root/.local/share/pnpm/bin:$PATH` (pnpm está en la primera carpeta y pm2 en `bin`).
 
 ### Instalación desde cero
@@ -101,6 +101,7 @@ Si la versión trae una migración de datos, va después del build y antes del r
 
 - `pnpm migrate:purchases`: pasa las compras al circuito nuevo. Las solicitudes viejas toman número SC-n y el número anterior queda en `legacyNumber`. Los estados se pasan a los nuevos, las OP de facturas de una OC se atan a la OC y se recalcula lo pagado de cada OC. Sin `--apply` solo cuenta lo que haría.
 - `pnpm migrate:cash-accounts`: arma el maestro de cajas y cuentas bancarias con los nombres que se escribían a mano en caja, recibos y pagos. Sin `--apply` solo muestra cómo agruparía los nombres. Si dos nombres distintos son la misma cuenta, se unen con un mapa JSON (`--map mapa.json`, con `{ "como se escribió": "nombre de la cuenta" }`). Con `--apply` crea las cuentas y ata cada movimiento a la suya. Después, en Tesorería › Cajas y cuentas bancarias, hay que revisar la empresa, el tipo, el banco y el saldo inicial de cada cuenta.
+- `pnpm migrate:heic`: pasa a JPEG las fotos HEIC que se subieron antes con extensión de imagen y se veían rotas. Las convierte en el lugar, con el mismo nombre, y guarda el original en `/var/lib/pinos/heic-originales`. Sin `--apply` solo las lista.
 - `pnpm exec tsx --env-file=.env scripts/migrate-protex-consumer.ts --file /ruta/lista.xlsx`: completa los precios finales de los 211 productos de la lista vigente de Protex y ajusta su vigencia al 01/09/2026. Primero ejecutarlo sin `--apply`; luego repetirlo con `--apply`.
 
 ## Factura electrónica (ARCA)
