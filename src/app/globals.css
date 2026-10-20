@@ -706,6 +706,8 @@ td b { color: #273449; }
 .select-trigger .chevron.open { transform: rotate(180deg); }
 .select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-value.placeholder { color: #9aa4b2; font-weight: 550; }
+/* Los paneles que recortan con overflow: hidden dejan salir el desplegable mientras está abierto. */
+.panel:has(.select-popover), .table-panel:has(.select-popover) { overflow: visible; }
 .select-popover { position: absolute; z-index: 90; top: calc(100% + 6px); left: 0; right: 0; padding: 6px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow); animation: menuEnter .14s ease both; }
 .select-search { margin-bottom: 5px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
 .select-search svg { color: var(--muted-2); }
