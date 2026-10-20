@@ -14,7 +14,8 @@ import { applyStockMovement, stockItemForPurchaseLine } from "./stock-service";
 import type { CompanyKey } from "./companies";
 import type { WarehouseKey } from "./warehouses";
 import type { Session } from "./auth";
-import { paymentTermLabels, requestStatusLabels } from "./purchase-flow-labels";
+import { purchaseTermsText, requestStatusLabels } from "./purchase-flow-labels";
+import { PURCHASE_TAX_PCT_KEYS, purchaseTaxFields, storedPurchaseTaxes, type TaxedLine } from "./purchase-taxes";
 
 /*
  * El circuito de compras (requerimiento integral v4, punto 2, con lo que
@@ -74,7 +75,8 @@ export async function emitRequest(id: string, session: Session) {
   if (request.stage !== "solicitud") throw new HttpError("Sólo se emite una solicitud de compra");
   if (request.status !== "borrador") throw new HttpError(`La solicitud ${request.number} ya está ${requestStatusLabels[request.status]?.toLowerCase() || request.status}`, 409);
   if (!request.supplierId) throw new HttpError("Elegí el proveedor antes de emitirla: Tesorería le va a pagar a él");
-  if (!(Number(request.amountCents) > 0)) throw new HttpError("Poné el importe de la solicitud (con IVA) antes de emitirla");
+  if (!(Number(request.amountCents) > 0)) throw new HttpError("Poné el neto de la solicitud antes de emitirla: el total sale de ahí y de los impuestos");
+  if (String(request.paymentTerms || "contado") === "contado" && !request.cashMethod) throw new HttpError("Es de contado: elegí si se paga en efectivo o por transferencia");
   const approval = needsApproval(Number(request.amountCents));
   const update = approval
     ? { status: "pendiente_autorizacion", emittedAt: new Date() }
@@ -99,7 +101,7 @@ export async function emitRequest(id: string, session: Session) {
 async function notifyTreasury(request: PurchaseDoc, supplierName?: string) {
   const order = request.orderId ? await Purchase.findById(request.orderId).select("number").lean<{ number?: string }>() : null;
   const cash = String(request.paymentTerms || "contado") === "contado";
-  const terms = `${paymentTermLabels[String(request.paymentTerms || "contado")]}${request.paymentTerms === "plazo" && request.termDays ? ` a ${request.termDays} días` : ""}`;
+  const terms = purchaseTermsText(request);
   await notify({
     title: `Orden de compra ${order?.number || "nueva"} de la solicitud ${request.number}${cash ? ": pagar de contado" : ""}`,
     body: `${supplierName || "Proveedor"} · ${money(Number(request.amountCents))} · ${terms}. ${cash ? "Se paga con una orden de pago contra la OC." : "Se paga con la orden de pago de sus facturas cuando lleguen."}`,
@@ -196,6 +198,7 @@ async function orderFor(request: PurchaseDoc, session: Session) {
   const claimed = await Purchase.updateOne({ _id: request._id, orderId: { $exists: false } }, { $set: { orderId } });
   if (!claimed.modifiedCount) return Purchase.findById((await Purchase.findById(request._id).select("orderId").lean<{ orderId: unknown }>())?.orderId).lean<PurchaseDoc>();
   const copy = ["company", "supplierId", "workId", "quoteId", "quoteNumber", "neededBy", "priority", "description", "amountCents", "subtotalCents", "vatCents", "notes",
+    "vatPct", "perceptionVatPct", "perceptionVatCents", "perceptionIibbPct", "perceptionIibbCents", "perceptionIibbProvPct", "perceptionIibbProvCents", "internalTaxPct", "internalTaxCents", "cashMethod",
     "priceListId", "priceListDate", "deliverTo", "paymentTerms", "termDays", "requiresAdvance", "requestedDate", "expectedDate"];
   const data: Record<string, unknown> = Object.fromEntries(copy.filter(key => request[key] !== undefined).map(key => [key, request[key]]));
   const order = await Purchase.create({
@@ -434,11 +437,39 @@ export function checkPurchaseChanges(before: Record<string, unknown>, changes: R
   for (const key of SYSTEM_FIELDS) delete changes[key];
   if (before.stage === "solicitud" && before.status === "borrador") return;
   const allowed = before.stage === "solicitud" ? ["notes"] : ORDER_EDITABLE;
-  const blocked = Object.keys(changes).filter(key => !allowed.includes(key) && String(changes[key] ?? "") !== String(before[key] ?? ""));
+  // El neto y los porcentajes se comparan con lo que vale la compra (una de antes no los tiene guardados: el formulario los trae calculados).
+  const stored = storedPurchaseTaxes(before) as Record<string, number>;
+  const same = (key: string) => key in stored ? Math.abs(Number(changes[key] ?? 0) - stored[key]) < 0.005 : String(changes[key] ?? "") === String(before[key] ?? "");
+  const blocked = Object.keys(changes).filter(key => !allowed.includes(key) && !same(key));
   if (blocked.length) throw new HttpError(before.stage === "solicitud"
     ? `La solicitud ${String(before.number)} ya se emitió: queda en sólo lectura. Si hay que cambiarla, Gerencia la anula y se hace una nueva.`
     : `La orden ${String(before.number)} ya está emitida: sólo se cambian la entrega esperada y las notas`, 409);
   for (const key of Object.keys(changes)) if (!allowed.includes(key)) delete changes[key];
+}
+
+/**
+ * El total de una solicitud en borrador no se escribe: sale de sus renglones
+ * (o del neto, si se cargó a mano), el IVA, las percepciones y el impuesto
+ * interno. Lo que llega por la API con sólo el total (de antes, o importado)
+ * se toma como total con IVA al 21 %. De contado lleva el medio; si no, no.
+ */
+export function preparePurchaseAmounts(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
+  if ("paymentTerms" in data && data.paymentTerms !== "contado") data.cashMethod = null;
+  if (before._id && !(before.stage === "solicitud" && before.status === "borrador")) return;
+  const touched = ["subtotalCents", "amountCents", ...PURCHASE_TAX_PCT_KEYS].some(key => key in data && data[key] !== undefined);
+  if (!touched) return;
+  const merged = { ...before, ...data };
+  const items = Array.isArray(merged.items) ? merged.items as TaxedLine[] : [];
+  if (!items.length && data.subtotalCents === undefined && data.amountCents !== undefined) {
+    // Sólo el total: con IVA al 21 % y sin percepciones, como antes.
+    const amountCents = Number(data.amountCents || 0);
+    const subtotalCents = Math.round(amountCents / 1.21);
+    Object.assign(data, { subtotalCents, vatCents: amountCents - subtotalCents, amountCents });
+    return;
+  }
+  const stored = storedPurchaseTaxes(merged);
+  const rates = Object.fromEntries(PURCHASE_TAX_PCT_KEYS.map(key => [key, data[key] ?? stored[key]]));
+  Object.assign(data, purchaseTaxFields(items.length ? items : [{ totalCents: Number(data.subtotalCents ?? stored.subtotalCents) }], rates));
 }
 
 /** Sólo se borra una solicitud en borrador; lo emitido se anula. */

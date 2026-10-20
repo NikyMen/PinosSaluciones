@@ -228,7 +228,7 @@ describe("compra de contado y su factura", () => {
   it("lo pagado contra la OC cubre la factura cuando llega: no aparece otra vez para pagar ni se cuenta dos veces", async () => {
     as("compras", "Compras");
     const supplier = String((await Supplier.create({ name: "Gomería del Norte" }))._id);
-    const request = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId: supplier, description: "Media sombra", amountCents: 120_000_00, paymentTerms: "contado", requestedDate: "2026-10-08" }), params({ entity: "purchases" })));
+    const request = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId: supplier, description: "Media sombra", amountCents: 120_000_00, paymentTerms: "contado", cashMethod: "efectivo", requestedDate: "2026-10-08" }), params({ entity: "purchases" })));
     expect(request.status).toBe(201);
     expect((await call(await emitRoute.POST(json("POST", {}), params({ id: request.body._id })))).status).toBe(200);
 

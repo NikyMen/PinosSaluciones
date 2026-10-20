@@ -648,6 +648,8 @@ const PurchaseLineSchema = new Schema({
   quantity: { type: Number, required: true, min: 0 },
   // Sin IVA: precio de lista, descuento del proveedor y lo que queda por unidad.
   listPriceCents: money, discountPct: { type: Number, default: 0 }, unitCents: money, totalCents: money,
+  // La alícuota de IVA del renglón (21, 10,5 o 27). Sin ella vale la de la solicitud.
+  vatPct: Number,
   // Lo que ya llegó de este renglón con los remitos del proveedor.
   receivedQty: { type: Number, min: 0, default: 0 },
 }, { _id: false });
@@ -679,6 +681,8 @@ const PurchaseSchema = new Schema({
   // La condición de compra: contado, cuenta corriente o a plazo (con los días), y si hay que pagar antes de la entrega.
   paymentTerms: { type: String, enum: ["contado", "cuenta_corriente", "plazo"], default: "contado" }, termDays: Number,
   requiresAdvance: { type: Boolean, default: false },
+  // De contado: si se paga en efectivo o por transferencia. Tesorería lo ve en el aviso y en la orden de pago.
+  cashMethod: { type: String, enum: ["efectivo", "transferencia", null] },
   emittedAt: Date, approval: PurchaseDecisionSchema, rejection: PurchaseDecisionSchema, cancellation: PurchaseDecisionSchema,
   // En la orden: lo pagado (las OP ejecutadas, directas o por sus facturas) y cómo va el pago y la recepción.
   paidCents: { type: Number, default: 0 },
@@ -692,7 +696,13 @@ const PurchaseSchema = new Schema({
   items: { type: [PurchaseLineSchema], default: undefined },
   // El requerimiento de abastecimiento que deja una cotización aprobada: cuánto hace falta, cuánto se reservó y qué falta comprar.
   requestLines: { type: [{ _id: false, stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" }, name: String, unit: String, neededQty: Number, reservedQty: Number, shortageQty: Number }], default: undefined },
-  subtotalCents: Number, vatCents: Number, notes: String,
+  // Los impuestos (reunión con Tesorería, octubre de 2026; src/lib/purchase-taxes.ts): el neto, el IVA (la
+  // alícuota de la solicitud vale para los renglones que no dicen la suya), las percepciones y el impuesto
+  // interno, cada uno con su porcentaje sobre el neto. `amountCents` es la suma: no se escribe a mano.
+  subtotalCents: Number, vatPct: Number, vatCents: Number,
+  perceptionVatPct: Number, perceptionVatCents: Number, perceptionIibbPct: Number, perceptionIibbCents: Number,
+  perceptionIibbProvPct: Number, perceptionIibbProvCents: Number, internalTaxPct: Number, internalTaxCents: Number,
+  notes: String,
   priceListId: { type: Schema.Types.ObjectId, ref: "PriceList" }, priceListDate: Date,
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
   // Dónde entrega el proveedor (un depósito o la obra) y la cotización de la obra, como en las órdenes de antes.

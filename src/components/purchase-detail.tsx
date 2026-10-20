@@ -12,12 +12,13 @@ import { useLedgerAccounts } from "@/components/ledger-account";
 import { date, dateTime, money, qty, todayIso } from "@/lib/format";
 import { companyOf } from "@/lib/companies";
 import { warehouseLabel } from "@/lib/warehouses";
-import { orderStatusLabels, paymentTermLabels, requestStatusLabels } from "@/lib/purchase-flow-labels";
+import { orderStatusLabels, paymentTermLabels, purchaseTermsText, requestStatusLabels } from "@/lib/purchase-flow-labels";
+import { lineVatPct, pctLabel, purchaseTaxRows } from "@/lib/purchase-taxes";
 import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-order-pdf";
 import { PURCHASE_APPROVAL_LIMIT_CENTS } from "@/lib/constants";
 
 type Doc = Record<string, unknown> & { _id: string };
-type Line = { code?: string; name: string; presentation?: string; quantity: number; unitCents: number; totalCents: number; receivedQty?: number };
+type Line = { code?: string; name: string; presentation?: string; quantity: number; unitCents: number; totalCents: number; receivedQty?: number; vatPct?: number };
 type Detail = {
   request: Doc | null; order: Doc | null; payments: Doc[]; receipts: Doc[]; expenses: Doc[]; supplier: Doc | null; work: Doc | null;
   totals: { totalCents: number; paidCents: number; committedCents: number; withoutOrderCents: number; pendingCents: number };
@@ -138,10 +139,10 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
         {!detail ? <div className="loading-state">Cargando…</div> : <>
           <div className="price-kpis tracking-kpis">
             <div className="stock-kpi"><span>Solicitud {request ? String(request.number) : ""}</span><strong>{request ? requestStatusLabels[String(request.status)] || String(request.status) : "—"}</strong>
-              <small>{request ? `${paymentTermLabels[String(request.paymentTerms || "contado")]}${request.paymentTerms === "plazo" && request.termDays ? ` a ${String(request.termDays)} días` : ""}${request.requiresAdvance ? " · con anticipo" : ""}${request.legacyNumber ? ` · antes ${String(request.legacyNumber)}` : ""}` : "Cargada como orden"}</small></div>
+              <small>{request ? `${purchaseTermsText(request)}${request.requiresAdvance ? " · con anticipo" : ""}${request.legacyNumber ? ` · antes ${String(request.legacyNumber)}` : ""}` : "Cargada como orden"}</small></div>
             <div className="stock-kpi"><span>Orden de compra</span><strong>{order ? `${String(order.number)} · ${orderStatusLabels[String(order.status)] || String(order.status)}` : "Todavía no"}</strong>
               <small>{order ? `Recepción: ${String(order.receptionStatus || "pendiente")}` : request?.status === "autorizada" ? "Se genera al emitir la orden de pago (solicitud de antes)" : "Nace cuando se autoriza la solicitud"}</small></div>
-            <div className="stock-kpi"><span>Total</span><strong>{money(detail.totals.totalCents)}</strong><small>Con IVA</small></div>
+            <div className="stock-kpi"><span>Total</span><strong>{money(detail.totals.totalCents)}</strong><small title={main ? taxSummary(main) : undefined}>{main ? taxShort(main) : "Con impuestos"}</small></div>
             <div className={detail.totals.pendingCents > 0 && order ? "stock-kpi alert" : "stock-kpi"}><span>Pagado</span><strong>{money(detail.totals.paidCents)}</strong>
               <small>Saldo {money(detail.totals.pendingCents)}{detail.totals.committedCents > detail.totals.paidCents ? ` · ${money(detail.totals.committedCents - detail.totals.paidCents)} en OP emitidas` : ""}</small></div>
           </div>
@@ -171,9 +172,9 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
           {panel === "receive" && order && <ReceiveForm order={order} items={items} busy={busy} onSubmit={body => act("receive", body, "Remito cargado: la mercadería sumó al stock.")} onError={setError} />}
 
           {items.length > 0 && <><h3 className="purchase-section">Productos</h3>
-            <table className="picked-lines"><thead><tr><th>Producto</th><th>Pedido</th>{order && <th>Recibido</th>}<th>Unitario (sin IVA)</th><th>Total</th></tr></thead><tbody>
+            <table className="picked-lines"><thead><tr><th>Producto</th><th>Pedido</th>{order && <th>Recibido</th>}<th>Unitario (sin IVA)</th><th>IVA</th><th>Total</th></tr></thead><tbody>
               {items.map((line, index) => <tr key={index}><td data-label="Producto">{line.name}{line.presentation ? ` · ${line.presentation}` : ""}</td><td data-label="Pedido">{qty(line.quantity)}</td>
-                {order && <td data-label="Recibido">{qty(Number(line.receivedQty || 0))}</td>}<td data-label="Unitario">{money(line.unitCents)}</td><td data-label="Total">{money(line.totalCents)}</td></tr>)}
+                {order && <td data-label="Recibido">{qty(Number(line.receivedQty || 0))}</td>}<td data-label="Unitario">{money(line.unitCents)}</td><td data-label="IVA">{pctLabel(lineVatPct(line, Number(main?.vatPct) || undefined))}</td><td data-label="Total">{money(line.totalCents)}</td></tr>)}
             </tbody></table></>}
 
           <h3 className="purchase-section">Órdenes de pago</h3>
@@ -222,13 +223,26 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
   </div>;
 }
 
+/** El neto y los impuestos de una compra, en una línea: "Neto $ 1.000.000 · IVA 21 % $ 210.000 · …". */
+function taxSummary(purchase: Record<string, unknown>) {
+  const { subtotalCents, rows } = purchaseTaxRows(purchase);
+  return [`Neto ${money(subtotalCents)}`, ...rows.map(row => `${row.label} ${money(row.cents)}`)].join(" · ");
+}
+
+/** Lo mismo, corto, para la tarjeta del total: "Neto $ 1.000.000 + impuestos $ 170.000". */
+function taxShort(purchase: Record<string, unknown>) {
+  const { subtotalCents, rows } = purchaseTaxRows(purchase);
+  return `Neto ${money(subtotalCents)} + impuestos ${money(rows.reduce((total, row) => total + row.cents, 0))}`;
+}
+
 /** La orden de pago contra la OC, sin factura (contado o anticipo): se paga ahora o queda emitida con su vencimiento. Cuando llega la factura, la cubre sola. Las facturas se pagan desde Tesorería › Órdenes de pago. */
 function PaymentOrderForm({ detail, busy, onSubmit, onError }: { detail: Detail; busy: boolean; onSubmit: (body: Record<string, unknown>) => Promise<boolean>; onError: (message: string) => void }) {
   const source = detail.order || detail.request;
   const terms = String(source?.paymentTerms || "contado");
   const [amount, setAmount] = useState(detail.totals.withoutOrderCents / 100);
   const [execute, setExecute] = useState(terms === "contado" || Boolean(source?.requiresAdvance));
-  const [method, setMethod] = useState("transferencia");
+  // De contado, el medio que dijo Compras en la solicitud.
+  const [method, setMethod] = useState(String(source?.cashMethod || "transferencia"));
   const [accountId, setAccountId] = useState("");
   const accounts = useLedgerAccounts("egreso");
 

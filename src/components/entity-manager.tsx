@@ -26,6 +26,7 @@ import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-o
 import { downloadQuotePdf, quotePdfData } from "@/lib/quote-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
 import { InvoiceFields } from "@/components/invoice-fields";
+import { PurchaseFields } from "@/components/purchase-fields";
 import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { WorkTypesModal } from "@/components/work-types-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
@@ -601,7 +602,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           : entity === "invoices"
             ? <InvoiceFields fields={config.fields} fieldProps={fieldProps} editing={editing} draft={draft} quotes={relations.quotes || []} works={relations.works || []}
               onRelations={patch => setRelationValues(current => ({ ...current, ...patch }))} />
-            : <div className="form-grid">{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
+            : entity === "purchases"
+              ? <PurchaseFields fields={formFields} fieldProps={fieldProps} editing={editing} />
+              : <div className="form-grid">{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
         </div>
         {error && <p className="form-error modal-error">{error}</p>}
         <footer><span>Los cambios quedan registrados automáticamente.</span><button type="button" className="secondary-btn" onClick={() => setModal(false)}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></footer>

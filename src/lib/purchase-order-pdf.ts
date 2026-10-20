@@ -1,6 +1,7 @@
 import type { jsPDF } from "jspdf";
 import { date, money, qty } from "./format";
-import { VAT_RATE } from "./price-lists";
+import { lineVatPct, pctLabel, purchaseTaxRows, storedPurchaseTaxes } from "./purchase-taxes";
+import { purchaseTermsText } from "./purchase-flow-labels";
 import { amountInWords, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
 import { deliveryLabel } from "./warehouses";
 import { companyOf, type CompanyKey } from "./companies";
@@ -9,21 +10,23 @@ import { companyOf, type CompanyKey } from "./companies";
  * Orden de compra en PDF: el papel que se le pasa al proveedor para hacer el
  * pedido. Sigue el modelo de las órdenes del sistema anterior: membrete con los
  * datos de la empresa, el proveedor y los datos de la entrega, un renglón por
- * producto, los totales con el importe en letras, a nombre de quién va la
- * factura y la firma del responsable.
+ * producto con su alícuota de IVA, los totales (neto, IVA por alícuota,
+ * percepciones e impuesto interno) con el importe en letras, a nombre de quién
+ * va la factura y la firma del responsable.
  */
 
 export type PurchaseOrderLine = {
   code?: string; name: string; presentation?: string; quantity: number;
   listPriceCents: number; discountPct: number; unitCents: number; totalCents: number;
+  /** La alícuota de IVA del renglón. */ vatPct?: number;
   /** Para el detalle de una orden cargada a mano: se parte en varias líneas en vez de cortarse. */
   wrap?: boolean;
 };
 
 export type PurchaseOrderPdfData = {
-  /** Una solicitud de compra (SC-n) o la orden de compra (OC-n) que genera Tesorería con la orden de pago. */
+  /** Una solicitud de compra (SC-n) o la orden de compra (OC-n), que nace al autorizarla. */
   kind?: "solicitud" | "orden";
-  /** La condición de compra: contado, cuenta corriente o a plazo. */
+  /** La condición de compra: contado (en efectivo o por transferencia), cuenta corriente o a plazo. */
   paymentTerms?: string;
   /** Qué empresa compra: su membrete y a su nombre la factura. */
   company?: CompanyKey;
@@ -40,6 +43,8 @@ export type PurchaseOrderPdfData = {
   items: PurchaseOrderLine[];
   subtotalCents: number;
   vatCents: number;
+  /** Lo que va del neto al total, renglón por renglón: el IVA de cada alícuota, las percepciones y el impuesto interno. */
+  taxes?: Array<{ label: string; cents: number }>;
   totalCents: number;
 };
 
@@ -70,7 +75,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   }
 
   // Columnas de la tabla: código y producto a la izquierda, números a la derecha.
-  const col = { code: MARGIN + 3, product: MARGIN + 27, qty: 114, list: 137, discount: 151, unit: 170, total: WIDTH - MARGIN - 3 };
+  const col = { code: MARGIN + 3, product: MARGIN + 27, qty: 108, list: 128, discount: 141, vat: 153, unit: 172, total: WIDTH - MARGIN - 3 };
 
   function tableHead() {
     setFill([237, 241, 246]);
@@ -83,6 +88,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
     doc.text("CANT.", col.qty, y, { align: "right" });
     doc.text("P. LISTA", col.list, y, { align: "right" });
     doc.text("BONIF.", col.discount, y, { align: "right" });
+    doc.text("IVA", col.vat, y, { align: "right" });
     doc.text("P. UNIT.", col.unit, y, { align: "right" });
     doc.text("IMPORTE", col.total, y, { align: "right" });
     y += 8;
@@ -190,6 +196,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
     doc.text(plain(qty(item.quantity)), col.qty, y, { align: "right" });
     doc.text(plain(money(item.listPriceCents)), col.list, y, { align: "right" });
     doc.text(item.discountPct ? plain(`${qty(item.discountPct)}%`) : "-", col.discount, y, { align: "right" });
+    doc.text(item.vatPct ? plain(pctLabel(item.vatPct).replace(" ", "")) : "-", col.vat, y, { align: "right" });
     doc.text(plain(money(item.unitCents)), col.unit, y, { align: "right" });
     doc.setFont("helvetica", "bold");
     doc.text(plain(money(item.totalCents)), col.total, y, { align: "right" });
@@ -206,23 +213,27 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   y += 8;
 
   /* ── Condiciones | totales ───────────────────────────────────────────────── */
-  ensure(62);
-  const totalWidth = 82;
+  const taxes = data.taxes?.length ? data.taxes : [{ label: "IVA 21 %", cents: data.vatCents }];
+  const rows: Array<[string, number]> = [["Subtotal (sin IVA)", data.subtotalCents], ...taxes.map(row => [row.label, row.cents] as [string, number])];
+  const totalsHeight = 17 + rows.length * 6.5;
+  ensure(totalsHeight + 32);
+  const totalWidth = 86;
   const totalX = WIDTH - MARGIN - totalWidth;
   setFill([248, 250, 252]);
-  doc.roundedRect(totalX, y - 6, totalWidth, 30, 2, 2, "F");
+  doc.roundedRect(totalX, y - 6, totalWidth, totalsHeight, 2, 2, "F");
   setColor(MUTED);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
-  doc.text("Subtotal (sin IVA)", totalX + 5, y);
-  doc.text(plain(money(data.subtotalCents)), WIDTH - MARGIN - 5, y, { align: "right" });
-  doc.text(`IVA ${Math.round(VAT_RATE * 100)}%`, totalX + 5, y + 6.5);
-  doc.text(plain(money(data.vatCents)), WIDTH - MARGIN - 5, y + 6.5, { align: "right" });
+  rows.forEach(([label, cents], index) => {
+    doc.text(clip(label, totalWidth - 38), totalX + 5, y + index * 6.5);
+    doc.text(plain(money(cents)), WIDTH - MARGIN - 5, y + index * 6.5, { align: "right" });
+  });
+  const totalY = y + rows.length * 6.5 + 4;
   setColor(NAVY);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11.5);
-  doc.text("TOTAL", totalX + 5, y + 17);
-  doc.text(plain(money(data.totalCents)), WIDTH - MARGIN - 5, y + 17, { align: "right" });
+  doc.text("TOTAL", totalX + 5, totalY);
+  doc.text(plain(money(data.totalCents)), WIDTH - MARGIN - 5, totalY, { align: "right" });
 
   // A la izquierda: la condición de devolución y las observaciones.
   const noteWidth = totalX - MARGIN - 8;
@@ -239,7 +250,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
     doc.text(line, MARGIN, noteY);
     noteY += 4.2;
   }
-  y = Math.max(y + 32, noteY + 4);
+  y = Math.max(y + totalsHeight + 2, noteY + 4);
 
   // Son pesos, y a nombre de quién va la factura.
   setColor(INK);
@@ -284,21 +295,18 @@ const isoOrUndefined = (value: unknown) => value ? new Date(String(value instanc
 export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier: Loose, work: Loose, quoteNumber?: string): PurchaseOrderPdfData {
   let items = (Array.isArray(purchase.items) ? purchase.items : []) as PurchaseOrderLine[];
   const amountCents = Number(purchase.amountCents || 0);
-  let subtotalCents = Number(purchase.subtotalCents ?? items.reduce((total, item) => total + Number(item.totalCents || 0), 0));
-  let vatCents = Number(purchase.vatCents ?? Math.round(subtotalCents * VAT_RATE));
+  const { subtotalCents, rows: taxes } = purchaseTaxRows(purchase);
+  const vatPct = storedPurchaseTaxes(purchase).vatPct;
   if (!items.length) {
-    // Orden cargada a mano: sin renglones de producto, el detalle es el único renglón y el importe es el total.
-    subtotalCents = Math.round(amountCents / (1 + VAT_RATE));
-    vatCents = amountCents - subtotalCents;
+    // Cargada a mano: sin renglones de producto, el detalle es el único renglón, por el neto.
     items = [{
-      name: String(purchase.description || "Compra"), quantity: 1, wrap: true,
+      name: String(purchase.description || "Compra"), quantity: 1, wrap: true, vatPct,
       listPriceCents: subtotalCents, discountPct: 0, unitCents: subtotalCents, totalCents: subtotalCents,
     }];
   }
-  const terms = String(purchase.paymentTerms || "");
   return {
     kind: purchase.stage === "solicitud" ? "solicitud" : "orden",
-    paymentTerms: terms === "plazo" ? `a plazo${purchase.termDays ? `, ${String(purchase.termDays)} días` : ""}` : terms === "cuenta_corriente" ? "cuenta corriente" : terms === "contado" ? "contado" : undefined,
+    paymentTerms: purchase.paymentTerms ? purchaseTermsText(purchase).toLowerCase() : undefined,
     company: companyOf(purchase.company).key,
     number: String(purchase.number || ""),
     requestedDate: isoOrUndefined(purchase.requestedDate) || new Date().toISOString(),
@@ -315,9 +323,11 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
     items: items.map(item => ({
       code: item.code || "", name: item.name, presentation: item.presentation || "", quantity: Number(item.quantity || 0), wrap: item.wrap,
       listPriceCents: Number(item.listPriceCents || 0), discountPct: Number(item.discountPct || 0), unitCents: Number(item.unitCents || 0), totalCents: Number(item.totalCents || 0),
+      vatPct: lineVatPct(item, vatPct),
     })),
     subtotalCents,
-    vatCents,
+    vatCents: taxes.filter(row => row.label.startsWith("IVA")).reduce((total, row) => total + row.cents, 0),
+    taxes,
     totalCents: amountCents,
   };
 }

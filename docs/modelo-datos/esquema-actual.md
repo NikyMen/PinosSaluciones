@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-10-15 · 28 colecciones.
+Generado el 2026-10-20 · 28 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -335,6 +335,7 @@ Colección `purchases` · entidad `purchases`
 | `paymentTerms` | texto | — | valores: `contado` · `cuenta_corriente` · `plazo` · por defecto `"contado"` |
 | `termDays` | número | — | — |
 | `requiresAdvance` | sí/no | — | por defecto `false` |
+| `cashMethod` | texto | — | valores: `efectivo` · `transferencia` · `null` |
 | `emittedAt` | fecha | — | — |
 | `approval` | objeto | — | — |
 | `approval.userId` | referencia | — | — |
@@ -388,6 +389,7 @@ Colección `purchases` · entidad `purchases`
 | `items.discountPct` | número | — | por defecto `0` |
 | `items.unitCents` | número | — | mínimo 0 · por defecto `0` |
 | `items.totalCents` | número | — | mínimo 0 · por defecto `0` |
+| `items.vatPct` | número | — | — |
 | `items.receivedQty` | número | — | mínimo 0 · por defecto `0` |
 | `requestLines` | lista de objetos | — | — |
 | `requestLines.stockItemId` | referencia | — | apunta a **StockItem** |
@@ -397,7 +399,16 @@ Colección `purchases` · entidad `purchases`
 | `requestLines.reservedQty` | número | — | — |
 | `requestLines.shortageQty` | número | — | — |
 | `subtotalCents` | número | — | — |
+| `vatPct` | número | — | — |
 | `vatCents` | número | — | — |
+| `perceptionVatPct` | número | — | — |
+| `perceptionVatCents` | número | — | — |
+| `perceptionIibbPct` | número | — | — |
+| `perceptionIibbCents` | número | — | — |
+| `perceptionIibbProvPct` | número | — | — |
+| `perceptionIibbProvCents` | número | — | — |
+| `internalTaxPct` | número | — | — |
+| `internalTaxCents` | número | — | — |
 | `notes` | texto | — | — |
 | `priceListId` | referencia | — | apunta a **PriceList** |
 | `priceListDate` | fecha | — | — |

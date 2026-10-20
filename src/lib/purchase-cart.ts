@@ -16,6 +16,7 @@ export type CartLine = {
   code: string; name: string; presentation: string; minSale: string;
   /** Sin IVA, al momento de agregarlo. */ listCents: number; ownCents: number;
   quantity: number;
+  /** La alícuota de IVA del renglón, si no es la de la solicitud. */ vatPct?: number;
 };
 
 const KEY = "pino.pedido-de-compra";
@@ -65,6 +66,10 @@ export const purchaseCart = {
   setQuantity(itemId: string, quantity: number) {
     if (!(quantity > 0)) return purchaseCart.remove(itemId);
     write(read().map(line => line.itemId === itemId ? { ...line, quantity } : line));
+  },
+  /** Sin alícuota, el renglón vuelve a ir con la de la solicitud. */
+  setVatPct(itemId: string, vatPct?: number) {
+    write(read().map(line => line.itemId === itemId ? { ...line, vatPct } : line));
   },
   remove(itemId: string) { write(read().filter(line => line.itemId !== itemId)); },
   /** Después de cerrar la orden de un proveedor, sus productos salen del pedido. */

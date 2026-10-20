@@ -6,24 +6,33 @@ import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
 import { createPurchaseOrder, PurchaseOrderError } from "@/lib/purchase-orders";
 import { WAREHOUSE_KEYS } from "@/lib/warehouses";
+import { DEFAULT_PURCHASE_VAT_PCT, isPurchaseVatRate } from "@/lib/purchase-taxes";
 
 const id = z.string().regex(/^[a-f\d]{24}$/i, "ID inválido");
+const vatPct = z.coerce.number().refine(isPurchaseVatRate, "El IVA es 21 %, 10,5 % o 27 %");
+const taxPct = z.coerce.number().min(0, "El porcentaje no puede ser negativo").max(100, "El porcentaje no puede pasar el 100 %").optional().default(0);
 const schema = z.object({
   company: z.enum(["tvp", "constructora"]).default("tvp"),
   supplierId: id,
   items: z.array(z.object({
     itemId: id,
     quantity: z.coerce.number().positive("Las cantidades tienen que ser mayores a cero").max(1_000_000),
+    // Sin alícuota propia, el renglón va con la de la solicitud.
+    vatPct: vatPct.optional(),
   })).min(1, "El pedido está vacío").max(500),
   workId: z.union([id, z.literal("")]).optional().transform(value => value || undefined),
   requestedDate: z.string({ error: "Poné la fecha de la orden" }).regex(/^\d{4}-\d{2}-\d{2}$/, "Poné la fecha de la orden").transform(value => new Date(`${value}T00:00:00.000Z`)),
   expectedDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal("")]).optional().transform(value => value ? new Date(`${value}T00:00:00.000Z`) : undefined),
   notes: z.string().trim().max(1000).optional().default(""),
   deliverTo: z.enum([...WAREHOUSE_KEYS, "obra"]).optional().default("central"),
-  // La condición de compra: contado, cuenta corriente o a plazo (con los días).
+  // La condición de compra: contado (en efectivo o por transferencia), cuenta corriente o a plazo (con los días).
   paymentTerms: z.enum(["contado", "cuenta_corriente", "plazo"]).optional().default("contado"),
   termDays: z.coerce.number().int().min(1).max(365).optional(),
+  cashMethod: z.enum(["efectivo", "transferencia"]).optional(),
   requiresAdvance: z.boolean().optional().default(false),
+  // Los impuestos: el IVA de la solicitud y, sobre el neto, las percepciones y el impuesto interno.
+  vatPct: vatPct.optional().default(DEFAULT_PURCHASE_VAT_PCT),
+  perceptionVatPct: taxPct, perceptionIibbPct: taxPct, perceptionIibbProvPct: taxPct, internalTaxPct: taxPct,
 });
 
 /** Cierra el pedido de un proveedor: crea la solicitud de compra emitida y devuelve los datos para el PDF. */
@@ -34,9 +43,10 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || "Pedido inválido" }, { status: 400 });
     await connectDB();
-    const { company, supplierId, items, workId, requestedDate, expectedDate, deliverTo, notes, paymentTerms, termDays, requiresAdvance } = parsed.data;
+    const { company, supplierId, items, workId, requestedDate, expectedDate, deliverTo, notes, paymentTerms, termDays, cashMethod, requiresAdvance, ...taxes } = parsed.data;
     if (paymentTerms === "plazo" && !termDays) return Response.json({ error: "Poné a cuántos días es el plazo" }, { status: 400 });
-    const result = await createPurchaseOrder({ company, supplierId, lines: items, workId, requestedDate, expectedDate, deliverTo, notes, paymentTerms, termDays, requiresAdvance, session });
+    if (paymentTerms === "contado" && !cashMethod) return Response.json({ error: "Es de contado: elegí si se paga en efectivo o por transferencia" }, { status: 400 });
+    const result = await createPurchaseOrder({ company, supplierId, lines: items, workId, requestedDate, expectedDate, deliverTo, notes, paymentTerms, termDays, cashMethod, requiresAdvance, taxes, session });
     await audit(session, "create", "purchases", result.purchase._id, null, result.purchase, request.headers.get("x-forwarded-for") || undefined);
     return Response.json(result, { status: 201 });
   } catch (error) {

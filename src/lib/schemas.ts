@@ -4,6 +4,7 @@ import { WAREHOUSE_KEYS } from "./warehouses";
 import { ACCOUNT_CODES } from "./account-catalog";
 import { INVOICE_STATUSES, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES } from "./invoice-labels";
 import { VAT_CONDITION_KEYS } from "./fiscal";
+import { isPurchaseVatRate } from "./purchase-taxes";
 import { CHECK_RESULTS, INSPECTION_RUBROS, MATERIAL_CONDITIONS, ORDER_STATUS, PERFORMANCE, PRODUCTION_CONSUMPTION, WEATHER } from "./inspections";
 
 const id = z.string().regex(/^[a-f\d]{24}$/i, "ID inválido");
@@ -12,6 +13,8 @@ const text = z.string().trim().min(1);
 const optionalText = z.string().trim().optional().default("");
 const cents = z.coerce.number().int().min(0);
 const company = z.enum(["tvp", "constructora"]);
+// Un porcentaje de impuesto: una percepción o el impuesto interno. Vacío es cero.
+const taxPct = z.preprocess(v => v === "" || v === null ? undefined : v, z.coerce.number().min(0, "El porcentaje no puede ser negativo").max(100, "El porcentaje no puede pasar el 100 %").optional());
 // El motivo de cambiar la cuenta del plan de algo ya guardado. No se guarda como campo: va a la historia de la imputación.
 const accountChangeReason = z.string().trim().max(500).optional();
 const optionalIds = z.preprocess(value => {
@@ -39,10 +42,15 @@ export const schemas: Record<Entity, z.ZodObject<z.ZodRawShape>> = {
   suppliers: z.object({ name: text, cuit: z.union([cuit, z.literal("")]).optional(), contactName: optionalText, email: optionalText, phone: optionalText, address: optionalText, notes: optionalText, discountPct: z.coerce.number().min(0, "El descuento no puede ser negativo").max(100, "El descuento no puede pasar el 100%").optional(), active: z.boolean().optional().default(true) }),
   stock: z.object({ name: text, sku: optionalText, barcode: optionalText, category: z.enum(["materiales", "herramientas", "seguridad", "consumibles", "otros"]), unit: z.enum(["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "rollo"]), minQuantity: z.coerce.number().min(0).optional(), ...Object.fromEntries(WAREHOUSE_KEYS.map(key => [`min_${key}`, z.coerce.number().min(0).optional()])), supplierId: optionalId, location: optionalText, notes: optionalText, active: z.boolean().optional().default(true) }),
   // Sin número, el sistema pone el siguiente OC-: el mismo correlativo que las órdenes del buscador de precios.
-  purchases: z.object({ company: z.enum(["tvp", "constructora"]).default("tvp"), number: z.string().trim().optional().transform(v => v || undefined), supplierId: optionalId, workId: optionalId, quoteId: optionalId, neededBy: optionalDate, priority: z.enum(["alta", "media", "baja"]).default("media"), description: text, amountCents: cents,
+  purchases: z.object({ company: z.enum(["tvp", "constructora"]).default("tvp"), number: z.string().trim().optional().transform(v => v || undefined), supplierId: optionalId, workId: optionalId, quoteId: optionalId, neededBy: optionalDate, priority: z.enum(["alta", "media", "baja"]).default("media"), description: text,
+    // El total no se escribe: sale del neto y los impuestos (src/lib/purchase-taxes.ts). Si llega sólo el total, es con IVA al 21 %.
+    amountCents: cents.optional(), subtotalCents: cents.optional(),
+    vatPct: z.preprocess(v => v === "" || v === null ? undefined : v, z.coerce.number().refine(isPurchaseVatRate, "El IVA es 21 %, 10,5 % o 27 %").optional()),
+    perceptionVatPct: taxPct, perceptionIibbPct: taxPct, perceptionIibbProvPct: taxPct, internalTaxPct: taxPct,
+    cashMethod: z.preprocess(v => v || undefined, z.enum(["efectivo", "transferencia"]).optional()),
     // La etapa y el estado no se eligen: los mueven las acciones del circuito (src/lib/purchase-flow.ts).
     stage: z.enum(["solicitud", "orden", "recepcion"]).optional(), status: z.string().optional(),
-    paymentTerms: z.enum(["contado", "cuenta_corriente", "plazo"]).default("contado"), termDays: z.union([z.literal(""), z.coerce.number().int().min(1).max(365)]).optional().transform(v => v || undefined),
+    paymentTerms: z.enum(["contado", "cuenta_corriente", "plazo"]).default("contado"), termDays: z.union([z.literal(""), z.literal(0), z.coerce.number().int().min(1).max(365)]).optional().transform(v => v || undefined),
     requiresAdvance: z.preprocess(value => value === true || value === "true" || value === "si", z.boolean()).optional().default(false),
     deliverTo: z.enum([...WAREHOUSE_KEYS, "obra"]).optional(), notes: optionalText,
     requestedDate: date, expectedDate: optionalDate, receivedDate: optionalDate, receiptNotes: optionalText }),

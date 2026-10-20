@@ -75,6 +75,7 @@ exacto. Lo que no se encuentra cuenta como faltante entero.
 | Factura de compra A/C/X atada a la OC y al remito o conformidad | ✅ | `Expense.purchaseId`, `receiptRef`; hereda empresa, proveedor y obra |
 | Orden de pago desde la factura; pago desde la OP | ✅ | `Payment.status`: emitida (no descuenta) → pagada. Número OP-n, retenciones, vencimiento |
 | Circuito del requerimiento v4: solicitud SC-n de sólo lectura, autorización desde $500.000, la OC nace al autorizarse (desde oct. 2026; antes, con la OP), pagos parciales, remitos de compra | ✅ | `src/lib/purchase-flow.ts`; ver [[respuesta-v4]] |
+| Impuestos de la solicitud: IVA por renglón (21 %, 10,5 % o 27 %), percepciones de IVA, IIBB e IIBB provincial, impuesto interno; total calculado; medio de contado | ✅ | `src/lib/purchase-taxes.ts`; ver [[../decisiones/2026-10-impuestos-solicitud-compra]] |
 | Ruta cerrada, en los dos sentidos | ✅ | Compras › Ruta de compras, con control de tres vías y documentos sin vínculo |
 | Una OP que agrupa varias facturas | ✅ | Tesorería › Órdenes de pago › Nueva: facturas del proveedor, total o parcial, y notas de crédito que restan (`Payment.allocations`); ver [[../decisiones/2026-10-orden-de-pago-varias-facturas]] |
 | Lo pagado de contado o como anticipo contra la OC cubre sus facturas | ✅ | Se aplica solo al cargar la factura (`Expense.advanceCents`) |

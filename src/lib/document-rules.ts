@@ -9,7 +9,7 @@ import { companyOf } from "./companies";
 import { nextPaymentOrderNumber } from "./balances";
 import { netFromGross } from "./net-amounts";
 import { prepareCashAccount, prepareCashAccountRecord } from "./cash-accounts";
-import { checkExpenseLimit, checkPurchaseChanges, preparePaymentOrder, prepareNewRequest } from "./purchase-flow";
+import { checkExpenseLimit, checkPurchaseChanges, preparePaymentOrder, preparePurchaseAmounts, prepareNewRequest } from "./purchase-flow";
 import type { Entity } from "./constants";
 import type { Session } from "./auth";
 
@@ -41,8 +41,10 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
   // La OP que paga una factura de una OC queda atada también a la OC.
   if (entity === "payments") await preparePaymentOrder(data);
   if (entity === "payments") await checkWorkForAccount(data.accountId, data.workId);
-  // Toda compra nueva es una solicitud en borrador (SC-n): la OC la genera Tesorería con la orden de pago.
+  // Toda compra nueva es una solicitud en borrador (SC-n): la OC nace cuando se autoriza.
   if (entity === "purchases" && session) await prepareNewRequest(data, session);
+  // El total de la solicitud sale del neto y los impuestos.
+  if (entity === "purchases") preparePurchaseAmounts(data);
   if (entity === "expenses") await prepareExpense(data);
   if (entity === "expenses" && session) await checkExpenseLimit(data, {}, session.role);
   prepareNetAmounts(entity, data);
@@ -75,6 +77,7 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
   if (entity === "expenses") await checkExpenseLimit(changes, before, session.role);
   // Una solicitud emitida queda en sólo lectura; una orden, salvo la entrega y las notas.
   if (entity === "purchases") checkPurchaseChanges(before, changes);
+  if (entity === "purchases") preparePurchaseAmounts(changes, before);
   if (entity === "payments") await preparePaymentOrder(changes, before);
   if (entity === "payments") {
     // Una OP de varias facturas se cambia desde su pantalla: acá sólo el estado, la caja, la cuenta y los datos sueltos.

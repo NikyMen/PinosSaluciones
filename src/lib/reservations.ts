@@ -3,6 +3,7 @@ import { nextRequestNumber, Purchase, Quote, StockItem, StockReservation, Work }
 import { levelsOf } from "./stock-levels";
 import { ownersOf, ownerTotals, type OwnerSplit } from "./stock-owners";
 import { notify } from "./notifications";
+import { DEFAULT_PURCHASE_VAT_PCT, purchaseTaxFields } from "./purchase-taxes";
 import type { Session } from "./auth";
 
 /*
@@ -119,7 +120,8 @@ export async function reserveForQuote(quoteId: string, session: Session) {
     purchase = (await Purchase.create({
       number: await nextRequestNumber(), company: quote.company || "tvp", quoteId: quote._id, workId: work?._id,
       description: `Faltante de materiales para ${quote.number} — ${quote.title}: ${short.map(line => `${line.shortageQty} ${line.unit} de ${line.name}`).join("; ")}`,
-      amountCents: Math.round(short.reduce((total, line) => total + line.shortageQty * line.unitPriceCents, 0)),
+      // El neto estimado con el precio de la cotización, al 21 %: Compras lo ajusta con el del proveedor.
+      ...purchaseTaxFields([{ totalCents: Math.round(short.reduce((total, line) => total + line.shortageQty * line.unitPriceCents, 0)) }], { vatPct: DEFAULT_PURCHASE_VAT_PCT }),
       // Queda en borrador: Compras elige el proveedor y la condición, y la emite.
       stage: "solicitud", status: "borrador", priority: "alta", requestedDate: new Date(), neededBy: work?.startDate,
       history: [{ action: `Creada por el faltante de la cotización ${quote.number}`, at: new Date(), userName: session.name }],

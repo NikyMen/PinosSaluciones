@@ -129,7 +129,7 @@ Donde el PDF y lo conversado en el grupo no coinciden, seguimos lo del grupo:
 
 ## Preguntas que necesitamos que nos respondan
 
-1. El límite de $500.000, ¿es **con IVA o sin IVA**? Por ahora lo tomamos con IVA (el total de la solicitud).
+1. El límite de $500.000, ¿es **con IVA o sin IVA**? Por ahora lo tomamos sobre el total de la solicitud: con IVA y, desde el 19/10/2026, también con las percepciones y el impuesto interno (ver [[../decisiones/2026-10-impuestos-solicitud-compra]]).
 2. En la sección 7, la fila **"Orden de Compra"** tiene un texto que parece pegado de otra sección
    ("Se genera al autorizarse o habilitarse la compra…"). ¿Qué clasificación financiera corresponde a la OC?
 3. La **redeterminación por índice CAC** del certificado, ¿entra en el alcance o se sigue calculando
