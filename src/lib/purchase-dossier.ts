@@ -13,7 +13,7 @@ import { paymentOrderPdfBytes, type PaymentOrderPdfData } from "./payment-order-
  */
 
 type Doc = Record<string, unknown> & { _id: string };
-export type PurchaseDossier = { request: Doc | null; order: Doc | null; payments: Doc[]; receipts: Doc[]; expenses: Doc[]; supplier: Doc | null; work: Doc | null };
+export type PurchaseDossier = { request: Doc | null; order: Doc | null; payments: Doc[]; receipts: Doc[]; expenses: Doc[]; supplier: Doc | null; work: Doc | null; quote?: Doc | null };
 type FileRef = { path: string; name?: string; replacedAt?: string };
 
 /** Los adjuntos vigentes de un documento (y el archivo único de antes). */
@@ -54,7 +54,7 @@ function download(bytes: Uint8Array, filename: string, type: string) {
 }
 
 async function orderPdf(dossier: PurchaseDossier, doc: Doc) {
-  return purchaseOrderPdfBytes(purchaseOrderPdfData(doc, dossier.supplier, dossier.work));
+  return purchaseOrderPdfBytes(purchaseOrderPdfData(doc, dossier.supplier, dossier.work, dossier.quote?.number ? String(dossier.quote.number) : undefined));
 }
 
 async function paymentPdf(payment: Doc) {

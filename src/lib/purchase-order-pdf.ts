@@ -40,6 +40,8 @@ export type PurchaseOrderPdfData = {
   userName?: string;
   supplier: { name: string; contactName?: string; phone?: string; email?: string; address?: string };
   work?: { code?: string; name?: string; quoteNumber?: string } | null;
+  /** La cotización de venta para la que se compra: sale aunque la compra no tenga obra. */
+  quoteNumber?: string;
   items: PurchaseOrderLine[];
   subtotalCents: number;
   vatCents: number;
@@ -143,7 +145,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
   const deliverTo = data.deliverTo === "obra" && data.work?.code ? `En la obra ${data.work.code}` : deliveryLabel(data.deliverTo);
   block(WIDTH / 2 + 6, "ENTREGA", deliverTo, [
     ["Obra", data.work?.code ? `${data.work.code} - ${data.work.name || ""}` : "Sin obra asignada"],
-    ["Cotización", data.work?.quoteNumber || "-"],
+    ["Cotización", data.quoteNumber || data.work?.quoteNumber || "-"],
     ["Comprador", data.userName || meta.author],
     ["Lista de precios", data.priceListDate ? `Vigente desde ${date(data.priceListDate)}` : "-"],
   ]);
@@ -320,6 +322,7 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
       phone: String(supplier?.phone || ""), email: String(supplier?.email || ""), address: String(supplier?.address || ""),
     },
     work: work ? { code: String(work.code || ""), name: String(work.name || ""), quoteNumber: quoteNumber || String(purchase.quoteNumber || "") } : null,
+    quoteNumber: quoteNumber || String(purchase.quoteNumber || "") || undefined,
     items: items.map(item => ({
       code: item.code || "", name: item.name, presentation: item.presentation || "", quantity: Number(item.quantity || 0), wrap: item.wrap,
       listPriceCents: Number(item.listPriceCents || 0), discountPct: Number(item.discountPct || 0), unitCents: Number(item.unitCents || 0), totalCents: Number(item.totalCents || 0),

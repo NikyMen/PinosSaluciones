@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { z } from "zod";
-import { Expense, Payment, Purchase, PurchaseReceipt, Supplier, nextPurchaseNumber, nextPurchaseReceiptNumber, nextRequestNumber } from "./models";
+import { Expense, Payment, Purchase, PurchaseReceipt, Quote, Supplier, nextPurchaseNumber, nextPurchaseReceiptNumber, nextRequestNumber } from "./models";
 import { HttpError } from "./api";
 import { money, qty } from "./format";
 import { PURCHASE_APPROVAL_LIMIT_CENTS, type Role } from "./constants";
@@ -470,6 +470,20 @@ export function preparePurchaseAmounts(data: Record<string, unknown>, before: Re
   const stored = storedPurchaseTaxes(merged);
   const rates = Object.fromEntries(PURCHASE_TAX_PCT_KEYS.map(key => [key, data[key] ?? stored[key]]));
   Object.assign(data, purchaseTaxFields(items.length ? items : [{ totalCents: Number(data.subtotalCents ?? stored.subtotalCents) }], rates));
+}
+
+/**
+ * La cotización de venta para la que se compra: al elegirla en una solicitud
+ * en borrador se guarda también su número, que la OC copia y sale en la ficha
+ * y en el PDF.
+ */
+export async function preparePurchaseQuote(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
+  if (!("quoteId" in data)) return;
+  if (before._id && !(before.stage === "solicitud" && before.status === "borrador")) return;
+  if (!data.quoteId) { if (before.quoteId) data.quoteNumber = null; return; }
+  const quote = await Quote.findById(data.quoteId).select("number").lean<{ number?: string }>();
+  if (!quote) throw new HttpError("La cotización elegida no existe");
+  data.quoteNumber = quote.number;
 }
 
 /** Sólo se borra una solicitud en borrador; lo emitido se anula. */

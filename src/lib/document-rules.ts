@@ -1,7 +1,7 @@
 import { HttpError } from "./api";
 import { accountChange, checkLedgerAccount, checkWorkForAccount, worklessAccount } from "./account-service";
 import { accountDirection } from "./account-catalog";
-import { Expense, Invoice, Purchase, Work } from "./models";
+import { Expense, Invoice, Purchase, PurchaseReceipt, Work } from "./models";
 import { baseInvoiceType, isCreditNote, isNote, VOID_INVOICE_STATUSES, voucherLabels } from "./invoice-labels";
 import { PURCHASE_TAX_PCT_KEYS, storedPurchaseTaxes, voucherTaxFields } from "./purchase-taxes";
 import { money } from "./format";
@@ -10,7 +10,7 @@ import { companyOf } from "./companies";
 import { nextPaymentOrderNumber } from "./balances";
 import { netFromGross } from "./net-amounts";
 import { prepareCashAccount, prepareCashAccountRecord } from "./cash-accounts";
-import { checkExpenseLimit, checkPurchaseChanges, preparePaymentOrder, preparePurchaseAmounts, prepareNewRequest } from "./purchase-flow";
+import { checkExpenseLimit, checkPurchaseChanges, preparePaymentOrder, preparePurchaseAmounts, preparePurchaseQuote, prepareNewRequest } from "./purchase-flow";
 import type { Entity } from "./constants";
 import type { Session } from "./auth";
 
@@ -46,6 +46,7 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
   if (entity === "purchases" && session) await prepareNewRequest(data, session);
   // El total de la solicitud sale del neto y los impuestos.
   if (entity === "purchases") preparePurchaseAmounts(data);
+  if (entity === "purchases") await preparePurchaseQuote(data);
   if (entity === "expenses") await prepareExpense(data);
   if (entity === "expenses" && session) await checkExpenseLimit(data, {}, session.role);
   prepareNetAmounts(entity, data);
@@ -79,6 +80,7 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
   // Una solicitud emitida queda en sólo lectura; una orden, salvo la entrega y las notas.
   if (entity === "purchases") checkPurchaseChanges(before, changes);
   if (entity === "purchases") preparePurchaseAmounts(changes, before);
+  if (entity === "purchases") await preparePurchaseQuote(changes, before);
   if (entity === "payments") await preparePaymentOrder(changes, before);
   if (entity === "payments") {
     // Una OP de varias facturas se cambia desde su pantalla: acá sólo el estado, la caja, la cuenta y los datos sueltos.
@@ -145,6 +147,7 @@ async function prepareExpense(data: Record<string, unknown>, before: Record<stri
   }
   if ("accountId" in data || "workId" in data) await checkWorkForAccount(merged.accountId, data.workId ?? before.workId);
   await checkPurchaseNote(data, before);
+  await checkExpenseReceipts(data, before);
   const company = data.company ?? before.company;
   if (merged.voucherType) {
     if (!company) data.company = "tvp";
@@ -156,6 +159,28 @@ async function prepareExpense(data: Record<string, unknown>, before: Record<stri
     const rates = { ...before, ...data } as Record<string, number | undefined>;
     Object.assign(data, voucherTaxFields(net, rates, Boolean(rates.voucherType) && baseInvoiceType(rates.voucherType) === "factura_a"));
   }
+}
+
+/**
+ * Los remitos que factura una factura de compra son de su OC. Si no se
+ * escribió el remito o la conformidad, queda el número de los elegidos. Sin
+ * OC no lleva remitos; si cambia la OC, los de la anterior se sueltan.
+ */
+async function checkExpenseReceipts(data: Record<string, unknown>, before: Record<string, unknown>) {
+  const purchaseId = data.purchaseId !== undefined ? data.purchaseId : before.purchaseId;
+  if (!("purchaseReceiptIds" in data)) {
+    if ("purchaseId" in data && String(data.purchaseId ?? "") !== String(before.purchaseId ?? "") && Array.isArray(before.purchaseReceiptIds) && before.purchaseReceiptIds.length) data.purchaseReceiptIds = [];
+    return;
+  }
+  const ids = [...new Set((Array.isArray(data.purchaseReceiptIds) ? data.purchaseReceiptIds : []).map(String))];
+  data.purchaseReceiptIds = ids;
+  if (!ids.length) return;
+  if (!purchaseId) throw new HttpError("Para elegir remitos, elegí primero la orden de compra");
+  const receipts = await PurchaseReceipt.find({ _id: { $in: ids } }).select("number supplierRemito purchaseId").lean<Array<{ _id: unknown; number?: string; supplierRemito?: string; purchaseId?: unknown }>>();
+  const foreign = receipts.filter(receipt => String(receipt.purchaseId) !== String(purchaseId));
+  if (receipts.length !== ids.length || foreign.length) throw new HttpError(`${foreign.length ? `El remito ${foreign.map(receipt => receipt.supplierRemito || receipt.number).join(", ")} no es` : "Uno de los remitos no es"} de la orden de compra de esta factura`);
+  const ref = String(data.receiptRef ?? before.receiptRef ?? "").trim();
+  if (!ref) data.receiptRef = receipts.map(receipt => receipt.supplierRemito || receipt.number).join(", ");
 }
 
 /**

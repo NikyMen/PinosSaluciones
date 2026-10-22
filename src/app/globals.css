@@ -1499,6 +1499,15 @@ tbody tr.price-best:hover { background: #e8f6ef; }
 .pct-input { display: flex; align-items: center; gap: 6px; }
 .pct-input input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
 .pct-input > span { color: var(--muted); font-weight: 700; }
+.purchase-quote-ref { display: block; margin-top: 2px; color: var(--muted); }
+.purchase-quote-ref b { color: var(--brand-navy); }
+.receipt-picker { grid-column: 1 / -1; display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfe; }
+.receipt-picker > span { color: var(--ink); font-size: .74rem; font-weight: 700; }
+.form-grid .receipt-picker label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: .76rem; color: var(--ink); cursor: pointer; }
+.form-grid .receipt-picker input[type="checkbox"] { flex: none; width: 17px; height: 17px; padding: 0; accent-color: var(--brand-navy); }
+.receipt-picker label small { color: var(--muted); }
+.receipt-picker .muted { color: var(--muted); font-size: .72rem; }
+.invoice-warning { grid-column: 1 / -1; margin: 0; }
 .purchase-taxes-preview { grid-column: 1 / -1; margin: 0; padding: 10px 12px; display: grid; gap: 3px; border: 1px solid var(--line); border-radius: 10px; background: #f7f9fb; }
 .purchase-taxes-preview div { display: flex; justify-content: space-between; gap: 16px; color: var(--muted); font-size: .74rem; }
 .purchase-taxes-preview dd { margin: 0; font-variant-numeric: tabular-nums; }
