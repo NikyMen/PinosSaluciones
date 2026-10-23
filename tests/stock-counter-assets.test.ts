@@ -135,7 +135,7 @@ describe("caja del depósito (API)", () => {
     expect(purchases[0].items).toHaveLength(2);
     expect(await StockItem.findById(paint._id).lean()).toMatchObject({ qty_central: 5, qty_salon: 3, quantity: 8, avgCostCents: 107_500 });
 
-    // Salen 7 baldes y 4 rodillos: los baldes 5 del Central y 2 del Salón; los rodillos, del Central. Dos remitos, no tres.
+    // Salen 7 baldes y 4 rodillos: los baldes 5 del Galpón y 2 del Salón; los rodillos, del Galpón. Dos remitos, no tres.
     const out = await call(await caja.POST(post({ kind: "egreso", workId: String(work._id), note: "Retira Juan", lines: [{ itemId: String(paint._id), quantity: 7 }, { itemId: String(roller._id), quantity: 4 }] })));
     expect(out.status).toBe(201);
     expect(out.body).toMatchObject({ kind: "egreso", destinationLabel: "Obra OB-9 · Hall central", quoteNumber: "COT-900" });

@@ -5,7 +5,7 @@ import { levelsOf } from "./stock-levels";
 /*
  * De quién es cada existencia (punto 3 de la especificación). El stock tiene un
  * catálogo único, pero cada cantidad guarda su CUIT propietario por ubicación:
- * en el Central puede haber 10 bolsas de Trabajos Verticales y 5 de la
+ * en el Galpón puede haber 10 bolsas de Trabajos Verticales y 5 de la
  * Constructora. La empresa dueña es independiente de dónde está y de quién
  * factura después.
  *

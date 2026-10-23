@@ -215,7 +215,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
 
   function display(key: string, value: unknown, item: Item) {
     if (entity === "assets" && key === "sector") return <span className={`sector-badge ${String(value || "general")}`}>{sectorLabels[String(value || "general")] || "General"}</span>;
-    // Lo que hay en cada depósito: un material viejo no tiene el campo y todo lo suyo está en el Central.
+    // Lo que hay en cada depósito: un material viejo no tiene el campo y todo lo suyo está en el Galpón.
     // El último precio va con la fecha de la lista (o de la compra) de donde sale.
     // Un recibo puede cancelar varias facturas.
     if (entity === "collections" && key === "invoiceId" && Array.isArray(item.allocations) && item.allocations.length > 1) return `${item.allocations.length} facturas`;
@@ -561,8 +561,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
             <Download size={15} /> PDF</button>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
           {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void approveQuote(item); }}><CheckCircle2 size={15} /> Aprobar</button>}
-          {entity === "stock" && canEdit && <button title="Entrada: una compra que llegó al Depósito Central" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
-          {entity === "stock" && canEdit && <button title="Transferir entre el Depósito Central y el Salón de Ventas (queda en tránsito hasta que se recibe)" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "transferencia" })}><ArrowRightLeft size={16} /></button>}
+          {entity === "stock" && canEdit && <button title="Entrada: una compra que llegó al Galpón" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
+          {entity === "stock" && canEdit && <button title="Transferir entre el Galpón y el Salón de Ventas (queda en tránsito hasta que se recibe)" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "transferencia" })}><ArrowRightLeft size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Salida a obra, con remito" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
           {entity === "stock" && canEdit && <button title={item.barcode ? `Imprimir la etiqueta (${String(item.barcode)})` : "Generar el código de barras e imprimir la etiqueta"} onClick={() => { void printStockLabel(item); }}><Tag size={16} /></button>}
           {entity === "assets" && <button className="row-action-wide labor" title="Services, arreglos y próximos mantenimientos" onClick={() => setMaintenanceFor(item._id)}><Wrench size={15} /> Mantenimiento</button>}

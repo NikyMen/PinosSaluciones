@@ -16,7 +16,7 @@ const round = (value: number) => Math.round(value * 1000) / 1000;
 
 /**
  * Las cantidades por depósito. Un material cargado antes de que hubiera
- * depósitos no tiene ninguna: todo lo que tenía está en el Central.
+ * depósitos no tiene ninguna: todo lo que tenía está en el Galpón.
  */
 export function levelsOf(item: Record<string, unknown>): Levels {
   const separated = WAREHOUSES.some(warehouse => typeof item[qtyField(warehouse.key)] === "number");
@@ -26,7 +26,7 @@ export function levelsOf(item: Record<string, unknown>): Levels {
   ])) as Levels;
 }
 
-/** El mínimo de cada depósito. El mínimo viejo (uno solo) se toma como el del Central. */
+/** El mínimo de cada depósito. El mínimo viejo (uno solo) se toma como el del Galpón. */
 export function minimumsOf(item: Record<string, unknown>): Levels {
   const separated = WAREHOUSES.some(warehouse => typeof item[minField(warehouse.key)] === "number");
   return Object.fromEntries(WAREHOUSES.map((warehouse, index) => [
@@ -45,8 +45,8 @@ export function lowWarehouses(item: Record<string, unknown>) {
 export const totalOf = (levels: Levels) => round(Object.values(levels).reduce((total, value) => total + value, 0));
 
 /**
- * Cómo sale una cantidad a obra: primero del Central y, lo que no alcance,
- * del Salón. Es el caso de la reunión: piden 20, el Central tiene 17 y el
+ * Cómo sale una cantidad a obra: primero del Galpón y, lo que no alcance,
+ * del Salón. Es el caso de la reunión: piden 20, el Galpón tiene 17 y el
  * Salón manda los 3 que faltan. Si entre los dos no alcanza, lo que falta
  * queda en `missing`.
  */

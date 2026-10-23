@@ -20,7 +20,7 @@ const normalize = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, ""
 
 /**
  * La ruta de compras de punta a punta: de qué cotización u obra salió cada
- * orden, si llegó al Central, qué factura la cubre, qué orden de pago y qué
+ * orden, si llegó al Galpón, qué factura la cubre, qué orden de pago y qué
  * pago. Abajo, lo que quedó sin vínculo.
  */
 export function PurchaseRouteView() {
@@ -64,7 +64,7 @@ export function PurchaseRouteView() {
     <div className="page-heading"><div>
       <p className="eyebrow">COMPRAS</p>
       <h1>Ruta de compras</h1>
-      <p>Cotización u obra → solicitud → orden de compra → recepción en el Central → factura → orden de pago → pago. Cada orden con su origen y cómo terminó.</p>
+      <p>Cotización u obra → solicitud → orden de compra → recepción en el Galpón → factura → orden de pago → pago. Cada orden con su origen y cómo terminó.</p>
     </div></div>
     <div className="price-kpis tracking-kpis">
       <div className="stock-kpi"><span>Ordenado</span><strong>{money(totals.ordered)}</strong><small>{visible.length} órdenes</small></div>

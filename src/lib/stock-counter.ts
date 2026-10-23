@@ -22,7 +22,7 @@ import type { CompanyKey } from "./companies";
 
 export type CounterLine = { itemId: string; quantity: number; unitCostCents?: number };
 export type CounterInput =
-  // Una entrada es una compra: siempre al Depósito Central, a nombre de la empresa que compró.
+  // Una entrada es una compra: siempre al Galpón, a nombre de la empresa que compró.
   | { kind: "ingreso"; warehouse: "central"; owner?: CompanyKey; supplierId?: string; reference?: string; note?: string; date?: Date; lines: CounterLine[] }
   | { kind: "egreso"; workId: string; warehouse?: WarehouseKey; note?: string; date?: Date; lines: CounterLine[] };
 

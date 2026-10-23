@@ -400,7 +400,7 @@ PriceListItemSchema.index({ priceListId: 1 });
 // Cada entrada y salida de un material queda guardada: el stock actual es la
 // consecuencia de los movimientos, no un numero que alguien escribe a mano.
 // Cantidad y mínimo por depósito, en campos planos: qty_central, min_central, qty_salon… Sin default:
-// un material cargado antes de que hubiera depósitos no tiene ninguno y todo lo suyo está en el Central.
+// un material cargado antes de que hubiera depósitos no tiene ninguno y todo lo suyo está en el Galpón.
 const warehouseStockFields = Object.fromEntries(WAREHOUSE_KEYS.flatMap(key => [
   [`qty_${key}`, { type: Number }],
   [`min_${key}`, { type: Number, min: 0 }],
@@ -467,7 +467,7 @@ const StockItemSchema = new Schema({
 StockItemSchema.index({ barcode: 1 }, { sparse: true });
 
 /*
- * Un pase entre depósitos (Central → Salón, o al revés). Sale del origen y
+ * Un pase entre depósitos (Galpón → Salón, o al revés). Sale del origen y
  * queda "en tránsito" hasta que el destino confirma lo que recibió. Las
  * diferencias (faltó, llegó dañado) quedan documentadas en cada renglón. No es
  * una venta ni se factura: solo cambia dónde está el material.

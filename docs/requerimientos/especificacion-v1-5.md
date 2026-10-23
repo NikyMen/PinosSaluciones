@@ -28,15 +28,15 @@ Leyenda: ✅ hecho · 🟡 parcial · ⏳ pendiente (o esperando una decisión d
 | CUIT propietario de cada existencia | ✅ | `StockItem.owners` por ubicación (`src/lib/stock-owners.ts`). Lo que entra es de la empresa que compró |
 | CUIT consumidor | 🟡 | La salida a obra consume primero lo de la empresa de la obra; un centro de costo propio por CUIT no existe todavía |
 | CUIT facturante | ✅ | `Invoice.company`, `SalesRemito.company`, `Quote.company` |
-| Ubicación física (Central, Salón, tránsito, obra) | ✅ | Niveles por depósito, `transitQty` y la salida a obra |
+| Ubicación física (Galpón, Salón, tránsito, obra) | ✅ | Niveles por depósito, `transitQty` y la salida a obra |
 | Destino económico | 🟡 | Obra (salida a obra) y venta (remito); reposición y mantenimiento no tienen tipo propio |
 
 ## 2. Depósitos y flujo físico
 
 | Requisito | Estado | Cómo |
 |---|---|---|
-| Toda compra entra al Depósito Central | ✅ | La entrada manual de stock y la caja rechazan cualquier otro depósito; "Pasar a stock" de una OC pedida para el Salón de Ventas entra directo al Salón |
-| Central → Salón con estado "en tránsito" | ✅ | `src/lib/stock-transfers.ts`; pantalla Stock y logística › Transferencias |
+| Toda compra entra al Galpón | ✅ | La entrada manual de stock y la caja rechazan cualquier otro depósito; "Pasar a stock" de una OC pedida para el Salón de Ventas entra directo al Salón |
+| Galpón → Salón con estado "en tránsito" | ✅ | `src/lib/stock-transfers.ts`; pantalla Stock y logística › Transferencias |
 | Recepción confirmada en el Salón, con diferencias documentadas | ✅ | Por renglón: llegó bien, dañado (pasa a "no utilizable") y faltante |
 | La transferencia no es venta ni factura | ✅ | No toca plata ni costo |
 | El remito al cliente se origina en el Salón | ✅ | Ventas › Remitos de venta; solo descuenta del Salón |

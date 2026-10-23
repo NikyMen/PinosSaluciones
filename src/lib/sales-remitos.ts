@@ -12,7 +12,7 @@ import type { Session } from "./auth";
 
 /*
  * Remitos de venta (punto 6 de la especificación). La venta al público sigue
- * Depósito Central → transferencia → Salón de Ventas → remito al cliente →
+ * Galpón → transferencia → Salón de Ventas → remito al cliente →
  * factura. El remito es lo que descuenta el stock del Salón; la factura (A, B
  * o X) lo referencia y no vuelve a descontar. Una factura puede juntar varios
  * remitos del mismo cliente y la misma empresa. Una devolución del cliente es
@@ -60,7 +60,7 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
     const salon = levelsOf(item as unknown as Record<string, unknown>).salon;
     if (line.quantity > salon + 1e-9) short.push(`${item.name}: en el Salón hay ${salon} ${item.unit}`);
   }
-  if (short.length) throw new StockError(`No alcanza el stock del Salón de Ventas (si está en el Central, primero hay que transferirlo). ${short.join(" · ")}`);
+  if (short.length) throw new StockError(`No alcanza el stock del Salón de Ventas (si está en el Galpón, primero hay que transferirlo). ${short.join(" · ")}`);
 
   const number = await nextRemitoNumber();
   const remito = await SalesRemito.create({ number, kind: "salida", company: input.company, clientId: input.clientId, quoteId: input.quoteId, date: input.date, warehouse: "salon", note: input.note, userId: session.userId, userName: session.name, lines: [] });

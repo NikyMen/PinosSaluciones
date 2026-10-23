@@ -105,8 +105,8 @@ export function CompanyConfig() {
     </section>
 
     <section className="table-panel config-warehouses">
-      <header><h2><Warehouse size={17} /> Depósitos</h2><small>Toda compra entra al Depósito Central. Al Salón de Ventas el material llega por transferencia desde el Central, y desde el Salón sale el remito al cliente.</small></header>
-      <ul>{WAREHOUSES.map(warehouse => <li key={warehouse.key}><b>{warehouse.label}</b><span>{warehouse.key === "central" ? "Recibe las compras, guarda y prepara lo que va a obra o al salón" : "Recibe transferencias del Central y despacha al cliente con remito"}</span></li>)}</ul>
+      <header><h2><Warehouse size={17} /> Depósitos</h2><small>Toda compra entra al Galpón. Al Salón de Ventas el material llega por transferencia desde el Galpón, y desde el Salón sale el remito al cliente.</small></header>
+      <ul>{WAREHOUSES.map(warehouse => <li key={warehouse.key}><b>{warehouse.label}</b><span>{warehouse.key === "central" ? "Recibe las compras, guarda y prepara lo que va a obra o al salón" : "Recibe transferencias del Galpón y despacha al cliente con remito"}</span></li>)}</ul>
     </section>
   </>;
 }

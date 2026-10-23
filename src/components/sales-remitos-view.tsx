@@ -192,7 +192,7 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
           </tr>)}
         </tbody></table>}
         <StockPicker warehouse="salon" exclude={lines.map(line => line.item._id)} onPick={(item, available) => setLines(current => [...current, { item, available, quantity: "", price: Number(item.lastPriceCents || 0) / 100 }])} />
-        <p className="invoice-note">Si el material está en el Depósito Central, primero se transfiere al Salón (Stock y logística &gt; Transferencias).</p>
+        <p className="invoice-note">Si el material está en el Galpón, primero se transfiere al Salón (Stock y logística &gt; Transferencias).</p>
       </div>
       {error && <p className="form-error modal-error">{error}</p>}
       <footer><span>Total del remito: <b>{money(total)}</b></span><button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button type="button" className="primary-btn" disabled={busy || !lines.length} onClick={() => { void submit(); }}>{busy ? "Emitiendo…" : "Emitir remito y bajar el PDF"}</button></footer></form>

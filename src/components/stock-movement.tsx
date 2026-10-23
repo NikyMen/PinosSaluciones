@@ -26,9 +26,9 @@ export type StockItem = {
 type Kind = "ingreso" | "egreso" | "transferencia" | "ajuste";
 
 const tabs: Array<{ kind: Kind; label: string; icon: typeof ArrowDownToLine; help: string }> = [
-  { kind: "ingreso", label: "Entrada", icon: ArrowDownToLine, help: "Una compra que llegó: entra siempre al Depósito Central, a nombre de la empresa que compró. Todavía no es costo de ninguna obra." },
+  { kind: "ingreso", label: "Entrada", icon: ArrowDownToLine, help: "Una compra que llegó: entra siempre al Galpón, a nombre de la empresa que compró. Todavía no es costo de ninguna obra." },
   { kind: "transferencia", label: "Transferir", icon: ArrowRightLeft, help: "Sale del depósito de origen con su remito y queda en tránsito hasta que el otro depósito confirma la recepción (en Stock y logística > Transferencias). No es una venta ni mueve plata." },
-  { kind: "egreso", label: "Salida a obra", icon: HardHat, help: "Sale del Central y, si no alcanza, lo que falta sale del Salón. Un remito por depósito. Carga el costo a la obra; no es una venta." },
+  { kind: "egreso", label: "Salida a obra", icon: HardHat, help: "Sale del Galpón y, si no alcanza, lo que falta sale del Salón. Un remito por depósito. Carga el costo a la obra; no es una venta." },
   { kind: "ajuste", label: "Ajustar inventario", icon: Scale, help: "Fija lo que contaste físicamente en un depósito. No mueve plata." },
 ];
 
@@ -46,7 +46,7 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
   const [unitCost, setUnitCost] = useState(0);
   const [warehouse, setWarehouse] = useState<WarehouseKey>("central");
   const [toWarehouse, setToWarehouse] = useState<WarehouseKey>("salon");
-  // Salida a obra: el reparto sale solo (Central primero); "a mano" deja elegir cuánto de cada uno.
+  // Salida a obra: el reparto sale solo (Galpón primero); "a mano" deja elegir cuánto de cada uno.
   const [manualSplit, setManualSplit] = useState(false);
   const [manualParts, setManualParts] = useState<Record<string, string>>({});
   const [suppliers, setSuppliers] = useState<Option[]>([]);
@@ -177,7 +177,7 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
               <label><span>Va a *</span><SearchSelect name="to" options={warehouseOptions.filter(option => option.value !== warehouse)} value={toWarehouse} onChange={value => setToWarehouse(value as WarehouseKey)} /></label>
             </> : kind === "ajuste" && <label><span>Depósito que contaste *</span>
               <SearchSelect name="warehouse" options={warehouseOptions} value={warehouse} onChange={value => setWarehouse(value as WarehouseKey)} /></label>}
-            {kind === "ingreso" && <label className="readonly-field"><span>Entra a</span><output>Depósito Central</output></label>}
+            {kind === "ingreso" && <label className="readonly-field"><span>Entra a</span><output>Galpón</output></label>}
             {(kind === "ingreso" || kind === "ajuste") && <label><span>{kind === "ingreso" ? "Empresa que compró (propietaria) *" : "Si sobra, a nombre de"}</span>
               <select value={owner} onChange={event => setOwner(event.target.value as CompanyKey)}>{COMPANY_KEYS.map(key => <option key={key} value={key}>{COMPANIES[key].legalName}</option>)}</select></label>}
 
@@ -202,7 +202,7 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
               ? <>Sale {delivery.parts.map(part => `${qty(part.quantity)} ${item.unit} del ${warehouseLabel(part.warehouse)}`).join(" y ")}{delivery.parts.length > 1 ? " · un remito por depósito" : ""}.</>
               : "Todavía no sale nada."}{!manualSplit && delivery.missing > 0 && <b className="below"> Faltan {qty(delivery.missing)} {item.unit}: entre los dos depósitos no alcanza.</b>}</p>}
             <button type="button" className="secondary-btn" onClick={() => { setManualSplit(value => !value); setManualParts(Object.fromEntries(delivery.parts.map(part => [part.warehouse, String(part.quantity)]))); }}>
-              {manualSplit ? "Repartir solo (Central primero)" : "Elegir cuánto sale de cada depósito"}
+              {manualSplit ? "Repartir solo (Galpón primero)" : "Elegir cuánto sale de cada depósito"}
             </button>
           </div>}
 
@@ -229,7 +229,7 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
           : <div className="detail-list">{item.movements.slice().reverse().slice(0, 12).map((movement, index) => <div className="detail-row stock-row" key={movement._id || index}>
             <span className={`badge ${movement.kind}`}>{movementLabels[movement.kind] || movement.kind}</span>
             <b>{movement.kind === "ajuste" && movement.quantity > 0 ? "+" : ""}{qty(movement.quantity)} {item.unit}</b>
-            <span>{movement.kind === "transferencia" || movement.kind === "recepcion" ? `${warehouseLabel(movement.warehouse)} → ${warehouseLabel(movement.toWarehouse)}${movement.kind === "transferencia" ? " (en tránsito)" : ""}` : movement.kind === "venta" || movement.kind === "devolucion" ? `Salón de Ventas ${movement.kind === "venta" ? "→" : "←"} ${movement.destinationLabel || "cliente"}` : `${movement.warehouse ? warehouseLabel(movement.warehouse) : "Depósito Central"}${movement.kind === "egreso" ? ` → ${movement.destinationLabel || movement.note || "obra"}` : ""}`}</span>
+            <span>{movement.kind === "transferencia" || movement.kind === "recepcion" ? `${warehouseLabel(movement.warehouse)} → ${warehouseLabel(movement.toWarehouse)}${movement.kind === "transferencia" ? " (en tránsito)" : ""}` : movement.kind === "venta" || movement.kind === "devolucion" ? `Salón de Ventas ${movement.kind === "venta" ? "→" : "←"} ${movement.destinationLabel || "cliente"}` : `${movement.warehouse ? warehouseLabel(movement.warehouse) : "Galpón"}${movement.kind === "egreso" ? ` → ${movement.destinationLabel || movement.note || "obra"}` : ""}`}</span>
             <strong>{movement.totalCents ? money(movement.totalCents) : "—"}</strong>
             <small>{movement.userName || "—"} · {date(movement.date) !== "—" ? date(movement.date) : dateTime(movement.createdAt)}</small>
             {movement.remito && <button type="button" className="stock-remito" onClick={() => { void downloadRemitoPdf(remitoFromMovement(movement, item)); }} title="Descargar el remito en PDF"><FileText size={13} /> {movement.remito}</button>}

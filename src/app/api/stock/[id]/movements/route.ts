@@ -11,7 +11,7 @@ import { sendTransfer } from "@/lib/stock-transfers";
 import { WAREHOUSE_KEYS } from "@/lib/warehouses";
 
 /**
- * Un movimiento de stock sobre un material: entrada (siempre al Central, a
+ * Un movimiento de stock sobre un material: entrada (siempre al Galpón, a
  * nombre de la empresa que compró), salida a obra (de uno o de los dos
  * depósitos), transferencia (queda en tránsito hasta que se recibe) o ajuste.
  * Las cuentas y los remitos están en src/lib/stock-service.ts.
@@ -22,7 +22,7 @@ const amount = z.coerce.number().positive("La cantidad tiene que ser mayor a cer
 const common = { note: z.string().trim().max(1000).optional().default(""), date: z.coerce.date().optional() };
 const objectId = z.string().refine(isValidObjectId, "ID inválido");
 const schema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("ingreso"), warehouse: z.literal("central", { error: "Toda compra entra al Depósito Central" }).default("central"), owner: company.default("tvp"), quantity: amount, unitCostCents: z.coerce.number().int().min(0).default(0), supplierId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), reference: z.string().trim().max(120).optional().default(""), ...common }),
+  z.object({ kind: z.literal("ingreso"), warehouse: z.literal("central", { error: "Toda compra entra al Galpón" }).default("central"), owner: company.default("tvp"), quantity: amount, unitCostCents: z.coerce.number().int().min(0).default(0), supplierId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), reference: z.string().trim().max(120).optional().default(""), ...common }),
   z.object({ kind: z.literal("egreso"), workId: objectId, parts: z.array(z.object({ warehouse, quantity: z.coerce.number().min(0) })).min(1).max(10), reference: z.string().trim().max(120).optional().default(""), ...common }),
   z.object({ kind: z.literal("transferencia"), from: warehouse, to: warehouse, quantity: amount, ...common }),
   z.object({ kind: z.literal("ajuste"), warehouse, owner: z.union([company, z.literal("")]).optional().transform(value => value || undefined), quantity: z.coerce.number().min(0, "La cantidad contada no puede ser negativa"), ...common }),

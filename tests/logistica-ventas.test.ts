@@ -43,7 +43,7 @@ async function material(name: string, central: number, owner: "tvp" | "construct
   return String(item._id);
 }
 
-describe("venta al público: Central → Salón → remito → factura", () => {
+describe("venta al público: Galpón → Salón → remito → factura", () => {
   it("transfiere con diferencias, vende desde el Salón y factura el remito sin volver a descontar", async () => {
     const cemento = await material("Cemento 50 kg", 20, "constructora");
     const cal = await material("Cal 25 kg", 10, "tvp");
@@ -64,7 +64,7 @@ describe("venta al público: Central → Salón → remito → factura", () => {
     // Lo que llegó conserva su dueño: es de la Constructora.
     expect((afterReception!.owners as Record<string, unknown>).salon).toEqual({ constructora: 8 });
 
-    // No se vende más de lo que hay en el Salón (aunque haya en el Central).
+    // No se vende más de lo que hay en el Salón (aunque haya en el Galpón).
     const client = await Client.create({ name: "Corralón vecino", cuit: "20-44444444-4" });
     const tooMuch = await call(await remitosRoute.POST(json("POST", { company: "tvp", clientId: String(client._id), date: "2026-10-05", lines: [{ itemId: cemento, quantity: 9, unitPriceCents: 15_000 }] })));
     expect(tooMuch.status).toBe(409);

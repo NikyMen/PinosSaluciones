@@ -6,20 +6,20 @@ import { levelsOf, lowWarehouses, splitDelivery } from "../src/lib/stock-levels"
 import { amountInWords } from "../src/lib/pdf-brand";
 
 /*
- * Stock separado en Depósito Central y Salón de Ventas: el reparto de una
+ * Stock separado en Galpón y Salón de Ventas: el reparto de una
  * salida a obra, los pases entre depósitos con su remito, y el pase a stock
  * de una orden de compra. Base real en memoria; la sesión simulada.
  */
 
 describe("cuentas del stock por depósito", () => {
-  it("un material de antes de los depósitos tiene todo en el Central", () => {
+  it("un material de antes de los depósitos tiene todo en el Galpón", () => {
     expect(levelsOf({ quantity: 12 })).toEqual({ central: 12, salon: 0 });
     expect(levelsOf({ quantity: 20, qty_central: 17, qty_salon: 3 })).toEqual({ central: 17, salon: 3 });
     expect(lowWarehouses({ quantity: 4, minQuantity: 5 }).map(warehouse => warehouse.key)).toEqual(["central"]);
     expect(lowWarehouses({ qty_central: 10, qty_salon: 1, min_central: 5, min_salon: 2 }).map(warehouse => warehouse.key)).toEqual(["salon"]);
   });
 
-  it("la salida a obra sale primero del Central y lo que falta del Salón (el ejemplo de la reunión)", () => {
+  it("la salida a obra sale primero del Galpón y lo que falta del Salón (el ejemplo de la reunión)", () => {
     expect(splitDelivery({ central: 17, salon: 5 }, 20)).toEqual({ parts: [{ warehouse: "central", quantity: 17 }, { warehouse: "salon", quantity: 3 }], missing: 0 });
     expect(splitDelivery({ central: 30, salon: 5 }, 20)).toEqual({ parts: [{ warehouse: "central", quantity: 20 }], missing: 0 });
     expect(splitDelivery({ central: 2, salon: 1 }, 5)).toEqual({ parts: [{ warehouse: "central", quantity: 2 }, { warehouse: "salon", quantity: 1 }], missing: 2 });
@@ -59,16 +59,16 @@ afterAll(async () => {
 });
 
 describe("movimientos entre depósitos (API)", () => {
-  it("entrada al Central, transferencia en tránsito al Salón, salida a obra repartida con dos remitos, y ajuste por depósito", async () => {
+  it("entrada al Galpón, transferencia en tránsito al Salón, salida a obra repartida con dos remitos, y ajuste por depósito", async () => {
     const client = await Client.create({ name: "Consorcio", cuit: "30-12345678-9" });
     const quote = await Quote.create({ number: "COT-748", clientId: client._id, title: "Pintura", amountCents: 1000, status: "convertida" });
     const work = await Work.create({ code: "OB-1", name: "Fachada", clientId: client._id, quoteId: quote._id, budgetCents: 1000, status: "en_curso" });
-    // Un material de antes: 10 baldes, todos en el Central.
+    // Un material de antes: 10 baldes, todos en el Galpón.
     const item = await StockItem.create({ name: "Látex exterior", sku: "LTX20", unit: "balde", quantity: 10, avgCostCents: 100_000, valueCents: 1_000_000, min_salon: 2 });
     const id = String(item._id);
     const move = async (body: unknown) => call(await movements.POST(post(body), params({ id })));
 
-    // Toda compra entra al Central: al Salón no se puede cargar una entrada.
+    // Toda compra entra al Galpón: al Salón no se puede cargar una entrada.
     expect((await move({ kind: "ingreso", warehouse: "salon", quantity: 1, unitCostCents: 1 })).status).toBe(400);
     const entry = await move({ kind: "ingreso", warehouse: "central", owner: "constructora", quantity: 10, unitCostCents: 120_000 });
     expect(entry.status).toBe(201);
@@ -76,7 +76,7 @@ describe("movimientos entre depósitos (API)", () => {
     // Lo de antes queda sin dueño; lo que entra es de la empresa que compró.
     expect(entry.body.item.owners.central).toEqual({ constructora: 10, sin_asignar: 10 });
 
-    // La transferencia sale del Central y queda en tránsito hasta que el Salón la recibe.
+    // La transferencia sale del Galpón y queda en tránsito hasta que el Salón la recibe.
     const transfer = await move({ kind: "transferencia", from: "central", to: "salon", quantity: 5 });
     expect(transfer.body.item).toMatchObject({ qty_central: 15, qty_salon: 0, transitQty: 5, quantity: 20, avgCostCents: 110_000 });
     expect(transfer.body.movements[0]).toMatchObject({ kind: "transferencia", warehouse: "central", toWarehouse: "salon", remito: "R-1" });
@@ -85,7 +85,7 @@ describe("movimientos entre depósitos (API)", () => {
     expect(await StockItem.findById(id).lean()).toMatchObject({ qty_central: 15, qty_salon: 5, transitQty: 0, quantity: 20 });
     expect((await call(await transferReceive.POST(post({}), params({ id: transfer.body.transfer._id })))).status).toBe(409);
 
-    // Pedido de 18: 15 del Central y 3 del Salón, cada uno con su remito y su gasto en la obra.
+    // Pedido de 18: 15 del Galpón y 3 del Salón, cada uno con su remito y su gasto en la obra.
     const out = await move({ kind: "egreso", workId: String(work._id), parts: [{ warehouse: "central", quantity: 15 }, { warehouse: "salon", quantity: 3 }] });
     expect(out.status).toBe(201);
     expect(out.body.item).toMatchObject({ qty_central: 0, qty_salon: 2, quantity: 2 });
@@ -98,14 +98,14 @@ describe("movimientos entre depósitos (API)", () => {
 
     const tooMuch = await move({ kind: "egreso", workId: String(work._id), parts: [{ warehouse: "central", quantity: 1 }] });
     expect(tooMuch.status).toBe(409);
-    expect(tooMuch.body.error).toContain("Depósito Central");
+    expect(tooMuch.body.error).toContain("Galpón");
 
     const counted = await move({ kind: "ajuste", warehouse: "salon", quantity: 4 });
     expect(counted.body.item).toMatchObject({ qty_central: 0, qty_salon: 4, quantity: 4 });
     expect(counted.body.movements[0]).toMatchObject({ kind: "ajuste", warehouse: "salon", quantity: 2 });
   });
 
-  it("una orden de compra entra al Depósito Central una sola vez, a nombre de la empresa que compró; lo que no estaba se da de alta", async () => {
+  it("una orden de compra entra al Galpón una sola vez, a nombre de la empresa que compró; lo que no estaba se da de alta", async () => {
     await StockItem.create({ name: "TECHOS 5000 PU · Balde 20 KG", sku: "5000PU20", unit: "balde", quantity: 2, qty_central: 2, qty_salon: 0, avgCostCents: 190_000, valueCents: 380_000 });
     const purchase = await Purchase.create({
       number: "OC-9", company: "constructora", description: "Pedido", amountCents: 0, requestedDate: new Date(), stage: "orden", status: "emitida", deliverTo: "central",
@@ -115,7 +115,7 @@ describe("movimientos entre depósitos (API)", () => {
       ],
     });
     const id = String(purchase._id);
-    // Al Salón no: la compra entra al Central y de ahí se transfiere.
+    // Al Salón no: la compra entra al Galpón y de ahí se transfiere.
     expect((await call(await receive.POST(post({ warehouse: "salon" }), params({ id })))).status).toBe(400);
     const done = await call(await receive.POST(post({}), params({ id })));
     expect(done.status).toBe(201);

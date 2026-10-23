@@ -6,7 +6,7 @@ import { VOID_INVOICE_STATUSES, invoiceLabel, voucherLabels } from "./invoice-la
 
 /*
  * La ruta cerrada de compras (puntos 5 y 7 de la especificación): Cotización u
- * obra → Solicitud → Orden de compra → Recepción en el Central → Factura de
+ * obra → Solicitud → Orden de compra → Recepción en el Galpón → Factura de
  * compra → Orden de pago → Pago, que se recorre en los dos sentidos. Cada fila
  * es una orden; de ahí se ve de dónde salió y cómo terminó. Además, los
  * documentos que quedaron sueltos (sin vínculo) y el control de tres vías:

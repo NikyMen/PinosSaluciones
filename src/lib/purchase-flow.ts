@@ -352,7 +352,7 @@ export const purchaseReceiptSchema = z.object({
   final: z.boolean().default(false),
   notes: z.string().trim().max(1000).optional().default(""),
   attachment: z.string().regex(/^\/api\/uploads\/[\w.-]+$/).or(z.literal("")).optional().transform(value => value || undefined),
-  // Compatibilidad con "Pasar a stock": toda compra entra al Central (o al Salón, si se pidió para ahí).
+  // Compatibilidad con "Pasar a stock": toda compra entra al Galpón (o al Salón, si se pidió para ahí).
   warehouse: z.literal("central").optional(),
 });
 export type PurchaseReceiptInput = z.infer<typeof purchaseReceiptSchema>;
@@ -361,7 +361,7 @@ const round = (value: number) => Math.round(value * 1000) / 1000;
 
 /**
  * El remito del proveedor de una OC: suma al stock lo que llegó de cada renglón
- * (al Central, o al Salón si se pidió para ahí). Puede ser parcial; el remito
+ * (al Galpón, o al Salón si se pidió para ahí). Puede ser parcial; el remito
  * final cierra la orden. Una orden sin renglones (cargada a mano) registra el
  * remito sin mover stock: la mercadería se suma desde Stock.
  */

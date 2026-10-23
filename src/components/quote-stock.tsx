@@ -34,11 +34,11 @@ export function QuoteStock({ quoteId, status }: { quoteId: string; status?: stri
       {rows && <span className={short.length ? "badge pendiente" : "badge activo"}>{short.length ? `Faltan ${short.length}` : "Alcanza todo"}</span>}</div>
     {error && <p className="form-error">{error}</p>}
     {rows === null ? <div className="loading-state">Consultando…</div> : <div className="table-scroll"><table><thead><tr>
-      <th>Material</th><th>Necesidad</th><th>Central</th><th>Salón</th><th>En tránsito</th><th>Reservado (otras)</th>{approved && <th>Reservado (esta)</th>}<th>Disponible</th><th>Faltante</th><th>Propietario</th>
+      <th>Material</th><th>Necesidad</th><th>Galpón</th><th>Salón</th><th>En tránsito</th><th>Reservado (otras)</th>{approved && <th>Reservado (esta)</th>}<th>Disponible</th><th>Faltante</th><th>Propietario</th>
     </tr></thead><tbody>{rows.map(row => <tr key={row.key} className={row.shortageQty > 0 ? "row-alert" : ""}>
       <td data-label="Material">{row.name}{!row.matched && <small className="tracking-sub">No está en el stock</small>}</td>
       <td data-label="Necesidad">{qty(row.neededQty)} {row.unit}</td>
-      <td data-label="Central">{row.matched ? qty(row.centralQty) : "—"}</td>
+      <td data-label="Galpón">{row.matched ? qty(row.centralQty) : "—"}</td>
       <td data-label="Salón">{row.matched ? qty(row.salonQty) : "—"}</td>
       <td data-label="En tránsito">{row.transitQty ? qty(row.transitQty) : "—"}</td>
       <td data-label="Reservado (otras)">{row.reservedQty ? qty(row.reservedQty) : "—"}</td>

@@ -7,7 +7,7 @@
 ## Contexto
 
 La especificación v1.5 de administración pide no fijar ninguna relación entre la empresa que
-compra, la dueña del material y la que factura; que toda compra entre al Depósito Central; que
+compra, la dueña del material y la que factura; que toda compra entre al Galpón; que
 la venta al público salga del Salón con remito y que la factura lo referencie; un comprobante
 interno X; y que todo ingreso o egreso de plata se impute a una cuenta del plan.
 
@@ -53,5 +53,5 @@ cotización vuelve a otro estado que no sea "aprobada" o "convertida", se libera
 - Producción no necesita migración de datos: catálogo y talonarios se crean solos, el índice viejo
   se borra solo, y lo histórico sigue funcionando (sin cuenta / sin dueño hasta editarlo).
 - Las entradas al Salón por compra dejan de ser posibles. Si alguien las usaba, ahora es
-  "entrada al Central + transferencia".
+  "entrada al Galpón + transferencia".
 - Facturar un remito por partes, notas de crédito y OP de varias facturas quedan para después.

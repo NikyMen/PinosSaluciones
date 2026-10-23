@@ -61,9 +61,9 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
   const [camera, setCamera] = useState(false);
   const [suppliers, setSuppliers] = useState<Option[]>([]);
   const [works, setWorks] = useState<Option[]>([]);
-  // Una entrada es una compra: entra al Central, a nombre de la empresa que compró (CUIT propietario).
+  // Una entrada es una compra: entra al Galpón, a nombre de la empresa que compró (CUIT propietario).
   const [owner, setOwner] = useState<CompanyKey>("tvp");
-  // En la salida, vacío es "automático": primero del Central y lo que falte del Salón.
+  // En la salida, vacío es "automático": primero del Galpón y lo que falte del Salón.
   const [outFrom, setOutFrom] = useState<"" | WarehouseKey>("");
   const [workId, setWorkId] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -345,7 +345,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
         <div className="counter-side-body">
           <p className="eyebrow">{entry ? "ENTRADA" : "SALIDA A OBRA"}</p>
           {entry ? <>
-            <div className="counter-field"><span>Empresa que compró *<em className="field-hint">Entra al Depósito Central a su nombre</em></span><div className="counter-segment">{COMPANY_KEYS.map(key => <button key={key} type="button" className={owner === key ? "active" : ""} aria-pressed={owner === key} onClick={() => { setOwner(key); setConfirming(false); }}>{COMPANIES[key].short}</button>)}</div></div>
+            <div className="counter-field"><span>Empresa que compró *<em className="field-hint">Entra al Galpón a su nombre</em></span><div className="counter-segment">{COMPANY_KEYS.map(key => <button key={key} type="button" className={owner === key ? "active" : ""} aria-pressed={owner === key} onClick={() => { setOwner(key); setConfirming(false); }}>{COMPANIES[key].short}</button>)}</div></div>
             <label className="counter-field"><span>Proveedor</span><SearchSelect name="supplierId" options={suppliers} value={supplierId} onChange={setSupplierId} placeholder="Elegí el proveedor…" /></label>
             <label className="counter-field"><span>Factura o remito del proveedor</span><input name="reference" placeholder="Número del comprobante" /></label>
           </> : <>
@@ -353,7 +353,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
             <div className="counter-field"><span>Sale de</span><div className="counter-segment">
               <button type="button" className={!outFrom ? "active" : ""} aria-pressed={!outFrom} onClick={() => { setOutFrom(""); setConfirming(false); }}>Automático</button>
               {WAREHOUSES.map(entry => <button key={entry.key} type="button" className={outFrom === entry.key ? "active" : ""} aria-pressed={outFrom === entry.key} onClick={() => { setOutFrom(entry.key); setConfirming(false); }}>{entry.short}</button>)}
-            </div><small className="field-hint">{outFrom ? `Todo sale del ${warehouseLabel(outFrom)}` : "Primero del Central y lo que falte del Salón. Un remito por depósito."}</small></div>
+            </div><small className="field-hint">{outFrom ? `Todo sale del ${warehouseLabel(outFrom)}` : "Primero del Galpón y lo que falte del Salón. Un remito por depósito."}</small></div>
           </>}
           <label className="counter-field"><span>Fecha</span><DateInput name="date" defaultValue={todayIso()} recent /></label>
           <label className="counter-field"><span>Observaciones</span><textarea name="note" rows={2} placeholder={entry ? "Detalle de la entrada" : "Quién retiró, en qué vehículo…"} /></label>

@@ -54,7 +54,7 @@ export function TransfersView({ canEdit }: { canEdit: boolean }) {
     <div className="page-heading"><div>
       <p className="eyebrow">STOCK Y LOGÍSTICA</p>
       <h1>Transferencias</h1>
-      <p>Del Depósito Central al Salón de Ventas (o al revés). Sale con remito, queda en tránsito y el destino confirma lo que recibió. No es una venta: solo cambia dónde está el material.</p>
+      <p>Del Galpón al Salón de Ventas (o al revés). Sale con remito, queda en tránsito y el destino confirma lo que recibió. No es una venta: solo cambia dónde está el material.</p>
     </div>{canEdit && <button className="primary-btn" onClick={() => setCreating(true)}><Plus size={18} /> Nueva transferencia</button>}</div>
     {error && <div className="notice error">{error}</div>}
     {notice && <div className="notice success" role="status">{notice}</div>}

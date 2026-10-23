@@ -12,9 +12,9 @@ import type { Session } from "./auth";
  * Los movimientos de stock. Es lo único que cambia cuánto hay de un material
  * (punto 3.1: no se modifica stock directamente, todo cambio es un movimiento):
  *
- * - entrada (una compra): al Depósito Central (o al Salón, si la orden se pidió para ahí), a nombre de la empresa
+ * - entrada (una compra): al Galpón (o al Salón, si la orden se pidió para ahí), a nombre de la empresa
  *   que compró (CUIT propietario). Recalcula el costo promedio.
- * - salida a obra: resta de uno o de los dos depósitos (primero del Central),
+ * - salida a obra: resta de uno o de los dos depósitos (primero del Galpón),
  *   carga el costo a la obra, consume lo reservado para esa obra y deja un
  *   remito por depósito. No es una venta: no hay factura.
  * - transferencia: sale del depósito de origen y queda en tránsito; con la
@@ -79,10 +79,10 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
   let consumed: { workId: Types.ObjectId; quoteId?: Types.ObjectId; quantity: number } | null = null;
 
   if (input.kind === "ingreso") {
-    // La entrada cargada a mano entra al Depósito Central; al Salón llega por transferencia.
+    // La entrada cargada a mano entra al Galpón; al Salón llega por transferencia.
     // Solo una orden de compra pedida para el Salón puede entrar directo ahí.
     const into: WarehouseKey = input.purchaseId && input.warehouse === "salon" ? "salon" : "central";
-    if (input.warehouse && input.warehouse !== into) throw new StockError("Toda compra entra al Depósito Central. Al Salón de Ventas el material llega con una transferencia desde el Central.");
+    if (input.warehouse && input.warehouse !== into) throw new StockError("Toda compra entra al Galpón. Al Salón de Ventas el material llega con una transferencia desde el Galpón.");
     const owner: CompanyKey = isOwner(input.owner) ? input.owner : "tvp";
     const totalCents = Math.round(input.quantity * input.unitCostCents);
     // Promedio ponderado: mezcla lo que ya había (en todos lados) con lo que entra al precio nuevo.
@@ -95,7 +95,7 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
     if (!purchaseId) {
       const purchase = await Purchase.create({
         number: input.reference || `STK-${Date.now().toString(36).toUpperCase()}`, company: owner,
-        supplierId: input.supplierId, description: `${input.quantity} ${item.unit} de ${item.name} (Depósito Central)`,
+        supplierId: input.supplierId, description: `${input.quantity} ${item.unit} de ${item.name} (Galpón)`,
         amountCents: totalCents, stage: "orden", status: "cerrada", receptionStatus: "recibida", closedAt: new Date(),
         requestedDate: date, receivedDate: date, receiptNotes: input.note, deliverTo: "central",
         stockedAt: new Date(), stockedWarehouse: "central", stockedByName: session.name,
