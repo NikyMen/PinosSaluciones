@@ -1064,6 +1064,8 @@ tbody tr:hover .row-actions { background: #f9fbfd; }
 @media (max-width: 720px) {
   .table-panel .table-scroll { overflow: visible; }
   .table-panel table { min-width: 0; display: block; }
+  .table-panel .cell-clamp { min-width: 0; max-width: 70%; }
+  .table-panel .cell-stack > .badge { align-self: flex-end; }
   .table-panel thead { display: none; }
   .table-panel tbody, .table-panel tbody tr, .table-panel tbody td { display: block; width: auto; }
   .table-panel tbody tr { padding: 13px 15px 12px; border-bottom: 1px solid var(--line); }
@@ -1789,6 +1791,8 @@ tbody tr.task-row.pendiente:hover { background: #e9ecf0; }
 /* Precio con la fecha de donde sale, en una celda */
 .cell-stack { display: inline-flex; flex-direction: column; gap: 2px; }
 .cell-stack small { color: var(--muted); font-size: 11px; font-weight: 600; }
+.cell-stack > .badge { align-self: flex-start; }
+.cell-clamp { min-width: 240px; max-width: 360px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 
 /* Recibo: facturas del cliente y cuánto se cobra de cada una */
 .receipt-modal { width: min(980px, 100%); }

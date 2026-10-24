@@ -224,7 +224,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     // El legajo, y si la persona está dada de baja, se ve ahí mismo.
     if (entity === "workers" && key === "fileNumber") return <span className="file-number"><b>{value ? String(value) : "—"}</b>{item.active === false && <span className="badge anulada" title={item.leftAt ? `Baja el ${date(String(item.leftAt))}` : "Dada de baja"}>Baja</span>}</span>;
     if (entity === "purchases" && key === "stage") return value === "solicitud" ? "Solicitud" : "Orden de compra";
-    if (entity === "purchases" && key === "status") return <span className={`badge purchase-${String(value || "")}`}>{purchaseStatusText(item)}</span>;
+    // El estado de la orden arriba; el pago y la recepción debajo, así no se estira la columna.
+    if (entity === "purchases" && key === "status") { const [base, ...rest] = purchaseStatusText(item).split(" · "); return <span className="cell-stack"><span className={`badge purchase-${String(value || "")}`}>{base}</span>{rest.length > 0 && <small>{rest.join(" · ")}</small>}</span>; }
+    // Una descripción larga (los renglones de una orden) se ve en tres líneas; entera, al pasar el mouse o al abrirla.
+    if (key === "description" && value) { const text = String(value).split(/\r?\n/).map(line => line.trim()).filter(Boolean).join(" · "); return <span className="cell-clamp" title={text}>{text}</span>; }
     if (entity === "purchases" && key === "number") return <span className="invoice-number">{String(value || "—")}{item.legacyNumber ? <small> · antes {String(item.legacyNumber)}</small> : null}</span>;
     if (entity === "invoices" && key === "number") return <span className="invoice-number">{String(value || "—").replace(/^X-/, "")}{item.replacedById ? <small> · sustituida</small> : item.replacesId ? <small> · sustituye una X</small> : null}</span>;
     if (key === "company") { const company = companyOf(value); return <span className={`company-badge ${company.key}`} title={`${company.legalName} · CUIT ${company.cuit}`}>{company.short}</span>; }
