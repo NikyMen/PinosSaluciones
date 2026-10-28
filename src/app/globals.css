@@ -1593,6 +1593,53 @@ tbody tr.price-best:hover { background: #e8f6ef; }
   .price-preview-foot button { flex: 1; }
 }
 
+/* --- Carrito para salir a obra (lista de Stock) -----------------------------
+   Cada fila suma su material; la barra fija de abajo dice lo que se lleva y
+   manda todo a la Caja para hacer una sola salida. */
+.row-actions .work-cart-add { color: var(--brand-navy); background: #fff; }
+.row-actions .work-cart-add:hover { color: #fff !important; background: var(--brand-navy) !important; }
+.work-cart-row { height: 34px; padding-left: 9px; display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; border: 1px solid #bfe3d3; border-radius: 9px; color: #126245; background: var(--success-soft); }
+.work-cart-qty { display: inline-flex; align-items: center; }
+.work-cart-qty input { width: 46px; height: 30px; padding: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-weight: 850; font-variant-numeric: tabular-nums; text-align: center; }
+.work-cart-qty input:focus { border-radius: 6px; background: #fff; box-shadow: 0 0 0 2px var(--brand-navy); }
+.work-cart-qty button, .row-actions .work-cart-qty button, .table-panel .row-actions .work-cart-qty button { width: 28px; height: 30px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 7px; color: inherit; background: transparent; }
+.work-cart-qty button:hover, .row-actions .work-cart-qty button:last-child:hover { color: var(--brand-navy); background: rgba(255, 255, 255, .7); }
+.work-cart-bar { position: sticky; bottom: 14px; z-index: 5; margin-top: 18px; overflow: hidden; border: 1px solid var(--brand-navy); border-radius: 14px; background: #fff; box-shadow: 0 14px 34px -14px rgba(0, 48, 91, .45); }
+.work-cart-summary { padding: 10px 12px 10px 8px; display: flex; align-items: center; gap: 10px; }
+.work-cart-toggle { min-width: 0; flex: 1; padding: 4px 8px; display: flex; align-items: center; gap: 11px; border: 0; border-radius: 10px; color: var(--brand-navy); background: transparent; text-align: left; }
+.work-cart-toggle:hover { background: #f1f5f9; }
+.work-cart-toggle span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.work-cart-toggle b { color: var(--brand-navy-deep); font-size: .86rem; }
+.work-cart-toggle small { overflow: hidden; color: var(--muted); font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.work-cart-lines { max-height: 300px; margin: 0; padding: 4px 16px; overflow-y: auto; list-style: none; border-bottom: 1px solid var(--line); background: #f9fbfc; }
+.work-cart-lines li { padding: 8px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto 34px; align-items: center; gap: 12px; border-bottom: 1px solid #edf1f5; }
+.work-cart-lines li:last-child { border-bottom: 0; }
+.work-cart-lines li > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.work-cart-lines b { color: var(--ink); font-size: .76rem; }
+.work-cart-lines small { color: var(--muted-2); font-size: .64rem; }
+.work-cart-lines .work-cart-qty { border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; }
+.counter-cart-notice { display: flex; align-items: center; gap: 10px; }
+.counter-cart-notice > span { flex: 1; }
+.counter-cart-notice .secondary-btn { min-height: 34px; }
+/* El registro de Salidas a obra: filtros por obra y fechas, y el costo total. */
+.deliveries-toolbar { align-items: flex-end; flex-wrap: wrap; }
+.deliveries-toolbar label { display: flex; flex-direction: column; gap: 5px; }
+.deliveries-toolbar label > span { color: var(--muted); font-size: .66rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+.deliveries-toolbar input[type="date"] { height: 42px; }
+.deliveries-work { min-width: 280px; flex: 1; max-width: 460px; }
+.deliveries-total { margin-bottom: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); background: #fff; font-size: .78rem; }
+.deliveries-total b { color: var(--brand-navy-deep); font-size: .95rem; }
+@media (max-width: 720px) {
+  .deliveries-work { min-width: 0; max-width: none; flex-basis: 100%; }
+  .deliveries-toolbar label:not(.deliveries-work) { flex: 1; }
+  .counter-cart-notice { flex-wrap: wrap; }
+  .table-panel .row-actions .work-cart-row { flex: 1; min-width: 140px; height: 38px; justify-content: center; }
+  .work-cart-bar { bottom: 10px; }
+  .work-cart-summary { flex-wrap: wrap; }
+  .work-cart-toggle { flex-basis: 100%; }
+  .work-cart-summary > .secondary-btn, .work-cart-summary > .primary-btn { flex: 1; justify-content: center; }
+}
+
 /* --- Invitaciones de usuarios ------------------------------------------------
    La cuenta nueva no lleva contraseña: le llega un link por correo. Si el
    correo no sale, el link queda a mano para copiarlo. */

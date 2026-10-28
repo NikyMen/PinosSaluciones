@@ -40,7 +40,7 @@ Leyenda: ✅ hecho · 🟡 parcial · ⏳ pendiente (o esperando una decisión d
 | Recepción confirmada en el Salón, con diferencias documentadas | ✅ | Por renglón: llegó bien, dañado (pasa a "no utilizable") y faltante |
 | La transferencia no es venta ni factura | ✅ | No toca plata ni costo |
 | El remito al cliente se origina en el Salón | ✅ | Ventas › Remitos de venta; solo descuenta del Salón |
-| Obra: remito, recepción, consumo, sobrante, devolución, pérdida | 🟡 | Remito de salida a obra y consumo por inspección; la devolución de obra al depósito se hace hoy con un ajuste |
+| Obra: remito, recepción, consumo, sobrante, devolución, pérdida | 🟡 | Remito de salida a obra (de a uno, o varios juntos con el carrito de Stock y la Caja), registro en Stock y logística › Salidas a obra con PDF de costos, y consumo por inspección; la devolución de obra al depósito se hace hoy con un ajuste |
 
 ## 3. Modelo de stock
 

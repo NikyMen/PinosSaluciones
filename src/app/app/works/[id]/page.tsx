@@ -7,5 +7,5 @@ export default async function WorkPage({ params }: { params: Promise<{ id: strin
   const session = await requireSession();
   if (!canRead(session, "works")) notFound();
   // Dar de alta a alguien nuevo desde la obra es cargar el legajo: pide permiso sobre Personal.
-  return <WorkDetail id={(await params).id} canEdit={canWrite(session, "works")} canCreateWorker={canWrite(session, "workers")} />;
+  return <WorkDetail id={(await params).id} canEdit={canWrite(session, "works")} canCreateWorker={canWrite(session, "workers")} canSeeStock={canRead(session, "stock")} />;
 }

@@ -160,6 +160,30 @@ describe("caja del depósito (API)", () => {
     expect(recent.body.items.map((ticket: { kind: string }) => ticket.kind)).toEqual(["egreso", "egreso", "ingreso"]);
     expect(await StockTicket.countDocuments()).toBe(3);
   });
+
+  it("el registro de salidas a obra se filtra por obra y fecha, y su PDF lleva el costo de cada material y el total", async () => {
+    const client = await Client.create({ name: "Galerías del Centro", cuit: "30-32345678-9" });
+    const work = await Work.create({ code: "OB-10", name: "Galería", clientId: client._id, budgetCents: 1000, status: "en_curso" });
+    const brush = await StockItem.create({ name: "Pincel N° 20", unit: "unidad", qty_central: 10, quantity: 10, avgCostCents: 350_000, valueCents: 3_500_000 });
+    const filter = await StockItem.create({ name: "Filtro hidrolavadora", unit: "unidad", qty_central: 1, qty_salon: 5, quantity: 6, avgCostCents: 1_280_000, valueCents: 7_680_000 });
+    // El carrito de Jorge: dos pinceles y dos filtros, en una sola salida (el filtro sale de los dos depósitos).
+    const out = await call(await caja.POST(post({ kind: "egreso", workId: String(work._id), date: "2026-10-28", lines: [{ itemId: String(brush._id), quantity: 2 }, { itemId: String(filter._id), quantity: 2 }] })));
+    expect(out.status).toBe(201);
+    expect(out.body.totalCents).toBe(3_260_000);
+
+    const list = async (query: string) => (await call(await caja.GET(new Request(`http://test?kind=egreso&limit=500&${query}`)))).body.items as Array<{ number: string; kind: string }>;
+    expect((await list(`workId=${work._id}`)).map(ticket => ticket.number)).toEqual([out.body.number]);
+    expect((await list("from=2026-10-28&to=2026-10-28")).map(ticket => ticket.number)).toContain(out.body.number);
+    expect((await list(`workId=${work._id}&from=2026-10-29`))).toEqual([]);
+    expect((await list("")).every(ticket => ticket.kind === "egreso")).toBe(true);
+
+    const { jsPDF } = await import("jspdf");
+    const { buildSalidaPdf } = await import("../src/lib/salida-pdf");
+    const doc = new jsPDF();
+    expect(buildSalidaPdf(doc, out.body, { author: "Jorge" })).toBe(`salida-a-obra-${out.body.number}.pdf`);
+    const text = doc.output();
+    for (const expected of ["SALIDA A OBRA", "Pincel N", "Filtro hidrolavadora", "COSTO TOTAL A LA OBRA", "32.600", "25.600", "Obra OB-10", ...out.body.remitos.map((remito: { number: string }) => remito.number)]) expect(text).toContain(expected);
+  });
 });
 
 describe("bienes de uso: mantenimiento programado (API)", () => {

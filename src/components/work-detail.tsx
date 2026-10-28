@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ClipboardCheck, Download, FileCheck2, ImagePlus, ListChecks, MessageSquareText, Paperclip, Plus, ReceiptText, Send, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, Check, ClipboardCheck, Download, FileCheck2, HardHat, ImagePlus, ListChecks, MessageSquareText, Paperclip, Plus, ReceiptText, Send, Trash2, Users, X } from "lucide-react";
 import { date, dateTime, money, titleCase } from "@/lib/format";
 import { FileDrop, MoneyInput } from "@/components/fields";
 import { WorkLabor, type AssignedWorker, type LaborEntry } from "@/components/work-labor";
@@ -39,7 +39,7 @@ type WorkExpense = { _id: string; number?: string; description: string; category
 
 type Work = { _id: string; name: string; code: string; progress: number; budgetCents?: number; budgetNetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
 
-export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEdit: boolean; canCreateWorker: boolean }) {
+export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false }: { id: string; canEdit: boolean; canCreateWorker: boolean; canSeeStock?: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
   const [error, setError] = useState("");
   const [expenses, setExpenses] = useState<WorkExpense[]>([]);
@@ -173,6 +173,7 @@ export function WorkDetail({ id, canEdit, canCreateWorker }: { id: string; canEd
         {canEdit && <Link className="primary-btn" href={`/app/works/${id}/inspections/new`}><ClipboardCheck size={17} /> Nueva inspección</Link>}
         <a className="secondary-btn" href="#personal" onClick={event => { event.preventDefault(); document.getElementById("personal")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Users size={17} /> Personal asignado</a>
         <a className="secondary-btn" href="#gastos" onClick={event => { event.preventDefault(); document.getElementById("gastos")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><ReceiptText size={17} /> Gastos de obra</a>
+        {canSeeStock && <Link className="secondary-btn" href={`/app/salidas?obra=${id}`}><HardHat size={17} /> Material entregado</Link>}
         {canEdit && <button className="secondary-btn" onClick={() => setInvoicing(true)}><FileCheck2 size={17} /> Facturar</button>}
       </div>
     </div>

@@ -41,6 +41,7 @@ import { CashTransferModal } from "@/components/cash-transfer";
 import { meterLabels, sectorLabels } from "@/lib/assets";
 import { printLabels, readPrinterSettings } from "@/lib/ticket-print";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
+import { WorkCartBar, WorkCartRowControl } from "@/components/work-cart";
 import { netFromGross } from "@/lib/net-amounts";
 
 type Item = Record<string, unknown> & { _id: string };
@@ -564,6 +565,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
             <Download size={15} /> PDF</button>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
           {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void approveQuote(item); }}><CheckCircle2 size={15} /> Aprobar</button>}
+          {entity === "stock" && canEdit && <WorkCartRowControl item={item} />}
           {entity === "stock" && canEdit && <button title="Entrada: una compra que llegó al Galpón" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Transferir entre el Galpón y el Salón de Ventas (queda en tránsito hasta que se recibe)" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "transferencia" })}><ArrowRightLeft size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Salida a obra, con remito" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
@@ -663,6 +665,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {maintenanceFor && <AssetMaintenanceModal assetId={maintenanceFor} canEdit={canEdit} onClose={() => setMaintenanceFor(null)}
       onChanged={(updated: AssetRecord) => setItems(current => current.map(row => row._id === updated._id ? { ...row, nextDueDate: updated.nextDueDate, nextDueTitle: updated.nextDueTitle, nextDueReading: updated.nextDueReading, currentReading: updated.currentReading, status: updated.status } : row))} />}
     {laborFor && <WorkerLaborModal worker={laborFor} canEdit={canEdit} onClose={() => setLaborFor(null)} />}
+    {entity === "stock" && canEdit && <WorkCartBar />}
   </>;
 }
 

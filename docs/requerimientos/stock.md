@@ -9,7 +9,7 @@ Reemplaza a **Tango**, que la empresa dejó de renovar. *"Nadie quiere trabajar 
 | STK-1 | **Catálogo de productos** con código de artículo, denominación, unidad, cantidad y costo | P1 |
 | STK-2 | El catálogo **alimenta los precios** del costeo en [[cotizaciones]] | P1 |
 | STK-3 | **Ingreso a stock al cargar la factura de compra**, con el costo real | P1 |
-| STK-4 | **Egreso contra remito** cuando el material sale a la obra → descuenta stock y carga costo en [[obras]] | P1 |
+| STK-4 | **Egreso contra remito** cuando el material sale a la obra → descuenta stock y carga costo en [[obras]]. Hecho: carrito en Stock → Caja, registro en Salidas a obra y PDF con costos (pedido de Jorge, Compras y logística, 28/10/2026) | P1 |
 | STK-5 | **NO se debita automáticamente** al aprobar la obra. Decisión explícita del cliente | P1 |
 | STK-6 | **Alerta de stock mínimo** → notificación a compras | P2 |
 | STK-7 | **Venta rápida / mostrador**: vender productos del stock sin pasar por obra | P2 |

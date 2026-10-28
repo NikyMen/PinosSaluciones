@@ -30,8 +30,20 @@ export async function GET(request: Request) {
     const session = await requireSession();
     if (!canRead(session, "stock")) throw new Error("FORBIDDEN");
     await connectDB();
-    const limit = Math.min(50, Math.max(1, Number(new URL(request.url).searchParams.get("limit") || 15)));
-    const items = await StockTicket.find().sort({ createdAt: -1 }).limit(limit).lean();
+    // Con filtros es el registro de Salidas a obra: por tipo, obra y fechas, hasta 500.
+    const params = new URL(request.url).searchParams;
+    const limit = Math.min(500, Math.max(1, Number(params.get("limit") || 15)));
+    const filter: Record<string, unknown> = {};
+    const kind = params.get("kind");
+    if (kind === "ingreso" || kind === "egreso") filter.kind = kind;
+    const workId = params.get("workId");
+    if (workId && isValidObjectId(workId)) filter.workId = workId;
+    // La fecha del comprobante es el día elegido en la Caja, guardado a las 0 h UTC (como en src/lib/period.ts).
+    const day = (value: string | null) => value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00.000Z`) : null;
+    const from = day(params.get("from")), to = day(params.get("to"));
+    if (from || to) filter.date = { ...(from && { $gte: from }), ...(to && { $lte: new Date(to.getTime() + 86_399_999) }) };
+    const filtered = Object.keys(filter).length > 0;
+    const items = await StockTicket.find(filter).sort(filtered ? { date: -1, createdAt: -1 } : { createdAt: -1 }).limit(limit).lean();
     return Response.json({ items });
   } catch (error) { return apiError(error); }
 }

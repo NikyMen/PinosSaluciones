@@ -188,6 +188,12 @@ Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisio
 - Al guardar una factura, el servidor la frena si pasa de lo pendiente de su cotización, de su certificado o de lo elegido de sus remitos (`checkInvoiceExcess`). Gerencia la puede guardar igual con un motivo, que queda en el historial de la cotización.
 - Un remito de venta se puede facturar en partes: cada renglón lleva `invoicedQty` y la factura `remitoLines`. Al anular o borrar la factura, vuelve lo que facturaba.
 
+## Salidas a obra
+
+- **Carrito para obra** (`src/lib/work-cart.ts`): en Stock y logística › Stock, cada material tiene el botón "Carrito" con su cantidad. La barra de abajo muestra lo que se lleva y el costo aproximado. "Hacer salida a obra" abre la Caja con el carrito cargado: se elige la obra y se confirma todo junto, con un comprobante `CJ-n` y un remito por depósito. Al confirmar, el carrito se vacía. El carrito vive en el navegador de quien lo arma.
+- **Registro** (Stock y logística › Salidas a obra, `/app/salidas`): todas las salidas de la Caja, filtradas por obra y fechas, con el costo total cargado a la obra y exportación a Excel. Desde la obra, el botón "Material entregado" abre el listado filtrado.
+- **PDF con costos** (`src/lib/salida-pdf.ts`): el detalle de la salida con el costo unitario (promedio ponderado) y el subtotal de cada material, el total cargado a la obra, los remitos y las firmas. Es un papel interno: el remito que acompaña al material no lleva precios.
+
 ## Backups
 
 En producción el host no tiene `mongodump`, porque Mongo corre en Docker, así que `deploy/backup.sh` no funciona tal cual. Backup manual:

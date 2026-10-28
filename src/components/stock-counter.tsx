@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, Camera, Check, FileText, HardHat, Minus, PackagePlus, Plus, Printer, ScanBarcode, Search, Tag, Trash2, TriangleAlert, X } from "lucide-react";
+import { ArrowDownToLine, Camera, Check, FileDown, FileText, HardHat, Minus, PackagePlus, Plus, Printer, ScanBarcode, Search, ShoppingCart, Tag, Trash2, TriangleAlert, X } from "lucide-react";
+import Link from "next/link";
 import { DateInput, SearchSelect, type Option } from "@/components/fields";
 import { CameraScanner, scanFeedback, useKeyboardScanner } from "@/components/barcode-scanner";
 import { amountToInput, dateTime, money, parseAmount, qty, todayIso } from "@/lib/format";
@@ -12,6 +13,8 @@ import { downloadRemitoPdf, type RemitoData } from "@/lib/remito-pdf";
 import { printLabels, printTicket, readPrinterSettings, savePrinterSettings, type PrinterSettings, type TicketData } from "@/lib/ticket-print";
 import { cleanScannedCode } from "@/lib/barcode";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
+import { downloadSalidaPdf } from "@/lib/salida-pdf";
+import { useWorkCart, workCart } from "@/lib/work-cart";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Caja del depósito: lo que entra y lo que sale, escaneando.
@@ -20,6 +23,8 @@ import { fetchAllRecords } from "@/lib/fetch-all-records";
    con la cámara del celular, o se busca por nombre. Cada lectura suma una
    unidad; la cantidad se corrige en la lista. Al confirmar, todo entra o sale
    junto con un solo comprobante (CJ-…) que se imprime en la ticketera.
+   La salida también puede venir armada desde el carrito de la lista de Stock
+   (src/lib/work-cart.ts): se carga acá y se vacía al confirmar.
    ───────────────────────────────────────────────────────────────────────────── */
 
 type Mode = "ingreso" | "egreso";
@@ -77,6 +82,9 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
   const [formKey, setFormKey] = useState(0);
   const scanRef = useRef<HTMLInputElement>(null);
   const flashTimer = useRef(0);
+  // Si la lista vino del carrito de Stock, al confirmar la salida el carrito se vacía.
+  const [fromCart, setFromCart] = useState(false);
+  const cart = useWorkCart();
 
 
   const loadRecent = useCallback(async () => {
@@ -84,9 +92,49 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     if (response?.ok) setRecent(((await response.json()).items || []) as Ticket[]);
   }, []);
 
+  /** Suma a la lista lo del carrito de Stock, con lo que hay hoy de cada material. */
+  const loadCart = useCallback(async () => {
+    const saved = workCart.lines();
+    if (!saved.length) return;
+    const fresh = await Promise.all(saved.map(async line => {
+      const response = await fetch(`/api/records/stock/${line.item._id}`).catch(() => null);
+      // Borrado del stock: no se carga. Sin conexión: se usa lo que guardó el carrito.
+      if (response?.status === 404) return null;
+      if (!response?.ok) return line.item as CounterItem;
+      const item = await response.json() as CounterItem;
+      delete item.movements;
+      return item;
+    }));
+    setMode("egreso"); setOutFrom(""); setConfirming(false); setDone(null); setFromCart(true);
+    setLines(current => {
+      let next = [...current];
+      saved.forEach((line, index) => {
+        const item = fresh[index];
+        if (!item) return;
+        const existing = next.find(row => row.item._id === item._id);
+        next = existing
+          ? next.map(row => row === existing ? { ...row, item: { ...row.item, ...item }, quantity: String(round(toNumber(row.quantity) + line.quantity)) } : row)
+          : [...next, { item, quantity: String(line.quantity), unitCost: "" }];
+      });
+      return next;
+    });
+    const dropped = fresh.filter(item => !item).length;
+    say(dropped ? `Se cargó el carrito. ${dropped === 1 ? "Un material ya no está" : `${dropped} materiales ya no están`} en el stock.` : `Se cargó el carrito: ${saved.length} ${saved.length === 1 ? "material" : "materiales"}.`, !dropped);
+  }, []);
+
   useEffect(() => {
     // Lo guardado en este equipo (ancho del rollo) y los últimos comprobantes, recién montada la pantalla.
-    const timer = window.setTimeout(() => { setPrinter(readPrinterSettings()); void loadRecent(); }, 0);
+    // Si se llegó desde el botón del carrito de Stock, la salida arranca con lo del carrito.
+    const timer = window.setTimeout(() => {
+      setPrinter(readPrinterSettings()); void loadRecent();
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("carrito")) {
+        // Fuera de la dirección: recargar la página no vuelve a sumar el carrito.
+        url.searchParams.delete("carrito");
+        window.history.replaceState(null, "", url.pathname + url.search);
+        void loadCart();
+      }
+    }, 0);
     const toOptions = (rows: Array<Record<string, unknown>>) => rows.map(row => ({ value: String(row._id), label: String(row.name || row.code || ""), hint: row.code ? String(row.code) : undefined }));
     void Promise.all([
       fetchAllRecords("suppliers").then(items => ({ items })),
@@ -99,7 +147,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     // En la compu el cursor arranca en el cuadro de escaneo; en el celular no, para no abrir el teclado.
     if (window.matchMedia("(pointer: fine)").matches) scanRef.current?.focus();
     return () => window.clearTimeout(timer);
-  }, [loadRecent]);
+  }, [loadRecent, loadCart]);
 
   function say(text: string, ok = true) {
     window.clearTimeout(flashTimer.current);
@@ -245,6 +293,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     if (!response.ok) return setError(result.error || "No se pudo registrar la operación");
     const ticket = result as Ticket;
     setDone(ticket);
+    if (ticket.kind === "egreso" && fromCart) { workCart.clear(); setFromCart(false); }
     setLines([]); setWorkId(""); setSupplierId(""); setFormKey(key => key + 1);
     void loadRecent();
     if (printer.autoPrint) void printTicket(ticket, printer.width).catch(() => setError("Se registró, pero no se pudo abrir la impresión del ticket"));
@@ -283,10 +332,16 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
       <Check size={18} />
       <span>Listo: {done.kind === "ingreso" ? "entrada" : "salida"} registrada con el comprobante <b>{done.number}</b>{done.remitos?.length ? <> y {done.remitos.length === 1 ? "el remito" : "los remitos"} {done.remitos.map(remito => remito.number).join(" y ")}</> : null}.</span>
       <button type="button" className="secondary-btn" onClick={() => { void printTicket(done, printer.width).catch(() => setError("No se pudo abrir la impresión")); }}><Printer size={15} /> Imprimir ticket</button>
+      {done.kind === "egreso" && <button type="button" className="secondary-btn" title="Todos los materiales con su costo y el total que va a la obra" onClick={() => { void downloadSalidaPdf(done).catch(() => setError("No se pudo generar el PDF")); }}><FileDown size={15} /> PDF con costos</button>}
       {remitosOf(done).map(remito => <button key={remito.number} type="button" className="secondary-btn" onClick={() => { void downloadRemitoPdf(remito); }}><FileText size={15} /> {remito.number}</button>)}
       <button type="button" className="icon-btn" onClick={() => setDone(null)} aria-label="Cerrar aviso"><X size={16} /></button>
     </div>}
     {error && <div className="notice error">{error}</div>}
+    {!fromCart && cart.length > 0 && <div className="notice warning counter-cart-notice">
+      <ShoppingCart size={17} />
+      <span>Tenés {cart.length} {cart.length === 1 ? "material" : "materiales"} en el carrito de Stock.</span>
+      <button type="button" className="secondary-btn" onClick={() => { void loadCart(); }}>Cargar a la salida</button>
+    </div>}
 
     <div className="counter-layout">
       <section className="panel counter-main">
@@ -378,7 +433,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     </div>
 
     <section className="panel counter-recent">
-      <div className="panel-head"><div><p className="eyebrow">ÚLTIMOS COMPROBANTES</p><h2>Lo que pasó por la caja</h2><p>Para volver a imprimir un ticket o un remito</p></div></div>
+      <div className="panel-head"><div><p className="eyebrow">ÚLTIMOS COMPROBANTES</p><h2>Lo que pasó por la caja</h2><p>Para volver a imprimir un ticket o un remito</p></div><Link className="secondary-btn" href="/app/salidas"><HardHat size={16} /> Todas las salidas a obra</Link></div>
       {!recent.length ? <p className="task-history-state">Todavía no hay operaciones.</p>
         : <div className="table-scroll"><table><thead><tr><th>Comprobante</th><th>Fecha</th><th>Tipo</th><th>Destino / proveedor</th><th>Materiales</th><th>Importe</th><th>Hizo</th><th /></tr></thead><tbody>
           {recent.map(ticket => <tr key={ticket._id}>
@@ -391,6 +446,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
             <td data-label="Hizo">{ticket.userName || "—"}</td>
             <td className="row-actions">
               <button title="Imprimir el ticket" onClick={() => { void printTicket(ticket, printer.width).catch(() => setError("No se pudo abrir la impresión")); }}><Printer size={16} /></button>
+              {ticket.kind === "egreso" && <button title="PDF de la salida, con el costo de cada material y el total" onClick={() => { void downloadSalidaPdf(ticket).catch(() => setError("No se pudo generar el PDF")); }}><FileDown size={16} /></button>}
               {remitosOf(ticket).map(remito => <button key={remito.number} className="row-action-wide" title={`Descargar el remito ${remito.number} en PDF`} onClick={() => { void downloadRemitoPdf(remito); }}><FileText size={15} /> {remito.number}</button>)}
             </td>
           </tr>)}
