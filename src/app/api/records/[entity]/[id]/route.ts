@@ -20,6 +20,7 @@ import { refreshAssetSchedule } from "@/lib/asset-service";
 import { resolveWorkNetBudget } from "@/lib/work-budget";
 import { closeCertificate, reopenCertificate } from "@/lib/certificate-billing";
 import { checkCashAccountCanBeDeleted } from "@/lib/cash-accounts";
+import { releaseReceiptChecks } from "@/lib/receipt-service";
 import { afterPaymentChange, checkPurchaseDelete, refreshOrderPayment } from "@/lib/purchase-flow";
 import { noticeQuoteApproved, noticeWorkFinished } from "@/lib/event-notices";
 
@@ -117,6 +118,8 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     await connectDB(); const model = modelByEntity[entity]; const before = await model.findById(id).lean();
     if (!before) return Response.json({ error: "No encontrado" }, { status: 404 });
     if (entity === "cashAccounts") await checkCashAccountCanBeDeleted(id);
+    // Un recibo con un cheque ya endosado o depositado no se borra.
+    if (entity === "collections") await releaseReceiptChecks(id, false);
     if (entity === "purchases") checkPurchaseDelete(before as Record<string, unknown>);
     if (entity === "invoices" && (before as Record<string, unknown>).cae) throw new HttpError("La factura está emitida en ARCA con CAE: no se borra. Para anularla hace falta una nota de crédito.");
     if (entity === "invoices") {
@@ -136,6 +139,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     if (entity === "invoices" && !VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status))) await applyCreditNote(before as Record<string, unknown>, -1);
     if (entity === "invoices") await reopenCertificate(before as Record<string, unknown>);
     if (entity === "collections") await applyCollection(before as Record<string, unknown>, -1);
+    if (entity === "collections") await releaseReceiptChecks(id, true);
     if (entity === "payments") await applyPayment(before as Record<string, unknown>, -1);
     if (entity === "payments") await afterPaymentChange(before as Record<string, unknown>, null, session);
     if (entity === "expenses" && (before as Record<string, unknown>).purchaseId) await refreshOrderPayment((before as Record<string, unknown>).purchaseId);

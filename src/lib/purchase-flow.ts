@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import { z } from "zod";
 import { Expense, Payment, Purchase, PurchaseReceipt, Quote, Supplier, nextPurchaseNumber, nextPurchaseReceiptNumber, nextRequestNumber } from "./models";
 import { HttpError } from "./api";
+import { releasePaymentChecks } from "./payment-checks";
 import { money, qty } from "./format";
 import { PURCHASE_APPROVAL_LIMIT_CENTS, type Role } from "./constants";
 import { canApprovePurchases, canWrite } from "./permissions";
@@ -159,7 +160,11 @@ export async function cancelPurchase(id: string, reasonInput: string, session: S
   const cancellation = { userId: session.userId, userName: session.name, at: new Date(), reason };
   const ids = [request?._id, order?._id].filter(Boolean);
   await Purchase.updateMany({ _id: { $in: ids } }, { $set: { status: "anulada", cancellation }, $push: { history: history("Anulada", session, reason) } });
-  if (order) await Payment.updateMany({ purchaseId: order._id, status: "emitida" }, { $set: { status: "anulada", notes: `Anulada con la orden ${order.number}: ${reason}` } });
+  if (order) {
+    const emitted = await Payment.find({ purchaseId: order._id, status: "emitida" }).select("_id").lean<Array<{ _id: unknown }>>();
+    await Payment.updateMany({ _id: { $in: emitted.map(payment => payment._id) } }, { $set: { status: "anulada", notes: `Anulada con la orden ${order.number}: ${reason}` } });
+    for (const payment of emitted) await releasePaymentChecks(payment._id);
+  }
   await notify({ title: `${purchase.number} anulada`, body: `${session.name}: ${reason}`, kind: "compra", href: `/app/purchases?ver=${purchase._id}`, roles: ["compras", "administracion"], event: "compra.anulada" });
   return Purchase.find({ _id: { $in: ids } }).lean();
 }
@@ -331,6 +336,8 @@ export async function preparePaymentOrder(data: Record<string, unknown>, before:
 }
 
 export async function afterPaymentChange(before: Record<string, unknown> | null, after: Record<string, unknown> | null, session: Session) {
+  // Anulada o borrada, suelta sus cheques.
+  if (before && before.status !== "anulada" && (!after || after.status === "anulada")) await releasePaymentChecks(before._id);
   const orders = new Set([...await ordersOfPayment(before), ...await ordersOfPayment(after)]);
   for (const orderId of orders) await refreshOrderPayment(orderId);
   const nowPaid = after && paidByPayment(after) > 0 && !(before && paidByPayment(before) > 0);

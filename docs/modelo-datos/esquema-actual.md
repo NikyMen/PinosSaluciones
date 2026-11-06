@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-10-30 · 28 colecciones.
+Generado el 2026-11-06 · 28 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -25,6 +25,8 @@ Colección `clients` · entidad `clients`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `code` | número | — | único |
+| `tradeName` | texto | — | — |
 | `name` | texto | sí | — |
 | `cuit` | texto | — | — |
 | `contactName` | texto | — | — |
@@ -241,6 +243,8 @@ Colección `suppliers` · entidad `suppliers`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `code` | número | — | único |
+| `tradeName` | texto | — | — |
 | `name` | texto | sí | — |
 | `cuit` | texto | — | — |
 | `contactName` | texto | — | — |
@@ -453,6 +457,7 @@ Colección `expenses` · entidad `expenses`
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `issueDate` | fecha | sí | — |
 | `dueDate` | fecha | — | — |
+| `period` | texto | — | — |
 | `status` | texto | — | valores: `pendiente` · `parcial` · `pagado` · `anulado` · por defecto `"pendiente"` |
 | `paidCents` | número | — | mínimo 0 · por defecto `0` |
 | `attachment` | texto | — | — |
@@ -489,6 +494,7 @@ Colección `invoices` · entidad `invoices`
 | `description` | texto | — | — |
 | `issueDate` | fecha | sí | — |
 | `dueDate` | fecha | — | — |
+| `period` | texto | — | — |
 | `netCents` | número | — | — |
 | `vatPct` | número | — | — |
 | `vatCents` | número | — | — |
@@ -528,11 +534,26 @@ Colección `collections` · entidad `collections`
 | `date` | fecha | sí | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `userName` | texto | — | — |
-| `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `retencion` · `otro` |
+| `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `echeq` · `tarjeta` · `otro` · `retencion` |
 | `cashAccountId` | referencia | — | apunta a **CashAccount** |
 | `account` | texto | — | — |
 | `reference` | texto | — | — |
 | `notes` | texto | — | — |
+| `lines` | lista de objetos | — | — |
+| `lines.method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `echeq` · `cheque_tercero` · `tarjeta` · `otro` |
+| `lines.cashAccountId` | referencia | — | apunta a **CashAccount** |
+| `lines.account` | texto | — | — |
+| `lines.amountCents` | número | sí | mínimo 0 |
+| `lines.reference` | texto | — | — |
+| `lines.attachment` | texto | — | — |
+| `lines.checkId` | referencia | — | apunta a **Check** |
+| `retentions` | lista de objetos | — | — |
+| `retentions.type` | texto | sí | valores: `ganancias` · `iibb` · `iva` · `suss` · `otros` |
+| `retentions.jurisdiction` | texto | — | — |
+| `retentions.certificateNumber` | texto | — | — |
+| `retentions.amountCents` | número | sí | mínimo 0 |
+| `retentions.cashAccountId` | referencia | — | apunta a **CashAccount** |
+| `retentions.account` | texto | — | — |
 | `accountId` | referencia | — | apunta a **Account** |
 | `accountHistory` | lista de objetos | — | — |
 | `accountHistory.fromId` | referencia | — | apunta a **Account** |
@@ -566,8 +587,16 @@ Colección `payments` · entidad `payments`
 | `dueDate` | fecha | — | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `retentionsCents` | número | — | mínimo 0 · por defecto `0` |
-| `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `echeq` · `otro` |
+| `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `echeq` · `cheque_tercero` · `tarjeta` · `otro` |
 | `checkId` | referencia | — | apunta a **Check** |
+| `lines` | lista de objetos | — | — |
+| `lines.method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `echeq` · `cheque_tercero` · `tarjeta` · `otro` |
+| `lines.cashAccountId` | referencia | — | apunta a **CashAccount** |
+| `lines.account` | texto | — | — |
+| `lines.amountCents` | número | sí | mínimo 0 |
+| `lines.reference` | texto | — | — |
+| `lines.attachment` | texto | — | — |
+| `lines.checkId` | referencia | — | apunta a **Check** |
 | `cashAccountId` | referencia | — | apunta a **CashAccount** |
 | `account` | texto | — | — |
 | `reference` | texto | — | — |
@@ -614,6 +643,10 @@ Colección `checks` · entidad `checks`
 | `supplierId` | referencia | — | apunta a **Supplier** |
 | `format` | texto | — | valores: `fisico` · `echeq` · por defecto `"fisico"` |
 | `paymentId` | referencia | — | apunta a **Payment** |
+| `collectionId` | referencia | — | apunta a **Collection** |
+| `cashAccountId` | referencia | — | apunta a **CashAccount** |
+| `settledAt` | fecha | — | — |
+| `transferId` | texto | — | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |
 

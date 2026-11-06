@@ -79,3 +79,38 @@ export async function nextPaymentOrderNumber() {
   const counter = await Counter.findByIdAndUpdate("payment_orders", { $inc: { seq: 1 } }, { returnDocument: "after" });
   return `OP-${counter.seq}`;
 }
+
+/** Un medio de cobro o de pago, como lo leen los saldos, el libro de movimientos y los PDF. */
+export type CashLine = { method: string; cashAccountId?: unknown; account: string; amountCents: number; reference: string; attachment: string; checkId?: unknown };
+
+function toLines(record: Record<string, unknown>, legacyCents: number): CashLine[] {
+  if (Array.isArray(record.lines) && record.lines.length) {
+    return (record.lines as Array<Record<string, unknown>>).map(line => ({
+      method: String(line.method || "otro"), cashAccountId: line.cashAccountId, account: String(line.account || ""), amountCents: Number(line.amountCents || 0),
+      reference: String(line.reference || ""), attachment: String(line.attachment || ""), checkId: line.checkId,
+    }));
+  }
+  // Uno de antes: su único medio, por lo que salió o entró.
+  if (!record.method && !record.cashAccountId && !record.account) return [];
+  return [{ method: String(record.method || "otro"), cashAccountId: record.cashAccountId, account: String(record.account || ""), amountCents: legacyCents, reference: String(record.reference || ""), attachment: String(record.attachment || ""), checkId: record.checkId }];
+}
+
+/** Con qué se pagó una OP. En una de antes, su único medio por lo pagado menos las retenciones (que no salían de la caja). */
+export function paymentLines(payment: Record<string, unknown>) {
+  return toLines(payment, Number(payment.amountCents || 0) - Number(payment.retentionsCents || 0));
+}
+
+/** Con qué se cobró un recibo (sin las retenciones). En uno de antes, su único medio por el total. */
+export function collectionLines(collection: Record<string, unknown>) {
+  const retained = collectionRetentions(collection).reduce((total, retention) => total + retention.amountCents, 0);
+  return toLines(collection, Number(collection.amountCents || 0) - retained);
+}
+
+/** Lo que el cliente retuvo en un recibo, cada retención con la cuenta de retenciones a la que fue. */
+export function collectionRetentions(collection: Record<string, unknown>) {
+  if (!Array.isArray(collection.retentions)) return [];
+  return (collection.retentions as Array<Record<string, unknown>>).map(retention => ({
+    type: String(retention.type || "otros"), jurisdiction: String(retention.jurisdiction || ""), certificateNumber: String(retention.certificateNumber || ""),
+    amountCents: Number(retention.amountCents || 0), cashAccountId: retention.cashAccountId, account: String(retention.account || ""),
+  }));
+}

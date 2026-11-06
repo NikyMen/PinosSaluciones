@@ -3,7 +3,7 @@ import { CashAccount, CashMovement, Collection, Payment } from "./models";
 import { HttpError } from "./api";
 import { companyOf } from "./companies";
 import { cashAccountCompanyShort, cashAccountServes, SHARED_COMPANY } from "./cash-account-kinds";
-import { paidByPayment } from "./balances";
+import { collectionLines, collectionRetentions, paymentLines } from "./balances";
 
 /*
  * El maestro de cajas y cuentas bancarias (requerimiento integral v4, 4.1).
@@ -95,34 +95,43 @@ export async function prepareCashAccountRecord(data: Record<string, unknown>, be
 
 /** Una cuenta que ya tiene movimientos no se borra: se inactiva. */
 export async function checkCashAccountCanBeDeleted(id: unknown) {
-  const used = await CashMovement.exists({ cashAccountId: id }) || await Collection.exists({ cashAccountId: id }) || await Payment.exists({ cashAccountId: id });
+  const used = await CashMovement.exists({ cashAccountId: id })
+    || await Collection.exists({ $or: [{ cashAccountId: id }, { "lines.cashAccountId": id }, { "retentions.cashAccountId": id }] })
+    || await Payment.exists({ $or: [{ cashAccountId: id }, { "lines.cashAccountId": id }] });
   if (used) throw new HttpError("Esta cuenta ya tiene movimientos: no se borra, se inactiva (Estado › Inactiva)");
 }
 
 /**
  * El saldo de cada cuenta: el inicial más lo que entró y menos lo que salió
  * desde la fecha de corte. Suma los movimientos de caja (con los pases entre
- * cuentas: mueven la plata de lugar), los recibos y los pagos ya hechos.
+ * cuentas: mueven la plata de lugar), los recibos y los pagos ya hechos, cada
+ * medio en su cuenta (y las retenciones de un recibo, en la de retenciones).
  */
 export async function cashAccountBalances(accounts: CashAccountDoc[]) {
   const ids = accounts.map(account => account._id);
   if (!ids.length) return new Map<string, number>();
   const [cash, collections, payments] = await Promise.all([
     CashMovement.find({ cashAccountId: { $in: ids } }).select("cashAccountId direction amountCents date").lean<Lean[]>(),
-    Collection.find({ cashAccountId: { $in: ids } }).select("cashAccountId amountCents date").lean<Lean[]>(),
-    Payment.find({ cashAccountId: { $in: ids } }).select("cashAccountId amountCents retentionsCents status date").lean<Lean[]>(),
+    Collection.find({ $or: [{ cashAccountId: { $in: ids } }, { "lines.cashAccountId": { $in: ids } }, { "retentions.cashAccountId": { $in: ids } }] }).select("method cashAccountId account amountCents lines retentions date").lean<Lean[]>(),
+    Payment.find({ $or: [{ cashAccountId: { $in: ids } }, { "lines.cashAccountId": { $in: ids } }] }).select("method cashAccountId account amountCents retentionsCents lines status date").lean<Lean[]>(),
   ]);
   const byId = new Map(accounts.map(account => [String(account._id), account]));
   const balances = new Map(accounts.map(account => [String(account._id), Number(account.openingBalanceCents || 0)]));
-  const add = (row: Lean, cents: number) => {
+  const add = (row: Record<string, unknown>, cents: number) => {
     const account = byId.get(String(row.cashAccountId));
     if (!account) return;
     if (account.openingDate && row.date && new Date(row.date as Date) < new Date(account.openingDate)) return;
     balances.set(String(account._id), (balances.get(String(account._id)) || 0) + cents);
   };
   for (const movement of cash) add(movement, (movement.direction === "ingreso" ? 1 : -1) * Number(movement.amountCents || 0));
-  for (const collection of collections) add(collection, Number(collection.amountCents || 0));
-  // Lo que sale de la cuenta es lo pagado menos las retenciones (eso no sale: se le retiene al proveedor).
-  for (const payment of payments) { const paid = paidByPayment(payment); if (paid) add(payment, -(paid - Number(payment.retentionsCents || 0))); }
+  for (const collection of collections) {
+    for (const line of collectionLines(collection)) add({ cashAccountId: line.cashAccountId, date: collection.date }, line.amountCents);
+    for (const retention of collectionRetentions(collection)) add({ cashAccountId: retention.cashAccountId, date: collection.date }, retention.amountCents);
+  }
+  // Lo que sale de cada cuenta es lo de su medio (en una OP de antes, lo pagado menos las retenciones: eso no salía).
+  for (const payment of payments) {
+    if (payment.status === "emitida" || payment.status === "anulada") continue;
+    for (const line of paymentLines(payment)) add({ cashAccountId: line.cashAccountId, date: payment.date }, -line.amountCents);
+  }
   return balances;
 }

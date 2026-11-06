@@ -3,9 +3,11 @@ import { Account, CashMovement, Client, Collection, Expense, Invoice, Payment, S
 import { ensureAccountCatalog } from "./account-service";
 import { accountDirection, type AccountCode } from "./account-catalog";
 import { invoiceLabel, isFiscalVoucher, voucherLabels, VOID_INVOICE_STATUSES, isCreditNote } from "./invoice-labels";
-import { collectionAllocations, effectivePayments } from "./balances";
+import { collectionAllocations, collectionLines, collectionRetentions, effectivePayments, paymentLines } from "./balances";
+import { retentionLabels } from "./cash-methods";
 import { companyOf, type CompanyKey } from "./companies";
 import { excludedFromTotals } from "./trash";
+import { periodsBetween } from "./period";
 
 /*
  * Contabilidad: lo que se mira, no se carga.
@@ -51,10 +53,12 @@ function split(record: Record<string, unknown>, sign: number): Totals {
 
 export async function ivaBook({ from, to, company }: Period): Promise<IvaBook> {
   const excluded = await excludedFromTotals();
+  // Va por el período de cada factura (el mes de la factura, salvo que se haya puesto otro); la de antes, sin período, por su fecha.
+  const inPeriod = { $or: [{ period: { $in: periodsBetween(from, to) } }, { period: { $in: [null, ""] }, issueDate: { $gte: from, $lte: to } }] };
   const [invoices, expenses] = await Promise.all([
-    Invoice.find({ _id: { $nin: excluded.invoices }, ...companyFilter(company), status: { $nin: VOID_INVOICE_STATUSES }, issueDate: { $gte: from, $lte: to } }).sort({ issueDate: 1, number: 1 }).lean<Lean[]>(),
+    Invoice.find({ _id: { $nin: excluded.invoices }, ...companyFilter(company), status: { $nin: VOID_INVOICE_STATUSES }, ...inPeriod }).sort({ issueDate: 1, number: 1 }).lean<Lean[]>(),
     // Una factura de compra es un gasto con tipo de comprobante; los costos internos no van al libro.
-    Expense.find({ _id: { $nin: excluded.expenses }, ...companyFilter(company), voucherType: { $exists: true, $ne: null }, status: { $ne: "anulado" }, issueDate: { $gte: from, $lte: to } }).sort({ issueDate: 1 }).lean<Lean[]>(),
+    Expense.find({ _id: { $nin: excluded.expenses }, ...companyFilter(company), voucherType: { $exists: true, $ne: null }, status: { $ne: "anulado" }, ...inPeriod }).sort({ issueDate: 1 }).lean<Lean[]>(),
   ]);
   const [clients, suppliers] = await Promise.all([
     Client.find({ _id: { $in: invoices.map(invoice => invoice.clientId) } }).select("name cuit").lean<Lean[]>(),
@@ -113,20 +117,24 @@ export async function ledgerMovements({ from, to, company }: Period, accountId?:
       company: movement.company ? companyOf(movement.company).key : "" as const, transferId: movement.transferId ? String(movement.transferId) : undefined,
       accountId: String(movement.accountId || ""), href: "/app/cash",
     })),
-    ...collections.map(collection => {
+    // Un recibo es una fila por medio y otra por retención; una OP, una por medio. Todas con la cuenta del plan del documento.
+    ...collections.flatMap(collection => {
       const first = collectionAllocations(collection)[0];
       const receiptCompany = first ? invoiceCompany.get(String(first.invoiceId)) || "" : "";
-      return {
+      const base = {
         _id: String(collection._id), source: "recibo" as const, date: iso(collection.date), description: `Recibo ${String(collection.number || "")} · ${clientName.get(String(collection.clientId)) || "Cliente"}`,
-        cashAccount: String(collection.account || ""), direction: "ingreso" as const, amountCents: Number(collection.amountCents || 0),
-        company: receiptCompany as CompanyKey | "", accountId: String(collection.accountId || ""), href: "/app/collections",
+        direction: "ingreso" as const, company: receiptCompany as CompanyKey | "", accountId: String(collection.accountId || ""), href: "/app/collections",
       };
+      return [
+        ...collectionLines(collection).map(line => ({ ...base, cashAccount: line.account, amountCents: line.amountCents })),
+        ...collectionRetentions(collection).map(retention => ({ ...base, description: `${base.description} · retención ${retentionLabels[retention.type as keyof typeof retentionLabels] || retention.type}`, cashAccount: retention.account, amountCents: retention.amountCents })),
+      ];
     }).filter(row => !company || row.company === company),
-    ...payments.map(payment => ({
+    ...payments.flatMap(payment => paymentLines(payment).map(line => ({
       _id: String(payment._id), source: "pago" as const, date: iso(payment.date), description: `${payment.number ? `Pago ${String(payment.number)}` : "Pago"} · ${supplierName.get(String(payment.supplierId)) || "Proveedor"}`,
-      cashAccount: String(payment.account || ""), direction: "egreso" as const, amountCents: Number(payment.amountCents || 0) - Number(payment.retentionsCents || 0),
+      cashAccount: line.account, direction: "egreso" as const, amountCents: line.amountCents,
       company: companyOf(payment.company).key, accountId: String(payment.accountId || ""), href: "/app/payments",
-    })),
+    }))),
   ];
   return rows.sort((a, b) => a.date.localeCompare(b.date));
 }

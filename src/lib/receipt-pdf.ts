@@ -1,4 +1,5 @@
 import type { jsPDF } from "jspdf";
+import { cashMethodLabels } from "./cash-methods";
 import { date, money } from "./format";
 import { amountInWords, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
 import type { ReceiptPdfData } from "./receipt-service";
@@ -12,7 +13,7 @@ import { bankLines, companyOf } from "./companies";
 const { margin: MARGIN, width: WIDTH, bottom: BOTTOM } = PAGE;
 const INNER = WIDTH - MARGIN * 2;
 
-export const methodLabels: Record<string, string> = { transferencia: "Transferencia", efectivo: "Efectivo", cheque: "Cheque", retencion: "Retención", otro: "Otro" };
+export const methodLabels = cashMethodLabels;
 
 export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author: string; logo?: string }) {
   const setColor = ([r, g, b]: Rgb) => doc.setTextColor(r, g, b);
@@ -81,12 +82,21 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
   doc.text(plain(money(data.totalCents)), WIDTH - MARGIN - 3, y, { align: "right" });
   y += 12;
 
-  // Con qué se pagó.
+  // Con qué se pagó: cada medio con su importe y, aparte, lo que retuvo el cliente.
+  const media = data.media?.length ? data.media : [{ method: data.method, account: data.account, amountCents: data.totalCents, detail: data.reference ? `Ref. ${data.reference}` : undefined }];
+  const several = media.length > 1 || Boolean(data.retentions?.length);
   setColor(INK); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
   doc.text("Forma de pago:", MARGIN, y);
   doc.setFont("helvetica", "normal");
-  doc.text(plain([methodLabels[data.method] || data.method, data.account, data.reference && `Ref. ${data.reference}`].filter(Boolean).join(" · ")), MARGIN + 25, y);
-  y += 6;
+  for (const medium of media) {
+    doc.text(plain([methodLabels[medium.method] || medium.method, medium.account, several && money(medium.amountCents), medium.detail].filter(Boolean).join(" · ")).slice(0, 110), MARGIN + 25, y);
+    y += 5;
+  }
+  for (const retention of data.retentions || []) {
+    doc.text(plain(`Retención ${retention.label} · ${money(retention.amountCents)}`).slice(0, 110), MARGIN + 25, y);
+    y += 5;
+  }
+  y += 1;
   if (data.notes.trim()) {
     setColor(MUTED); doc.setFontSize(7.8);
     for (const line of (doc.splitTextToSize(plain(`Observaciones: ${data.notes.trim()}`), INNER) as string[]).slice(0, 4)) { doc.text(line, MARGIN, y); y += 4.4; }

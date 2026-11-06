@@ -1,7 +1,7 @@
-# Cajas y cuentas con código, cajas de las dos empresas y el circuito de cheques
+# Anexo de Tesorería v5.1: cajas con código, varios medios, cheques, retenciones y extracto
 
 - **Fecha:** 2026-10-30
-- **Estado:** aceptada (validada con Administración por WhatsApp el 28/10/2026). El maestro ya está hecho; la OP con varios medios y los cheques, pendientes.
+- **Estado:** aceptada y hecha. Validada con Administración por WhatsApp (28 y 30/10/2026) y por la encuesta de consultoriadigital.io (31/10/2026).
 - **Afecta a:** [[../requerimientos/especificacion-v1-5]], [[../modelo-datos/esquema-actual]], [[2026-10-orden-de-pago-varias-facturas]]
 
 ## Contexto
@@ -52,7 +52,7 @@ saldo quede en su moneda; sumar monedas distintas en una caja no da un número q
 - Todas las cuentas bancarias emiten cheques, así que cada una tiene su cuenta de cheques diferidos,
   que guarda el banco que los debita (`bankAccountId`).
 
-## Lo acordado para la OP (pendiente de programar)
+## Orden de pago con varios medios
 
 - Una factura se paga total o en parte, con uno o varios medios a la vez: efectivo, transferencia,
   cheque propio, eCheq, cheque de terceros y tarjeta de crédito. Cada medio, con su caja o cuenta.
@@ -69,9 +69,49 @@ saldo quede en su moneda; sumar monedas distintas en una caja no da un número q
   cascos, cuerdas) y tiene débitos automáticos de los seguros de los vehículos. El resumen se debita
   del Banco Corrientes de Verticales, a veces de la Sub-Cuenta 1 y a veces de la 2.
 
-## Pendiente
+- La OP **no lleva retenciones**: la empresa no es agente de retención (encuesta). Algunos proveedores
+  facturan con percepciones de IVA, IIBB y otros impuestos: van en su factura de compra.
+- Siempre en pesos: la OP no pide cotización.
 
-- Cobros con posnet (dos por empresa): se acreditan unos 20 días después, con descuentos del banco y
-  la tarjeta. Va con el punto de cobranzas.
-- Retenciones (punto 3 del anexo): piden sacarlas de la OP, pero TANGO tiene cuentas de "Retenciones
-  … Practicadas", que son justamente las que se hacen al pagar. Hay que preguntarlo.
+Cómo quedó: `Payment.lines` (`src/lib/payment-order-service.ts`, `src/lib/payment-checks.ts`). Cada
+medio usa una cuenta de su tipo (`accountTypesFor`, `src/lib/cash-methods.ts`). El cheque propio
+sale de la cuenta de cheques diferidos de su banco y **Debitar**, en Tesorería › Cheques, registra el
+pase al banco (`src/lib/check-service.ts`). Una OP de antes, con un solo medio, se lee como una línea.
+
+## Recibo con varios medios y retenciones
+
+- Lo cobrado (transferencia, cheque, efectivo, posnet…) más las retenciones que hizo el cliente es el
+  total de la factura (encuesta). Las retenciones son de Ganancias, IIBB, IVA, SUSS y otros impuestos
+  provinciales (Buenos Aires, Chaco); llevan jurisdicción y número de certificado, y van a la cuenta de
+  retenciones de la empresa (`Collection.retentions`).
+- El cheque o e-Cheq del recibo entra a Valores al Cobro, en cartera. Un recibo con un cheque ya
+  endosado o depositado no se borra ni puede sacarlo.
+
+## Tarjetas y posnet
+
+- **Una sola cuenta de tarjeta por empresa** (61 y 71), como la usa Administración: se usa para la
+  tarjeta corporativa (pagos en la OP) y para el posnet (cobros).
+- La tarjeta corporativa se debita de Verticales Cuenta 2, cinco días hábiles después del cierre
+  (~25), entre el 1 y el 3 de cada mes: es un pase del banco a la tarjeta.
+- Posnet: Constructora tiene los dos en el Banco Corrientes; Verticales, uno en Corrientes y otro en
+  Santander. Se cobra con un recibo a la tarjeta por el total facturado y, cuando acredita, se hace el
+  pase de la tarjeta al banco (encuesta).
+
+## Período y extracto por caja
+
+- **Período de la factura**: el mes de la factura, también para el IVA. Por ejemplo, una factura del
+  29/10 cargada el 02/11 va a octubre (encuesta). `period` toma el mes de la fecha salvo que se ponga
+  otro, y el libro IVA va por período.
+- **Extracto por caja**: Administración lo descarga de una caja o de un rango de códigos, por semana,
+  mes o varios meses. Muestra el saldo anterior, los movimientos con Cuenta, Período, Fecha, Detalle,
+  Concepto, Débito (sale) y Crédito (entra), y el saldo final. Un pago o cobro de varias facturas sale
+  en una fila por factura, con su período (`src/lib/cash-statement.ts`).
+
+## Proveedores y clientes
+
+- El buscador por código, razón social, nombre de fantasía y CUIT sirve para proveedores y clientes
+  (encuesta). El sistema numera solo: no se mantienen los códigos de TANGO.
+- Administración exporta de TANGO el listado de proveedores; se carga con `pnpm parties:import`.
+- **Pendiente, aparte:** al dar de alta un proveedor o un cliente por CUIT, completar solos los datos
+  (condición frente al IVA, tipo de factura, domicilio) desde el padrón de ARCA. Hace falta habilitar
+  el servicio de padrón para el certificado.

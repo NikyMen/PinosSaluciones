@@ -2,6 +2,7 @@ import type { jsPDF } from "jspdf";
 import { date, money } from "./format";
 import { amountInWords, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
 import { companyOf, type CompanyKey } from "./companies";
+import { cashMethodLabels } from "./cash-methods";
 
 /**
  * Orden de pago en PDF (requerimiento integral v4, puntos 3 y 5): a quién se le
@@ -21,12 +22,14 @@ export type PaymentOrderPdfData = {
   amountCents: number; retentionsCents: number;
   method: string; cashAccount?: string; ledgerAccount?: string; reference?: string; notes?: string;
   check?: { number: string; bank: string; dueDate?: string; electronic: boolean };
+  /** Con qué se paga, cuando son varios medios: cada uno con su cuenta, su importe y el cheque si es uno. */
+  media?: Array<{ method: string; account: string; amountCents: number; detail?: string }>;
   paidAt?: string; paidByName?: string;
 };
 
 const { margin: MARGIN, width: WIDTH } = PAGE;
 const INNER = WIDTH - MARGIN * 2;
-export const paymentMethodLabels: Record<string, string> = { transferencia: "Transferencia", efectivo: "Efectivo", cheque: "Cheque", echeq: "e-Cheq", otro: "Otro" };
+export const paymentMethodLabels = cashMethodLabels;
 const methodLabels = paymentMethodLabels;
 const statusLabels: Record<string, string> = { emitida: "Emitida, pendiente de pago", pagada: "Pagada", anulada: "ANULADA" };
 
@@ -56,9 +59,14 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
     ["Orden de compra", data.orderNumber || "-"],
     ["Solicitud", data.requestNumber || "-"],
     ...(data.lines ? [] : [["Factura", data.invoiceLabel || "Sin factura (contado o anticipo)"] as [string, string]]),
-    ["Forma de pago", [methodLabels[data.method] || data.method, data.reference && `Ref. ${data.reference}`].filter(Boolean).join(" · ")],
-    ...(data.check ? [[data.check.electronic ? "e-Cheq" : "Cheque", [`N° ${data.check.number}`, data.check.bank, data.check.dueDate && `cobro ${date(data.check.dueDate)}`].filter(Boolean).join(" · ")] as [string, string]] : []),
-    ["Sale de", data.cashAccount || "-"],
+    // Varios medios: uno por renglón, con su cuenta e importe.
+    ...(data.media && data.media.length > 1
+      ? data.media.map((medium, index) => [index ? "" : "Forma de pago", [methodLabels[medium.method] || medium.method, medium.account, money(medium.amountCents), medium.detail].filter(Boolean).join(" · ")] as [string, string])
+      : [
+        ["Forma de pago", [methodLabels[data.method] || data.method, data.reference && `Ref. ${data.reference}`].filter(Boolean).join(" · ")] as [string, string],
+        ...(data.check ? [[data.check.electronic ? "e-Cheq" : "Cheque", [`N° ${data.check.number}`, data.check.bank, data.check.dueDate && `cobro ${date(data.check.dueDate)}`].filter(Boolean).join(" · ")] as [string, string]] : []),
+        ["Sale de", data.cashAccount || "-"] as [string, string],
+      ]),
     ["Tipo de gasto", data.ledgerAccount || "-"],
     ...(data.workLabel ? [["Obra", data.workLabel] as [string, string]] : []),
   ];
@@ -126,7 +134,7 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
   doc.line(MARGIN, signY, MARGIN + 70, signY);
   setColor(MUTED); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
   doc.text("Autorizó (Tesorería)", MARGIN + 35, signY + 4.5, { align: "center" });
-  if (data.method === "efectivo") {
+  if (data.method === "efectivo" || data.media?.some(medium => medium.method === "efectivo")) {
     doc.line(WIDTH - MARGIN - 80, signY, WIDTH - MARGIN, signY);
     doc.text("Recibí conforme el efectivo: firma", WIDTH - MARGIN - 40, signY + 4.5, { align: "center" });
     doc.line(WIDTH - MARGIN - 80, signY + 16, WIDTH - MARGIN, signY + 16);

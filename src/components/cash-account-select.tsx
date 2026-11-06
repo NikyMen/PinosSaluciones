@@ -25,14 +25,15 @@ export function forgetCashAccounts() { cache = null; }
  * Las cajas y cuentas bancarias activas del maestro, para elegir, por código
  * (como en TANGO: se escribe el número y Enter). No se crea una escribiendo un
  * nombre nuevo: se da de alta en Tesorería › Cajas y cuentas. Con `company`,
- * sólo las de esa empresa y las de las dos. `keep` deja en la lista una que ya
+ * sólo las de esa empresa y las de las dos; con `types`, sólo las de esos tipos
+ * (las que sirven para un medio de pago). `keep` deja en la lista una que ya
  * estaba elegida aunque después se haya inactivado.
  */
-export function useCashAccounts(company?: string, keep?: string) {
+export function useCashAccounts(company?: string, keep?: string, types?: readonly string[] | null) {
   const [rows, setRows] = useState<CashAccountRow[]>([]);
   useEffect(() => { let alive = true; void loadCashAccounts().then(items => { if (alive) setRows(items); }); return () => { alive = false; }; }, []);
   return rows
-    .filter(account => account._id === keep || (account.active !== false && (!company || cashAccountServes(account.company, company))))
+    .filter(account => account._id === keep || (account.active !== false && (!company || cashAccountServes(account.company, company)) && (!types || types.includes(account.type))))
     .sort((a, b) => (a.code ?? Infinity) - (b.code ?? Infinity) || a.name.localeCompare(b.name, "es"))
     .map((account): Option => ({
       value: account._id, code: account.code ? String(account.code) : undefined,
@@ -41,9 +42,9 @@ export function useCashAccounts(company?: string, keep?: string) {
     }));
 }
 
-export function CashAccountSelect({ name, value, defaultValue, onChange, company, required, autoFocus, placeholder }: {
-  name: string; value?: string; defaultValue?: string; onChange?: (value: string) => void; company?: string; required?: boolean; autoFocus?: boolean; placeholder?: string;
+export function CashAccountSelect({ name, value, defaultValue, onChange, company, types, required, autoFocus, placeholder }: {
+  name: string; value?: string; defaultValue?: string; onChange?: (value: string) => void; company?: string; types?: readonly string[] | null; required?: boolean; autoFocus?: boolean; placeholder?: string;
 }) {
-  const options = useCashAccounts(company, value ?? defaultValue);
+  const options = useCashAccounts(company, value ?? defaultValue, types);
   return <SearchSelect name={name} options={options} value={value} defaultValue={defaultValue} onChange={onChange} required={required} autoFocus={autoFocus} placeholder={placeholder || "Código o nombre de la caja o cuenta…"} />;
 }

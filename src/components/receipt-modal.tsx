@@ -1,22 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { HandCoins, X } from "lucide-react";
+import { HandCoins, Plus, Trash2, X } from "lucide-react";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
-import { CashAccountSelect } from "@/components/cash-account-select";
+import { CashLinesEditor, lineProblem, linesCents, linesFrom, linesPayload, newLine, type EditableLine } from "@/components/cash-lines-editor";
 import { date, money, todayIso } from "@/lib/format";
-import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
+import { downloadReceiptPdf } from "@/lib/receipt-pdf";
+import { RETENTION_TYPES, retentionLabels } from "@/lib/cash-methods";
 import type { PendingInvoice, ReceiptPdfData } from "@/lib/receipt-service";
 import { companyOf } from "@/lib/companies";
 import { DEFAULT_ACCOUNTS } from "@/lib/account-catalog";
 import { useLedgerAccounts } from "@/components/ledger-account";
 
 type Receipt = Record<string, unknown> & { _id: string };
+type Retention = { key: number; type: string; jurisdiction: string; certificateNumber: string; pesos: number };
+let retentionKey = 1;
 
 /**
  * El recibo: se elige el cliente, aparecen sus facturas con saldo y se pone
- * cuánto se cobra de cada una. Al guardar se descarga el PDF. Sin facturas,
- * queda como pago a cuenta.
+ * cuánto se cobra de cada una. Lo cobrado (uno o varios medios) más lo que
+ * retuvo el cliente es lo que se aplica (anexo de Tesorería v5.1). Al guardar se
+ * descarga el PDF. Sin facturas, queda como pago a cuenta.
  */
 export function ReceiptModal({ receipt, clients, initialClientId = "", initialInvoiceId = "", onClose, onSaved }: {
   receipt?: Receipt | null; clients: Option[]; initialClientId?: string; initialInvoiceId?: string;
@@ -28,7 +32,8 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
   const [applied, setApplied] = useState<Record<string, number>>({});
   const [version, setVersion] = useState(0);
   const [onAccount, setOnAccount] = useState(() => receipt && !Array.isArray(receipt.allocations) && !receipt.invoiceId ? Number(receipt.amountCents || 0) / 100 : 0);
-  const [method, setMethod] = useState(String(receipt?.method || "transferencia"));
+  const [lines, setLines] = useState<EditableLine[]>(() => receipt ? [] : [newLine()]);
+  const [retentions, setRetentions] = useState<Retention[]>(() => Array.isArray(receipt?.retentions) ? (receipt.retentions as Array<Record<string, unknown>>).map(row => ({ key: retentionKey++, type: String(row.type || "ganancias"), jurisdiction: String(row.jurisdiction || ""), certificateNumber: String(row.certificateNumber || ""), pesos: Number(row.amountCents || 0) / 100 })) : []);
   const [receiptDate, setReceiptDate] = useState(receipt?.date ? new Date(String(receipt.date)).toISOString().slice(0, 10) : todayIso());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -54,6 +59,19 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
     return () => controller.abort();
   }, [clientId, receipt, initialInvoiceId]);
 
+  // Los medios que ya tiene el recibo, con sus cheques, para editarlos.
+  useEffect(() => {
+    if (!receipt) return;
+    const saved = Array.isArray(receipt.lines) ? receipt.lines as Array<Record<string, unknown>> : [];
+    const retained = Array.isArray(receipt.retentions) ? (receipt.retentions as Array<Record<string, unknown>>).reduce((total, row) => total + Number(row.amountCents || 0), 0) : 0;
+    void Promise.all(saved.map(line => line.checkId).filter(Boolean).map(id => fetch(`/api/records/checks/${String(id)}`).then(response => response.ok ? response.json() : null).catch(() => null))).then(rows => {
+      const checks = Object.fromEntries(rows.filter(Boolean).map(row => [String(row._id), { number: String(row.number || ""), bank: String(row.bank || ""), dueDate: String(row.dueDate || "").slice(0, 10), issuer: String(row.issuer || "") }]));
+      // En un recibo de antes, "retención" era un medio: queda como transferencia para elegir de nuevo.
+      const edited = linesFrom(receipt, Number(receipt.amountCents || 0) - retained, checks).map(line => line.method === "retencion" ? { ...line, method: "transferencia" } : line);
+      setLines(edited.length ? edited : [newLine()]);
+    });
+  }, [receipt]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKeyDown);
@@ -63,6 +81,11 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
   const allocations = useMemo(() => Object.entries(applied).map(([invoiceId, pesos]) => ({ invoiceId, amountCents: Math.round(pesos * 100) })).filter(allocation => allocation.amountCents > 0), [applied]);
   const totalCents = allocations.length ? allocations.reduce((total, allocation) => total + allocation.amountCents, 0) : Math.round(onAccount * 100);
   const over = rows?.find(row => Math.round((applied[row._id] || 0) * 100) > row.balanceCents);
+  const retainedCents = retentions.reduce((total, row) => total + Math.round(row.pesos * 100), 0);
+  // Lo que entró por los medios: lo aplicado menos lo que retuvo el cliente.
+  const receivedCents = totalCents - retainedCents;
+  const company = rows?.find(row => applied[row._id])?.company;
+  const updateRetention = (key: number, patch: Partial<Retention>) => setRetentions(current => current.map(row => row.key === key ? { ...row, ...patch } : row));
 
   function setAll(pay: boolean) {
     setApplied(pay ? Object.fromEntries((rows || []).map(row => [row._id, row.balanceCents / 100])) : {});
@@ -75,15 +98,20 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
     if (over) return setError(`A la ${over.label} le quedan ${money(over.balanceCents)} por cobrar`);
     if (totalCents <= 0) return setError("Poné cuánto se cobra de cada factura, o el importe si es un pago a cuenta");
     if (!chosenAccount) return setError("Elegí la cuenta del plan a la que se imputa el cobro");
-    if (!new FormData(event.currentTarget).get("cashAccountId")) return setError("Elegí la caja o cuenta donde entró la plata");
+    if (receivedCents < 0) return setError("Las retenciones no pueden pasar de lo que se cobra");
+    if (lines.length > 1 && linesCents(lines) !== receivedCents) return setError(`Los medios suman ${money(linesCents(lines))} y lo cobrado (sin retenciones) es ${money(receivedCents)}`);
+    const problem = receivedCents > 0 ? lines.map(line => lineProblem(line, "cobro", true)).find(Boolean) : "";
+    if (problem) return setError(problem);
     const form = new FormData(event.currentTarget);
     setBusy(true); setError("");
+    let payload;
+    try { payload = receivedCents > 0 ? await linesPayload(lines, "cobro", receivedCents) : []; } catch (problem) { setBusy(false); return setError(problem instanceof Error ? problem.message : "No se pudo subir el comprobante"); }
     const response = await fetch(receipt ? `/api/receipts/${receipt._id}` : "/api/receipts", {
       method: receipt ? "PUT" : "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        clientId, date: receiptDate, method, allocations, amountCents: allocations.length ? undefined : totalCents,
-        cashAccountId: String(form.get("cashAccountId") || ""), reference: String(form.get("reference") || ""), notes: String(form.get("notes") || ""),
-        accountId: chosenAccount, accountChangeReason: String(form.get("accountChangeReason") || ""),
+        clientId, date: receiptDate, allocations, amountCents: allocations.length ? undefined : totalCents,
+        lines: payload, retentions: retentions.map(row => ({ type: row.type, jurisdiction: row.jurisdiction, certificateNumber: row.certificateNumber, amountCents: Math.round(row.pesos * 100) })).filter(row => row.amountCents > 0),
+        notes: String(form.get("notes") || ""), accountId: chosenAccount, accountChangeReason: String(form.get("accountChangeReason") || ""),
       }),
     });
     const result = await response.json();
@@ -105,13 +133,8 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
           <div className="form-grid">
             <label><span>Cliente *</span><SearchSelect name="clientId" options={clients} value={clientId} onChange={value => { setClientId(value); setRows(null); setApplied({}); }} required placeholder="Elegí el cliente…" /></label>
             <label><span>Fecha *</span><DateInput name="date" defaultValue={receiptDate} required recent onValueChange={setReceiptDate} /></label>
-            <label><span>Medio de pago *</span><select value={method} onChange={event => setMethod(event.target.value)}>
-              {Object.entries(methodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select></label>
-            <label><span>Caja / cuenta bancaria *<em className="field-hint">{receipt?.account && !receipt?.cashAccountId ? `Antes: ${String(receipt.account)}` : "Del maestro de Tesorería"}</em></span><CashAccountSelect name="cashAccountId" defaultValue={String(receipt?.cashAccountId || "")} required /></label>
             <label><span>Cuenta del plan *<em className="field-hint">Ingresos: solo cuentas CI</em></span><SearchSelect name="accountId" options={accounts} value={chosenAccount} onChange={setAccountId} required placeholder="Elegí la cuenta…" /></label>
             {accountChanged && <label className="wide"><span>Motivo del cambio de cuenta *<em className="field-hint">Queda en el historial de la imputación</em></span><input name="accountChangeReason" required /></label>}
-            <label><span>Referencia</span><input name="reference" defaultValue={String(receipt?.reference || "")} placeholder="N° de transferencia, de cheque…" /></label>
           </div>
 
           {!clientId ? <div className="empty-state compact"><p>Elegí el cliente para ver sus facturas por cobrar.</p></div>
@@ -139,6 +162,27 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
                     </tr>)}
                   </tbody></table></div>
                 </>}
+
+          {totalCents > 0 && <>
+            <div className="receipt-table-head"><b>Retenciones que hizo el cliente</b><span>
+              <button type="button" className="link-btn" onClick={() => setRetentions(current => [...current, { key: retentionKey++, type: "ganancias", jurisdiction: "", certificateNumber: "", pesos: 0 }])}><Plus size={14} /> Agregar retención</button>
+            </span></div>
+            {retentions.map(row => <div className="cash-line" key={row.key}>
+              <label><span>Impuesto</span><select value={row.type} onChange={event => updateRetention(row.key, { type: event.target.value })}>
+                {RETENTION_TYPES.map(type => <option key={type} value={type}>{retentionLabels[type]}</option>)}
+              </select></label>
+              <label><span>Jurisdicción</span><input value={row.jurisdiction} onChange={event => updateRetention(row.key, { jurisdiction: event.target.value })} placeholder={row.type === "iibb" || row.type === "otros" ? "Corrientes, Chaco, Bs. As.…" : ""} /></label>
+              <label><span>N° de certificado</span><input value={row.certificateNumber} onChange={event => updateRetention(row.key, { certificateNumber: event.target.value })} /></label>
+              <label><span>Importe</span><MoneyInput name={`retention-${row.key}`} defaultValue={row.pesos} onValueChange={value => updateRetention(row.key, { pesos: value })} /></label>
+              <button type="button" className="icon-btn cash-line-remove" onClick={() => setRetentions(current => current.filter(other => other.key !== row.key))} aria-label="Quitar esta retención"><Trash2 size={16} /></button>
+            </div>)}
+            {receivedCents > 0 && <CashLinesEditor side="cobro" lines={lines} onChange={setLines} company={company} totalCents={receivedCents} />}
+            <dl className="payment-order-totals">
+              <div><dt>Aplicado a las facturas</dt><dd>{money(totalCents)}</dd></div>
+              {retainedCents > 0 && <div><dt>Retenciones</dt><dd>- {money(retainedCents)}</dd></div>}
+              <div className="total"><dt>Recibido neto</dt><dd>{money(receivedCents)}</dd></div>
+            </dl>
+          </>}
 
           <label className="wide receipt-notes"><span>Observaciones</span><textarea name="notes" defaultValue={String(receipt?.notes || "")} placeholder="Salen en el PDF del recibo" /></label>
         </div>

@@ -1,12 +1,14 @@
 import { Types } from "mongoose";
 import { z } from "zod";
-import { Account, Check, Expense, Payment, Purchase, Supplier, Work } from "./models";
-import { applyPayment, paymentAllocations } from "./balances";
+import { Account, CashAccount, Check, Expense, Payment, Purchase, Supplier, Work } from "./models";
+import { applyPayment, paymentAllocations, paymentLines } from "./balances";
 import { invoiceLabel, isCreditNote } from "./invoice-labels";
 import { money } from "./format";
 import { companyOf, type CompanyKey } from "./companies";
 import { accountChange, checkLedgerAccount, checkWorkForAccount } from "./account-service";
-import { prepareCashAccount } from "./cash-accounts";
+import { prepareCashAccount, resolveCashAccount, type CashAccountDoc } from "./cash-accounts";
+import { accountTypesFor, cashMethodLabels, METHODS_NEEDING_ATTACHMENT, OWN_CHECK_METHODS, PAYMENT_METHODS, type PaymentMethod } from "./cash-methods";
+import { availableThirdPartyCheck, syncPaymentChecks, type CheckLine, type OwnCheckData } from "./payment-checks";
 import { beforeCreate } from "./document-rules";
 import { afterPaymentChange } from "./purchase-flow";
 import { HttpError } from "./api";
@@ -27,7 +29,25 @@ const optionalId = id.or(z.literal("")).optional().transform(value => value || u
 const isoDate = (message: string) => z.string({ error: message }).regex(/^\d{4}-\d{2}-\d{2}$/, message);
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
-export const PAYMENT_METHODS = ["transferencia", "efectivo", "cheque", "echeq", "otro"] as const;
+const upload = z.string().regex(/^\/api\/uploads\/[\w.-]+$/, "Comprobante inválido").or(z.literal("")).optional().transform(value => value || undefined);
+const ownCheck = z.object({
+  number: z.string().trim().min(1, "Poné el número del cheque").max(40),
+  bank: z.string().trim().min(1, "Poné el banco del cheque").max(80),
+  dueDate: isoDate("Poné la fecha de cobro del cheque"),
+});
+
+/** Un medio de la OP: con qué se paga, de qué caja o cuenta y cuánto. */
+const lineSchema = z.object({
+  method: z.enum(PAYMENT_METHODS, { error: "Elegí el medio de pago" }),
+  cashAccountId: optionalId,
+  amountCents: z.coerce.number().int().min(0),
+  reference: z.string().trim().max(200).optional().default(""),
+  attachment: upload,
+  // El cheque o e-Cheq propio que se le da al proveedor.
+  check: ownCheck.optional(),
+  // El cheque de terceros de la cartera que se le endosa.
+  checkId: optionalId,
+});
 
 /** Lo que manda la pantalla de la orden de pago. */
 export const supplierPaymentSchema = z.object({
@@ -36,8 +56,11 @@ export const supplierPaymentSchema = z.object({
   dueDate: isoDate("Fecha inválida").or(z.literal("")).optional().transform(value => value || undefined),
   // Pagarla ahora o dejarla emitida para pagarla al vencimiento.
   execute: z.boolean().default(true),
-  method: z.enum(PAYMENT_METHODS, { error: "Elegí el medio de pago" }),
+  // Los medios. Sin `lines`, uno solo con `method`, `cashAccountId`, `check` y `attachment` (lo que mandaba la pantalla de antes).
+  lines: z.array(lineSchema).max(20, "Hasta 20 medios por orden de pago").optional(),
+  method: z.enum(PAYMENT_METHODS, { error: "Elegí el medio de pago" }).optional(),
   cashAccountId: optionalId,
+  attachment: upload,
   // El tipo de gasto: la cuenta del plan (CC, GGD, GGI, bienes de uso…).
   accountId: z.string({ error: "Elegí el tipo de gasto" }).regex(/^[a-f\d]{24}$/i, "Elegí el tipo de gasto"),
   accountChangeReason: z.string().trim().max(500).optional().default(""),
@@ -45,12 +68,7 @@ export const supplierPaymentSchema = z.object({
   retentionsCents: z.coerce.number().int().min(0).default(0),
   reference: z.string().trim().max(200).optional().default(""),
   notes: z.string().trim().max(1000).optional().default(""),
-  // El cheque o e-Cheq que se le da al proveedor.
-  check: z.object({
-    number: z.string().trim().min(1, "Poné el número del cheque").max(40),
-    bank: z.string().trim().min(1, "Poné el banco del cheque").max(80),
-    dueDate: isoDate("Poné la fecha de cobro del cheque"),
-  }).optional(),
+  check: ownCheck.optional(),
   allocations: z.array(z.object({ expenseId: id, amountCents: z.coerce.number().int().min(0) })).max(200).default([]),
 });
 export type SupplierPaymentInput = z.infer<typeof supplierPaymentSchema>;
@@ -154,9 +172,9 @@ export async function saveSupplierPayment(input: SupplierPaymentInput, session: 
   if (companies.size > 1) throw new HttpError("Una orden de pago es de una sola empresa: hacé una para los comprobantes de cada empresa");
   const company = [...companies][0];
   const amountCents = debitCents - creditCents;
-  if (input.retentionsCents > amountCents) throw new HttpError("Las retenciones no pueden pasar del importe de la orden de pago");
-  const paysWithCheck = input.method === "cheque" || input.method === "echeq";
-  if (paysWithCheck && input.execute && !input.check) throw new HttpError("Poné el número, el banco y la fecha de cobro del cheque");
+  // La empresa no es agente de retención (Administración, encuesta del 31/10/2026): las percepciones del proveedor van en su factura.
+  if (input.retentionsCents > 0) throw new HttpError("La orden de pago no lleva retenciones: la empresa no es agente de retención. Las percepciones del proveedor van en su factura");
+  const lines = await resolveLines(input, amountCents, company, before);
 
   // Con todas las facturas de la misma OC, la OP queda atada a ella (y la OC muestra lo pagado).
   const debitIds = [...byExpense.keys()].filter(expenseId => !pending.get(expenseId)!.credit);
@@ -170,9 +188,12 @@ export async function saveSupplierPayment(input: SupplierPaymentInput, session: 
     company, supplierId: new Types.ObjectId(input.supplierId), expenseId: new Types.ObjectId(debitIds[0]), allocations, purchaseId,
     workId: input.workId ? new Types.ObjectId(input.workId) : undefined,
     status: input.execute ? "pagada" : "emitida", date: day(input.date), dueDate: input.dueDate ? day(input.dueDate) : undefined,
-    amountCents, retentionsCents: input.retentionsCents, method: input.method,
-    cashAccountId: input.cashAccountId ? new Types.ObjectId(input.cashAccountId) : undefined, accountId: new Types.ObjectId(input.accountId),
-    reference: input.reference, notes: input.notes,
+    amountCents, retentionsCents: 0,
+    // Los medios; arriba, los del primero (las listas y lo de antes leen uno solo).
+    lines: lines.filter(line => line.amountCents > 0).map(storedLine),
+    method: lines[0]?.method || input.method || "otro",
+    cashAccountId: lines[0]?.cashAccountId ? new Types.ObjectId(String(lines[0].cashAccountId)) : undefined, accountId: new Types.ObjectId(input.accountId),
+    reference: input.reference || lines[0]?.reference || "", notes: input.notes, attachment: input.attachment || lines.find(line => line.attachment)?.attachment,
     ...(input.execute && !wasPaid ? { paidAt: new Date(), paidByName: session.name } : {}),
   };
 
@@ -180,7 +201,7 @@ export async function saveSupplierPayment(input: SupplierPaymentInput, session: 
     // Las reglas de toda OP: número OP-n, la cuenta del plan y la caja del maestro (obligatoria para pagarla).
     await beforeCreate("payments", data, session);
     const payment = await Payment.create(data);
-    if (paysWithCheck && input.check) await Payment.updateOne({ _id: payment._id }, { $set: { checkId: await saveCheck(undefined, payment._id, input, amountCents - input.retentionsCents) } });
+    await attachChecks(payment._id, input.supplierId, lines);
     const saved = await Payment.findById(payment._id).lean<Lean>();
     await applyPayment(saved, 1);
     await afterPaymentChange(null, saved, session);
@@ -190,39 +211,89 @@ export async function saveSupplierPayment(input: SupplierPaymentInput, session: 
   const previous = before.toObject() as Lean;
   const history = await accountChange(previous, { accountId: input.accountId }, input.accountChangeReason, session);
   await prepareCashAccount("payments", data, previous);
-  const checkId = paysWithCheck && input.check ? await saveCheck(previous.checkId, before._id, input, amountCents - input.retentionsCents) : await dropCheck(previous);
   await applyPayment(previous, -1);
   before.set(data);
   // Lo que quedó vacío se borra.
-  for (const key of ["purchaseId", "workId", "dueDate", "cashAccountId"]) if (data[key] === undefined) before.set(key, undefined);
-  before.set("checkId", checkId);
+  for (const key of ["purchaseId", "workId", "dueDate", "cashAccountId", "attachment"]) if (data[key] === undefined) before.set(key, undefined);
   if (history) before.set("accountHistory", [...(before.accountHistory || []), history]);
   await before.save();
-  const saved = before.toObject() as Lean;
+  await attachChecks(before._id, input.supplierId, lines);
+  const saved = (await Payment.findById(before._id).lean<Lean>())!;
   await applyPayment(saved, 1);
   await afterPaymentChange(previous, saved, session);
   return saved;
 }
 
-/** El cheque o e-Cheq que se le dio al proveedor: queda en Tesorería › Cheques, atado a la OP. */
-async function saveCheck(previousId: unknown, paymentId: unknown, input: SupplierPaymentInput, netCents: number) {
-  const check = {
-    direction: "emitido", status: "emitido", format: input.method === "echeq" ? "echeq" : "fisico",
-    number: input.check!.number, bank: input.check!.bank, dueDate: day(input.check!.dueDate),
-    amountCents: Math.max(0, netCents), supplierId: input.supplierId, paymentId,
-  };
-  if (previousId && await Check.exists({ _id: previousId })) {
-    await Check.updateOne({ _id: previousId }, { $set: check });
-    return previousId as Types.ObjectId;
+type ResolvedLine = CheckLine & { method: PaymentMethod; account: string; reference: string; attachment?: string };
+
+const storedLine = (line: ResolvedLine) => ({
+  method: line.method, cashAccountId: line.cashAccountId ? new Types.ObjectId(String(line.cashAccountId)) : undefined, account: line.account,
+  amountCents: line.amountCents, reference: line.reference, attachment: line.attachment,
+  checkId: line.checkId ? new Types.ObjectId(String(line.checkId)) : undefined,
+});
+
+/**
+ * Los medios de la OP, validados: cada uno de una caja o cuenta del tipo que le
+ * corresponde y de la empresa de la OP (o de las dos). Para pagarla, tienen que
+ * sumar el importe, y la transferencia y el cheque llevan su comprobante. El
+ * cheque propio sale de la cuenta de cheques diferidos de su banco (si se elige
+ * el banco, se toma la suya); el de terceros, de la cartera.
+ */
+async function resolveLines(input: SupplierPaymentInput, amountCents: number, company: CompanyKey, before: { _id: unknown; attachment?: unknown; files?: unknown[] } | null): Promise<ResolvedLine[]> {
+  const raw = input.lines ?? (input.method || input.cashAccountId ? [{ method: input.method || "transferencia", cashAccountId: input.cashAccountId, amountCents, reference: input.reference, attachment: input.attachment, check: input.check, checkId: undefined }] : []);
+  const paying = raw.filter(line => line.amountCents > 0);
+  if (input.execute && amountCents > 0) {
+    if (!paying.length) throw new HttpError("Elegí con qué se paga: al menos un medio con su importe");
+    const total = paying.reduce((sum, line) => sum + line.amountCents, 0);
+    if (total !== amountCents) throw new HttpError(`Los medios suman ${money(total)} y la orden de pago es de ${money(amountCents)}: la diferencia es ${money(amountCents - total)}`);
   }
-  return (await Check.create(check))._id;
+  const hasFiles = Boolean(before?.attachment) || Boolean(before?.files?.length);
+  const resolved: ResolvedLine[] = [];
+  // Una OP en cero (la nota de crédito cubre todo) igual dice de qué cuenta es.
+  for (const line of raw.length && !paying.length ? raw.slice(0, 1) : paying) {
+    const label = cashMethodLabels[line.method].toLowerCase();
+    let account: CashAccountDoc | null = null;
+    if (line.cashAccountId) {
+      // Una cuenta que se inactivó después, en una OP que ya la tenía, se acepta.
+      const kept = Boolean(before && await Payment.exists({ _id: before._id, $or: [{ cashAccountId: line.cashAccountId }, { "lines.cashAccountId": line.cashAccountId }] }));
+      account = await resolveCashAccount(line.cashAccountId, { company, allowInactive: kept });
+    }
+    let checkId: unknown;
+    let ownCheck: OwnCheckData | undefined;
+    if (OWN_CHECK_METHODS.has(line.method)) {
+      // Se puede elegir el banco: el cheque sale de su cuenta de cheques diferidos.
+      if (account && account.type !== "cheques_diferidos") {
+        const deferred = await CashAccount.findOne({ type: "cheques_diferidos", bankAccountId: account._id, active: { $ne: false } }).lean<CashAccountDoc>();
+        if (!deferred) throw new HttpError(`${account.name} no tiene cuenta de cheques diferidos: dala de alta en Tesorería › Cajas y cuentas (con ese banco) o elegila`);
+        account = deferred;
+      }
+      if (input.execute && !line.check) throw new HttpError(`Poné el número, el banco y la fecha de cobro del ${label}`);
+      if (line.check) ownCheck = { ...line.check, format: line.method === "echeq" ? "echeq" : "fisico" };
+    } else if (line.method === "cheque_tercero") {
+      if (!line.checkId) throw new HttpError("Elegí el cheque de terceros de la cartera");
+      const check = await availableThirdPartyCheck(line.checkId, before?._id);
+      if (Number(check.amountCents || 0) !== line.amountCents) throw new HttpError(`El cheque ${String(check.number)} es de ${money(Number(check.amountCents || 0))}: se endosa entero`);
+      if (!account && check.cashAccountId) account = await resolveCashAccount(check.cashAccountId, { company, allowInactive: true });
+      checkId = check._id;
+    }
+    if (input.execute && amountCents > 0 && !account) throw new HttpError(`Elegí de qué caja o cuenta sale la ${label}`);
+    const types = accountTypesFor(line.method, "pago");
+    if (account && types && !types.includes(account.type as never)) throw new HttpError(`${account.name} no sirve para pagar con ${label}`);
+    if (input.execute && amountCents > 0 && METHODS_NEEDING_ATTACHMENT.has(line.method) && !line.attachment && !hasFiles) throw new HttpError(`Adjuntá el comprobante de la ${label}`);
+    resolved.push({ method: line.method, cashAccountId: account?._id, account: account?.name || "", amountCents: line.amountCents, reference: line.reference || "", attachment: line.attachment, ownCheck, checkId });
+  }
+  return resolved;
 }
 
-/** La OP dejó de pagarse con cheque: el que todavía no se cobró se borra. */
-async function dropCheck(previous: Record<string, unknown>) {
-  if (!previous.checkId) return undefined;
-  await Check.deleteOne({ _id: previous.checkId, status: "emitido" });
-  return undefined;
+/** Los cheques de la OP (propios y de terceros) quedan atados a ella, y cada línea, con el suyo. */
+async function attachChecks(paymentId: Types.ObjectId, supplierId: string, lines: ResolvedLine[]) {
+  const stored = lines.filter(line => line.amountCents > 0);
+  const ids = await syncPaymentChecks(paymentId, supplierId, stored);
+  const first = ids.find(Boolean);
+  await Payment.updateOne({ _id: paymentId }, {
+    $set: { lines: stored.map((line, index) => storedLine({ ...line, checkId: ids[index] })), ...(first ? { checkId: first } : {}) },
+    ...(first ? {} : { $unset: { checkId: "" } }),
+  });
 }
 
 const iso = (value: unknown) => value ? new Date(value as Date).toISOString() : undefined;
@@ -241,6 +312,9 @@ export async function paymentOrderPdfData(paymentId: string): Promise<PaymentOrd
     payment.workId ? Work.findById(payment.workId).select("code name").lean<Lean>() : null,
     payment.checkId ? Check.findById(payment.checkId).select("number bank dueDate format").lean<Lean>() : null,
   ]);
+  const media = paymentLines(payment);
+  const checks = await Check.find({ _id: { $in: media.map(line => line.checkId).filter(Boolean) } }).select("number bank dueDate format direction").lean<Lean[]>();
+  const checkById = new Map(checks.map(row => [String(row._id), row]));
   const byId = new Map(expenses.map(expense => [String(expense._id), expense]));
   const lines = allocations.map(allocation => {
     const expense = byId.get(String(allocation.expenseId));
@@ -259,6 +333,11 @@ export async function paymentOrderPdfData(paymentId: string): Promise<PaymentOrd
     amountCents: Number(payment.amountCents || 0), retentionsCents: Number(payment.retentionsCents || 0),
     method: String(payment.method || ""), cashAccount: payment.account ? String(payment.account) : undefined, ledgerAccount: account ? String(account.name) : undefined,
     check: check ? { number: String(check.number || ""), bank: String(check.bank || ""), dueDate: iso(check.dueDate), electronic: check.format === "echeq" } : undefined,
+    media: media.map(line => {
+      const row = line.checkId ? checkById.get(String(line.checkId)) : undefined;
+      const detail = row ? [`N° ${String(row.number || "")}`, String(row.bank || ""), row.dueDate ? `cobro ${new Date(row.dueDate as Date).toISOString().slice(0, 10).split("-").reverse().join("/")}` : ""].filter(Boolean).join(" ") : line.reference ? `Ref. ${line.reference}` : undefined;
+      return { method: line.method, account: line.account, amountCents: line.amountCents, detail };
+    }),
     reference: payment.reference ? String(payment.reference) : undefined, notes: payment.notes ? String(payment.notes) : undefined,
     paidAt: iso(payment.paidAt), paidByName: payment.paidByName ? String(payment.paidByName) : undefined,
   };

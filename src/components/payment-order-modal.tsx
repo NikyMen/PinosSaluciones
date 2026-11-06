@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { CreditCard, X } from "lucide-react";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
-import { CashAccountSelect } from "@/components/cash-account-select";
+import { CashLinesEditor, lineProblem, linesCents, linesFrom, linesPayload, newLine, type EditableLine } from "@/components/cash-lines-editor";
 import { useLedgerAccountCodes, useLedgerAccounts } from "@/components/ledger-account";
 import { date, money, todayIso } from "@/lib/format";
 import { companyOf } from "@/lib/companies";
-import { downloadPaymentOrderPdf, paymentMethodLabels, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
+import { downloadPaymentOrderPdf, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
 import type { PendingVoucher } from "@/lib/payment-order-service";
+import type { CarteraCheck } from "@/lib/check-service";
 
 type Payment = Record<string, unknown> & { _id: string };
 type Pick = { mode: "total" | "parcial"; pesos: number };
@@ -21,7 +22,9 @@ const dayOf = (value: unknown) => value ? new Date(String(value)).toISOString().
  * La orden de pago de Tesorería: se elige el proveedor y aparecen sus facturas
  * y notas de débito con saldo y sus notas de crédito. De cada factura se paga
  * el total o una parte, y las notas de crédito restan. Lleva el tipo de gasto,
- * la obra si corresponde y de qué caja sale. Al guardar se baja el PDF.
+ * la obra si corresponde y con qué se paga: uno o varios medios, cada uno de su
+ * caja o cuenta (anexo de Tesorería v5.1). No lleva retenciones: la empresa no es
+ * agente de retención. Al guardar se baja el PDF.
  */
 export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId = "", initialExpenseId = "", onClose, onSaved }: {
   payment?: Payment | null; suppliers: Option[]; works: Option[]; initialSupplierId?: string; initialExpenseId?: string;
@@ -34,26 +37,32 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
   const [version, setVersion] = useState(0);
   const [orderDate, setOrderDate] = useState(dayOf(payment?.date) || todayIso());
   const [execute, setExecute] = useState(payment ? payment.status !== "emitida" : true);
-  const [method, setMethod] = useState(String(payment?.method || "transferencia"));
   const [accountId, setAccountId] = useState(String(payment?.accountId || ""));
   const [workId, setWorkId] = useState(String(payment?.workId || ""));
-  const [retentions, setRetentions] = useState(Number(payment?.retentionsCents || 0) / 100);
-  const [check, setCheck] = useState({ number: "", bank: "", dueDate: "" });
+  const [lines, setLines] = useState<EditableLine[]>(() => payment ? [] : [newLine()]);
+  const [cartera, setCartera] = useState<CarteraCheck[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const accounts = useLedgerAccounts("egreso");
   const codes = useLedgerAccountCodes();
   const workless = WORKLESS.has(codes[accountId] || "");
   const accountChanged = Boolean(payment?.accountId) && accountId !== String(payment?.accountId || "");
-  const paysWithCheck = method === "cheque" || method === "echeq";
 
-  // El cheque que ya tiene la OP, para editarlo.
+  // Los medios que ya tiene la OP, con sus cheques propios, para editarlos.
   useEffect(() => {
-    if (!payment?.checkId) return;
-    void fetch(`/api/records/checks/${String(payment.checkId)}`).then(response => response.ok ? response.json() : null).then(row => {
-      if (row) setCheck({ number: String(row.number || ""), bank: String(row.bank || ""), dueDate: dayOf(row.dueDate) });
-    }).catch(() => undefined);
-  }, [payment?.checkId]);
+    if (!payment) return;
+    const saved = Array.isArray(payment.lines) && payment.lines.length ? payment.lines as Array<Record<string, unknown>> : [{ checkId: payment.checkId }];
+    const ids = saved.map(line => line.checkId).filter(Boolean).map(String);
+    void Promise.all(ids.map(id => fetch(`/api/records/checks/${id}`).then(response => response.ok ? response.json() : null).catch(() => null))).then(rows => {
+      const checks = Object.fromEntries(rows.filter(Boolean).map(row => [String(row._id), { number: String(row.number || ""), bank: String(row.bank || ""), dueDate: dayOf(row.dueDate) }]));
+      setLines(linesFrom(payment, Number(payment.amountCents || 0), checks));
+    });
+  }, [payment]);
+
+  // Los cheques de terceros en cartera, para endosar.
+  useEffect(() => {
+    void fetch(`/api/checks${payment ? `?payment=${payment._id}` : ""}`).then(response => response.ok ? response.json() : { items: [] }).then(body => setCartera(body.items || [])).catch(() => undefined);
+  }, [payment]);
 
   useEffect(() => {
     if (!supplierId) return;
@@ -91,8 +100,9 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
   const debitCents = debits.reduce((total, row) => total + cents(row), 0);
   const creditCents = credits.reduce((total, row) => total + cents(row), 0);
   const amountCents = debitCents - creditCents;
-  const retentionsCents = Math.round(retentions * 100);
   const over = (rows || []).find(row => cents(row) > row.balanceCents);
+  // La empresa de la OP: la de los comprobantes elegidos (o, al editar, la que tenía).
+  const company = (rows || []).find(row => picks[row._id])?.company || (payment?.company ? String(payment.company) : undefined);
 
   function toggle(row: PendingVoucher, on: boolean) {
     setPicks(current => {
@@ -118,20 +128,20 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
     if (debitCents <= 0) return setError("Elegí al menos una factura (o nota de débito) para pagar");
     if (creditCents > debitCents) return setError("Las notas de crédito no pueden pasar de lo que se paga");
     if (!accountId) return setError("Elegí el tipo de gasto");
-    if (retentionsCents > amountCents) return setError("Las retenciones no pueden pasar del importe de la orden de pago");
-    const cashAccountId = String(form.get("cashAccountId") || "");
-    if (execute && !cashAccountId) return setError("Elegí de qué caja o cuenta sale la plata");
-    if (execute && paysWithCheck && (!check.number.trim() || !check.bank.trim() || !check.dueDate)) return setError("Poné el número, el banco y la fecha de cobro del cheque");
+    const paying = execute && amountCents > 0;
+    if (paying && lines.length > 1 && linesCents(lines) !== amountCents) return setError(`Los medios suman ${money(linesCents(lines))} y la orden de pago es de ${money(amountCents)}`);
+    const problem = lines.map(line => lineProblem(line, "pago", paying)).find(Boolean);
+    if (problem) return setError(problem);
     setBusy(true); setError("");
     const allocations = (rows || []).map(row => ({ expenseId: row._id, amountCents: cents(row) })).filter(allocation => allocation.amountCents > 0);
+    let payload;
+    try { payload = await linesPayload(lines, "pago", amountCents); } catch (problem) { setBusy(false); return setError(problem instanceof Error ? problem.message : "No se pudo subir el comprobante"); }
     const response = await fetch(payment ? `/api/payment-orders/${payment._id}` : "/api/payment-orders", {
       method: payment ? "PUT" : "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        supplierId, date: orderDate, dueDate: execute ? "" : String(form.get("dueDate") || ""), execute, method, cashAccountId,
+        supplierId, date: orderDate, dueDate: execute ? "" : String(form.get("dueDate") || ""), execute,
         accountId, accountChangeReason: String(form.get("accountChangeReason") || ""), workId: workless ? "" : workId,
-        retentionsCents, reference: String(form.get("reference") || ""), notes: String(form.get("notes") || ""),
-        check: paysWithCheck && check.number.trim() && check.bank.trim() && check.dueDate ? check : undefined,
-        allocations,
+        notes: String(form.get("notes") || ""), lines: payload, allocations,
       }),
     });
     const result = await response.json();
@@ -165,17 +175,6 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
               <option value="ahora">Pagarla ahora</option><option value="emitida">Dejarla emitida, se paga al vencimiento</option>
             </select></label>
             {!execute && <label><span>Vencimiento</span><DateInput name="dueDate" defaultValue={dayOf(payment?.dueDate)} hideToday quickRanges={[7, 15, 30]} /></label>}
-            <label><span>Medio de pago *</span><select value={method} onChange={event => setMethod(event.target.value)}>
-              {Object.entries(paymentMethodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select></label>
-            <label><span>Caja / cuenta bancaria{execute ? " *" : ""}<em className="field-hint">De dónde sale la plata</em></span><CashAccountSelect name="cashAccountId" defaultValue={String(payment?.cashAccountId || "")} required={execute} /></label>
-            {paysWithCheck && <>
-              <label><span>N° de {method === "echeq" ? "e-Cheq" : "cheque"}{execute ? " *" : ""}</span><input value={check.number} onChange={event => setCheck(current => ({ ...current, number: event.target.value }))} /></label>
-              <label><span>Banco{execute ? " *" : ""}</span><input value={check.bank} onChange={event => setCheck(current => ({ ...current, bank: event.target.value }))} placeholder="Banco de Corrientes…" /></label>
-              <label><span>Fecha de cobro{execute ? " *" : ""}</span><input type="date" value={check.dueDate} onChange={event => setCheck(current => ({ ...current, dueDate: event.target.value }))} /></label>
-            </>}
-            <label><span>Retenciones</span><MoneyInput name="retentionsCents" defaultValue={retentions} onValueChange={setRetentions} /></label>
-            <label><span>Referencia</span><input name="reference" defaultValue={String(payment?.reference || "")} placeholder="N° de transferencia…" /></label>
           </div>
 
           {!supplierId ? <div className="empty-state compact"><p>Elegí el proveedor para ver sus facturas pendientes.</p></div>
@@ -232,15 +231,15 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
           {debitCents > 0 && <dl className="payment-order-totals">
             <div><dt>Facturas y notas de débito</dt><dd>{money(debitCents)}</dd></div>
             {creditCents > 0 && <div><dt>Menos notas de crédito</dt><dd>- {money(creditCents)}</dd></div>}
-            <div><dt>Importe de la orden de pago</dt><dd>{money(amountCents)}</dd></div>
-            {retentionsCents > 0 && <div><dt>Menos retenciones</dt><dd>- {money(retentionsCents)}</dd></div>}
-            <div className="total"><dt>A pagar</dt><dd>{money(Math.max(0, amountCents - retentionsCents))}</dd></div>
+            <div className="total"><dt>A pagar</dt><dd>{money(amountCents)}</dd></div>
           </dl>}
+
+          {debitCents > 0 && amountCents > 0 && <CashLinesEditor side="pago" lines={lines} onChange={setLines} company={company} totalCents={amountCents} cartera={cartera} />}
 
           <label className="wide receipt-notes"><span>Observaciones</span><textarea name="notes" defaultValue={String(payment?.notes || "")} placeholder="Salen en el PDF de la orden de pago" /></label>
         </div>
         {error && <p className="form-error modal-error">{error}</p>}
-        <footer><span>A pagar: <b>{money(Math.max(0, amountCents - retentionsCents))}</b></span><button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button className="primary-btn" disabled={busy || !supplierId}>{busy ? "Guardando…" : payment ? "Guardar y bajar el PDF" : "Emitir la OP y bajar el PDF"}</button></footer>
+        <footer><span>A pagar: <b>{money(amountCents)}</b></span><button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button className="primary-btn" disabled={busy || !supplierId}>{busy ? "Guardando…" : payment ? "Guardar y bajar el PDF" : "Emitir la OP y bajar el PDF"}</button></footer>
       </form>
     </section>
   </div>;

@@ -99,7 +99,9 @@ export function SearchSelect({ name, options, defaultValue = "", placeholder = "
     const needle = query.trim().toLowerCase();
     if (!needle) return options;
     const rank = (option: Option) => option.code === needle ? 0 : option.code?.startsWith(needle) ? 1 : 2;
-    return options.filter(option => rank(option) < 2 || option.label.toLowerCase().includes(needle) || option.hint?.toLowerCase().includes(needle))
+    // Un CUIT se encuentra con o sin guiones.
+    const digits = /^\d{3,}$/.test(needle) ? needle : "";
+    return options.filter(option => rank(option) < 2 || option.label.toLowerCase().includes(needle) || option.hint?.toLowerCase().includes(needle) || (digits && option.hint?.replace(/\D/g, "").includes(digits)))
       .map((option, index) => ({ option, index })).sort((a, b) => rank(a.option) - rank(b.option) || a.index - b.index).map(entry => entry.option);
   }, [options, query]);
 

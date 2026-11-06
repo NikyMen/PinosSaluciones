@@ -1,4 +1,5 @@
 import { HttpError } from "./api";
+import { periodOf } from "./period";
 import { accountChange, checkLedgerAccount, checkWorkForAccount, worklessAccount } from "./account-service";
 import { accountDirection } from "./account-catalog";
 import { Expense, Invoice, Purchase, PurchaseReceipt, Work } from "./models";
@@ -75,6 +76,8 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
   if (direction && touched && (ledgerRequired.has(entity) || merged.accountId)) await checkLedgerAccount(direction, merged.accountId);
   const history = direction ? await accountChange(before, changes, reason, session) : null;
 
+  // Si cambia la fecha y el período era el de la fecha, el período la sigue; uno puesto a mano queda.
+  if ((entity === "expenses" || entity === "invoices") && "issueDate" in changes && !changes.period && (!before.period || before.period === periodOf(before.issueDate))) changes.period = periodOf(changes.issueDate);
   if (entity === "expenses") await prepareExpense(changes, before);
   if (entity === "expenses") await checkExpenseLimit(changes, before, session.role);
   // Una solicitud emitida queda en sólo lectura; una orden, salvo la entrega y las notas.

@@ -1861,6 +1861,19 @@ tbody tr.task-row.pendiente:hover { background: #e9ecf0; }
 .payment-order-modal .warning-line { color: #9a6200; }
 .payment-order-modal .receipt-table select { min-width: 92px; }
 .payment-order-totals { margin: 16px 0 0 auto; display: grid; gap: 4px; max-width: 360px; }
+/* Los medios de una OP o un recibo: uno por fila, cada uno con sus datos. */
+.cash-lines { margin-top: 18px; }
+.statement-account td { padding-top: 18px; background: var(--surface-soft, #f1f5f9); }
+.statement-account td:last-child { text-align: right; }
+.statement-total td { font-weight: 700; border-bottom: 2px solid var(--line); }
+.check-inline { display: flex; align-items: center; gap: 6px; font-size: .85rem; }
+.cash-line { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; align-items: end; padding: 12px 44px 12px 12px; margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft, #f8fafc); }
+.cash-line label { display: grid; gap: 4px; font-size: .82rem; }
+.cash-line .cash-line-wide { grid-column: span 2; }
+.cash-line output { padding: 9px 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cash-line-remove { position: absolute; top: 8px; right: 8px; }
+.payment-order-totals .warning-line dd { color: var(--danger, #b42318); font-weight: 700; }
+@media (max-width: 640px) { .cash-line { grid-template-columns: 1fr; } .cash-line .cash-line-wide { grid-column: auto; } }
 .payment-order-totals div { display: flex; justify-content: space-between; gap: 16px; }
 .payment-order-totals dt { color: var(--muted); }
 .payment-order-totals dd { margin: 0; font-variant-numeric: tabular-nums; }

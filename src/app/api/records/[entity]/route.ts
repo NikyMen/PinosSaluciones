@@ -48,9 +48,13 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     // El plan de cuentas entero entra en un select: son menos de 200.
     const limit = Math.min(entity === "accounts" ? 300 : 100, Math.max(1, Number(url.searchParams.get("limit") || 20)));
     const search = sanitizeSearch(url.searchParams.get("search") || "");
-    // En el personal también se busca por número de legajo; en las cajas, por su código (es un número: no va con el texto).
-    const byFileNumber = entity === "workers" && /^\d{1,6}$/.test(search) ? [{ fileNumber: Number(search) }] : entity === "cashAccounts" && /^\d{1,4}$/.test(search) ? [{ code: Number(search) }] : [];
-    const searchFilter = search ? { $or: [...["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku", "barcode", "position", "workType", "identifier", "brand", "responsible"].filter(key => !(entity === "cashAccounts" && key === "code")).map(key => ({ [key]: { $regex: search, $options: "i" } })), ...byFileNumber] } : {};
+    // En el personal también se busca por número de legajo; en las cajas, proveedores y clientes, por su código (es un número: no va con el texto).
+    // Las cajas, los proveedores y los clientes tienen código numérico.
+    const numericCode = entity === "cashAccounts" || entity === "suppliers" || entity === "clients";
+    const byFileNumber = entity === "workers" && /^\d{1,6}$/.test(search) ? [{ fileNumber: Number(search) }] : numericCode && /^\d{1,6}$/.test(search) ? [{ code: Number(search) }]
+      // Un CUIT escrito sin guiones encuentra al que se guardó con guiones.
+      : /^\d{11}$/.test(search) ? [{ cuit: `${search.slice(0, 2)}-${search.slice(2, 10)}-${search.slice(10)}` }] : [];
+    const searchFilter = search ? { $or: [...["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku", "barcode", "position", "workType", "identifier", "brand", "responsible", "tradeName"].filter(key => !(numericCode && key === "code")).map(key => ({ [key]: { $regex: search, $options: "i" } })), ...byFileNumber] } : {};
     const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] } : searchFilter;
     const model = modelByEntity[entity];
     // En ventas interesa lo que se movio recien, no lo que se creo primero. El plan de cuentas y las cajas van por código.

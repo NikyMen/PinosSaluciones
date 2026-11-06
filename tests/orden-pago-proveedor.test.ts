@@ -24,6 +24,7 @@ let libreria = "";
 let bienesDeUso = "";
 let banco = "";
 let bancoConstructora = "";
+let chequesDiferidos = "";
 let workId = "";
 const params = <T extends Record<string, string>>(value: T) => ({ params: Promise.resolve(value) });
 const call = async (response: Response) => ({ status: response.status, body: await response.json() });
@@ -44,7 +45,9 @@ const pending = async (supplier = supplierId, payment?: string) => {
   expect(result.status).toBe(200);
   return result.body.items as Array<{ _id: string; credit: boolean; balanceCents: number; committedCents: number; appliedCents: number; notice: string }>;
 };
-const pay = async (body: Record<string, unknown>) => call(await ordersRoute.POST(json("POST", { supplierId, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, ...body })));
+// La transferencia lleva su comprobante (Administración: obligatorio en transferencia y cheque).
+const receipt = "/api/uploads/comprobante-transferencia.pdf";
+const pay = async (body: Record<string, unknown>) => call(await ordersRoute.POST(json("POST", { supplierId, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, attachment: receipt, ...body })));
 const expense = async (id: string) => (await Expense.findById(id).lean<{ paidCents: number; status: string; advanceCents?: number }>())!;
 
 beforeAll(async () => {
@@ -61,6 +64,8 @@ beforeAll(async () => {
   bienesDeUso = String((await Account.findOne({ name: "BB - Compras de Bienes de Uso" }).lean<{ _id: unknown }>())!._id);
   banco = String((await CashAccount.create({ company: "tvp", name: "Banco Corrientes TVP", nameKey: "banco corrientes tvp", type: "cuenta_corriente" }))._id);
   bancoConstructora = String((await CashAccount.create({ company: "constructora", name: "Banco Constructora", nameKey: "banco constructora", type: "cuenta_corriente" }))._id);
+  // El cheque propio sale de la cuenta de cheques diferidos de su banco.
+  chequesDiferidos = String((await CashAccount.create({ company: "tvp", name: "Cheques diferidos Corrientes TVP", nameKey: "cheques diferidos corrientes tvp", type: "cheques_diferidos", bankAccountId: banco }))._id);
   const clientId = (await Client.create({ name: "Consorcio Belgrano" }))._id;
   workId = String((await Work.create({ name: "Edificio Belgrano", code: "OB-1", clientId, status: "en_curso" }))._id);
 }, 120_000);
@@ -84,9 +89,15 @@ describe("orden de pago de varias facturas", () => {
     expect(list.find(item => item._id === nc._id)).toMatchObject({ credit: true, balanceCents: 30_000_00 });
 
     // La factura 1 entera, 50.000 de la 2, la 3 no; la nota de crédito resta.
-    const created = await pay({ allocations: [{ expenseId: f1._id, amountCents: 100_000_00 }, { expenseId: f2._id, amountCents: 50_000_00 }, { expenseId: nc._id, amountCents: 30_000_00 }], retentionsCents: 2_000_00, workId });
+    const allocations = [{ expenseId: f1._id, amountCents: 100_000_00 }, { expenseId: f2._id, amountCents: 50_000_00 }, { expenseId: nc._id, amountCents: 30_000_00 }];
+    // La empresa no es agente de retención: la OP no lleva retenciones.
+    expect((await pay({ allocations, retentionsCents: 2_000_00 })).body.error).toContain("no lleva retenciones");
+    // Sin el comprobante de la transferencia no se paga.
+    expect((await pay({ allocations, attachment: "" })).body.error).toContain("comprobante");
+    const created = await pay({ allocations, workId });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
-    expect(created.body.payment).toMatchObject({ number: "OP-1", status: "pagada", amountCents: 120_000_00, retentionsCents: 2_000_00, expenseId: f1._id, workId, company: "tvp" });
+    expect(created.body.payment).toMatchObject({ number: "OP-1", status: "pagada", amountCents: 120_000_00, retentionsCents: 0, expenseId: f1._id, workId, company: "tvp" });
+    expect(created.body.payment.lines).toEqual([expect.objectContaining({ method: "transferencia", cashAccountId: banco, account: "Banco Corrientes TVP", amountCents: 120_000_00, attachment: receipt })]);
     expect(created.body.pdf.lines).toEqual([
       expect.objectContaining({ label: "Factura A 0001-00000001", appliedCents: 100_000_00, credit: false }),
       expect.objectContaining({ label: "Factura A 0001-00000002", totalCents: 80_000_00, appliedCents: 50_000_00, credit: false }),
@@ -102,13 +113,13 @@ describe("orden de pago de varias facturas", () => {
     const next = await pending();
     expect(next.map(item => [item._id, item.balanceCents])).toEqual([[f2._id, 30_000_00], [f3._id, 50_000_00]]);
 
-    // Del banco salió lo neto de retenciones.
+    // Del banco salió lo pagado.
     const { cashAccountBalances } = await import("../src/lib/cash-accounts");
     const balances = await cashAccountBalances([(await CashAccount.findById(banco).lean())!] as never);
-    expect(balances.get(banco)).toBe(-118_000_00);
+    expect(balances.get(banco)).toBe(-120_000_00);
 
     // Editarla: deshace lo aplicado y aplica lo nuevo (ahora la factura 2 entera, sin la nota).
-    const edited = await call(await orderRoute.PUT(json("PUT", { supplierId, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, workId, allocations: [{ expenseId: f1._id, amountCents: 100_000_00 }, { expenseId: f2._id, amountCents: 80_000_00 }] }), params({ id: created.body.payment._id })));
+    const edited = await call(await orderRoute.PUT(json("PUT", { supplierId, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, workId, attachment: receipt, allocations: [{ expenseId: f1._id, amountCents: 100_000_00 }, { expenseId: f2._id, amountCents: 80_000_00 }] }), params({ id: created.body.payment._id })));
     expect(edited.status, JSON.stringify(edited.body)).toBe(200);
     expect(edited.body.payment).toMatchObject({ amountCents: 180_000_00 });
     expect(await expense(f2._id)).toMatchObject({ paidCents: 80_000_00, status: "pagado" });
@@ -164,15 +175,17 @@ describe("orden de pago de varias facturas", () => {
     expect((await pending(supplier))[0]).toMatchObject({ balanceCents: 15_000_00, committedCents: 25_000_00, notice: expect.stringContaining(emitted.body.payment.number) });
     expect((await pay({ supplierId: supplier, allocations: [{ expenseId: f._id, amountCents: 20_000_00 }] })).body.error).toContain("otra OP emitida");
 
-    // Para pagarla con e-Cheq hacen falta sus datos.
-    const body = { supplierId: supplier, date: "2026-10-20", method: "echeq", accountId: materiales, cashAccountId: banco, execute: true, allocations: [{ expenseId: f._id, amountCents: 25_000_00 }] };
-    expect((await call(await orderRoute.PUT(json("PUT", body), params({ id: emitted.body.payment._id })))).body.error).toContain("cheque");
+    // Para pagarla con e-Cheq hacen falta sus datos. Se elige el banco y sale de su cuenta de cheques diferidos.
+    const body = { supplierId: supplier, date: "2026-10-20", method: "echeq", accountId: materiales, cashAccountId: banco, execute: true, attachment: receipt, allocations: [{ expenseId: f._id, amountCents: 25_000_00 }] };
+    expect((await call(await orderRoute.PUT(json("PUT", body), params({ id: emitted.body.payment._id })))).body.error).toContain("fecha de cobro");
     const paid = await call(await orderRoute.PUT(json("PUT", { ...body, check: { number: "E-778", bank: "Banco de Corrientes", dueDate: "2026-11-20" } }), params({ id: emitted.body.payment._id })));
     expect(paid.status, JSON.stringify(paid.body)).toBe(200);
     expect(paid.body.payment).toMatchObject({ status: "pagada", paidByName: "Tesorería" });
     expect(await expense(f._id)).toMatchObject({ paidCents: 25_000_00, status: "parcial" });
     const check = await Check.findById(paid.body.payment.checkId).lean();
     expect(check).toMatchObject({ direction: "emitido", status: "emitido", format: "echeq", number: "E-778", amountCents: 25_000_00 });
+    expect(String((check as { cashAccountId?: unknown }).cashAccountId)).toBe(chequesDiferidos);
+    expect(paid.body.payment).toMatchObject({ cashAccountId: chequesDiferidos, account: "Cheques diferidos Corrientes TVP" });
     expect(paid.body.pdf.check).toMatchObject({ number: "E-778", electronic: true });
   });
 });

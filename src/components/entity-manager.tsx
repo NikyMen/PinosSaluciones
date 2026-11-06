@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Paperclip, ArrowDownToLine, ArrowRightLeft, FileSymlink, Tag, Tags, Wrench, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HandCoins, HardHat, History, UserMinus, UserPlus, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
+import { Landmark, Paperclip, ArrowDownToLine, ArrowRightLeft, FileSymlink, Tag, Tags, Wrench, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HandCoins, HardHat, History, UserMinus, UserPlus, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
@@ -37,8 +37,10 @@ import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
 import { invoiceLabel, voucherLabels } from "@/lib/invoice-labels";
 import { companyOf } from "@/lib/companies";
 import { SHARED_COMPANY } from "@/lib/cash-account-kinds";
+import { partyOption } from "@/lib/parties";
 import { AssetMaintenanceModal, NextDueCell, type AssetRecord } from "@/components/asset-maintenance";
 import { CashTransferModal } from "@/components/cash-transfer";
+import { CheckActionModal } from "@/components/check-action-modal";
 import { meterLabels, sectorLabels } from "@/lib/assets";
 import { printLabels, readPrinterSettings } from "@/lib/ticket-print";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
@@ -145,6 +147,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [receiptFor, setReceiptFor] = useState<{ receipt: Item | null; clientId?: string; invoiceId?: string } | null>(null);
   // La orden de pago abierta: una para editar, o una nueva (desde una factura viene con su proveedor y la factura).
   const [paymentFor, setPaymentFor] = useState<{ payment: Item | null; supplierId?: string; expenseId?: string } | null>(null);
+  const [checkAction, setCheckAction] = useState<{ check: Item; action: "debit" | "deposit" } | null>(null);
   // Estado elegido en una fila que todavía espera el visto bueno.
   const [pendingStatus, setPendingStatus] = useState<{ id: string; status: string } | null>(null);
   // Filtros de Tareas: el atajo elegido y, para gerencia, área y persona.
@@ -242,7 +245,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     const labels = config.fields.find(field => field.key === key)?.optionLabels;
     if (key === "status" && value) return <span className={`badge ${value}`}>{labels?.[String(value)] ?? titleCase(String(value))}</span>;
     if (entity === "accounts" && key === "active") return <span className={`badge ${value === false ? "anulada" : "activo"}`}>{value === false ? "Desactivada" : "Activa"}</span>;
-    if ((entity === "accounts" || entity === "cashAccounts") && key === "code") return <span className="account-code">{String(value || "")}</span>;
+    if ((entity === "accounts" || entity === "cashAccounts" || entity === "suppliers" || entity === "clients") && key === "code") return <span className="account-code">{String(value || "")}</span>;
     if (labels && value) return labels[String(value)] ?? titleCase(String(value));
     if (key === "lastPriceCents") return item.lastPriceDate ? <span className="cell-stack">{money(Number(value || 0))}<small>{item.lastPriceSource === "compra" ? "Compra" : "Lista"} del {date(String(item.lastPriceDate))}</small></span> : "—";
     if (key.startsWith("qty_")) { const amount = levelsOf(item)[key.slice(4) as WarehouseKey] ?? 0; return amount ? qty(amount) : "—"; }
@@ -505,7 +508,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     field,
     // El avance se muestra, no se edita: sale de las inspecciones.
     value: editing ? editing[field.key] : draft[field.key],
-    relationOptions: field.relation ? (relations[field.relation] || []).map(item => ({ value: item._id, label: itemLabel(item), hint: String(item.cuit || item.email || "") || undefined })) : [],
+    relationOptions: field.relation ? (relations[field.relation] || []).map(item => field.relation === "suppliers" || field.relation === "clients" ? partyOption(item) : ({ value: item._id, label: itemLabel(item), hint: String(item.cuit || item.email || "") || undefined })) : [],
     relationValue: relationValues[field.key] ?? "",
     personOptions: field.type === "user" ? people.map(person => ({ value: person._id, label: person.name, hint: roleLabels[person.role] })) : [],
     onRelationChange: (value: string) => setRelationValues(current => ({ ...current, [field.key]: value })),
@@ -582,6 +585,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "invoices" && Array.isArray(item.remitoIds) && item.remitoIds.length > 0 && <Link className="row-action-wide" href="/app/remitos" title={`Factura ${item.remitoIds.length} remito${item.remitoIds.length === 1 ? "" : "s"} de venta`}><FileSymlink size={15} /> Remitos</Link>}
           {entity === "invoices" && Boolean(item.cae) && <button className="row-action-wide" title={`Descargar la factura emitida en ARCA (CAE ${String(item.cae)})`} onClick={() => { void downloadInvoice(item); }}><Download size={15} /> PDF fiscal</button>}
           {entity === "invoices" && canEdit && (item.status === "pendiente" || item.status === "parcial") && <button className="row-action-wide approve" title="Registrar un cobro de esta factura y hacer el recibo" onClick={() => setReceiptFor({ receipt: null, clientId: String(item.clientId || ""), invoiceId: item._id })}><HandCoins size={15} /> Cobrar</button>}
+          {entity === "checks" && canEdit && item.direction === "emitido" && item.status === "emitido" && <button className="row-action-wide approve" title="El banco lo debitó: registrar la transferencia de cheque diferido al banco" onClick={() => setCheckAction({ check: item, action: "debit" })}><Landmark size={15} /> Debitar</button>}
+          {entity === "checks" && canEdit && item.direction === "recibido" && item.status === "cartera" && <button className="row-action-wide approve" title="Depositarlo: pase de Valores al Cobro al banco" onClick={() => setCheckAction({ check: item, action: "deposit" })}><Landmark size={15} /> Depositar</button>}
           {entity === "collections" && <button className="row-action-wide" title="Descargar el recibo en PDF" onClick={() => { void downloadReceipt(item); }}><Download size={15} /> Recibo</button>}
           {entity === "payments" && <button className="row-action-wide" title="La orden de pago en PDF, para imprimirla (en efectivo, con la constancia de entrega)" onClick={() => { void downloadPaymentOrder(item); }}><Download size={15} /> PDF</button>}
           {(entity === "payments" || entity === "expenses" || entity === "cash") && <button className="row-action-wide" title="Comprobantes y adjuntos, con su historial" onClick={() => setAttachmentsFor({ entity, id: item._id, label: itemLabel(item) })}><Paperclip size={15} /> {((item.files as unknown[] | undefined)?.length || 0) + (item.attachment ? 1 : 0) || ""} Adjuntos</button>}
@@ -597,6 +602,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       </tr>;
     })}</tbody></table></div>{loading ? <div className="loading-state">Cargando…</div> : !items.length && <div className="empty-state compact"><p>No hay registros para mostrar.</p>{canEdit && <button onClick={() => { void openCreate(); }}>Crear {config.singular}</button>}</div>}</section>
 
+    {checkAction && <CheckActionModal check={checkAction.check} action={checkAction.action} onClose={() => setCheckAction(null)} onSaved={() => { setCheckAction(null); void load(); }} />}
     {modal && entity === "tasks" && <TaskModal task={editing} config={config} fieldProps={fieldProps} error={error} saving={saving} onClose={() => setModal(false)} onSubmit={submit} />}
     {modal && entity !== "tasks" && <div className="modal-layer"><button className="modal-backdrop" onClick={() => setModal(false)} aria-label="Cerrar" /><section className={`modal entity-modal ${entity === "works" ? "work-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="entity-modal-title">
       <header><div className="modal-title-wrap"><span className="modal-heading-icon">{entity === "works" ? <HardHat /> : <Edit3 />}</span><div>
@@ -634,11 +640,11 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     {statusFor && <WorkerStatusModal worker={statusFor} onClose={() => setStatusFor(null)} onDone={message => { setStatusFor(null); setNotice(message); void load(); }} />}
 
     {receiptFor && <ReceiptModal receipt={receiptFor.receipt} initialClientId={receiptFor.clientId} initialInvoiceId={receiptFor.invoiceId}
-      clients={(relations.clients || []).map(client => ({ value: client._id, label: itemLabel(client), hint: String(client.cuit || "") || undefined }))}
+      clients={(relations.clients || []).map(partyOption)}
       onClose={() => setReceiptFor(null)} onSaved={() => { setReceiptFor(null); void load(); }} />}
 
     {paymentFor && <PaymentOrderModal payment={paymentFor.payment} initialSupplierId={paymentFor.supplierId} initialExpenseId={paymentFor.expenseId}
-      suppliers={(relations.suppliers || []).map(supplier => ({ value: supplier._id, label: itemLabel(supplier), hint: String(supplier.cuit || "") || undefined }))}
+      suppliers={(relations.suppliers || []).map(partyOption)}
       works={(relations.works || []).map(work => ({ value: work._id, label: itemLabel(work), hint: String(work.code || "") || undefined }))}
       onClose={() => setPaymentFor(null)} onSaved={() => { setPaymentFor(null); void load(); }} />}
 

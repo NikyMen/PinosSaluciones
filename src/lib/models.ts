@@ -7,6 +7,8 @@ import { ACCOUNT_CODES } from "./account-catalog";
 import { INVOICE_STATUSES, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES, VOUCHER_TYPES } from "./invoice-labels";
 import { VAT_CONDITION_KEYS } from "./fiscal";
 import { CASH_ACCOUNT_COMPANIES, CASH_ACCOUNT_TYPES, CASH_CURRENCIES } from "./cash-account-kinds";
+import { PERIOD_PATTERN, periodOf } from "./period";
+import { COLLECTION_METHODS, PAYMENT_METHODS, RETENTION_TYPES } from "./cash-methods";
 
 const options = { timestamps: true, strict: true } as const;
 const money = { type: Number, min: 0, default: 0 };
@@ -41,6 +43,8 @@ const UserSchema = new Schema({
 UserSchema.index({ inviteTokenHash: 1 }, { sparse: true });
 
 const ClientSchema = new Schema({
+  // El número para elegirlo rápido (lo pone el sistema) y el nombre de fantasía, además de la razón social (`name`).
+  code: { type: Number, unique: true, sparse: true }, tradeName: { type: String, trim: true },
   name: { type: String, required: true, trim: true },
   cuit: { type: String, trim: true },
   contactName: String, email: String,
@@ -351,6 +355,8 @@ WorkerSchema.pre("validate", function () {
 });
 
 const SupplierSchema = new Schema({
+  // El número para elegirlo rápido (lo pone el sistema) y el nombre de fantasía, además de la razón social (`name`).
+  code: { type: Number, unique: true, sparse: true }, tradeName: { type: String, trim: true },
   name: { type: String, required: true }, cuit: { type: String, trim: true }, contactName: String, email: String, phone: String,
   address: String, notes: String, active: { type: Boolean, default: true },
   // El descuento que nos hace sobre su lista. No cambia cuando llega una lista
@@ -768,6 +774,8 @@ const ExpenseSchema = new Schema({
   description: { type: String, required: true },
   category: { type: String, enum: ["materiales", "transporte", "combustible", "servicios", "costo_indirecto", "gasto_fijo", "mano_obra"], required: true },
   amountCents: money, issueDate: { type: Date, required: true }, dueDate: Date,
+  // El período ("2026-10") al que va la factura, también en el libro IVA: el mes de la factura salvo que se diga otro.
+  period: { type: String, match: PERIOD_PATTERN },
   status: { type: String, enum: ["pendiente", "parcial", "pagado", "anulado"], default: "pendiente" },
   paidCents: money, attachment: String,
   // De `paidCents`, lo que cubren las OP de contado o anticipo de su orden de compra (se aplican solas).
@@ -792,6 +800,8 @@ const InvoiceSchema = new Schema({
   // El certificado que factura, por id: el número se repite entre obras y se puede tipear distinto.
   certificateId: { type: Schema.Types.ObjectId },
   description: String, issueDate: { type: Date, required: true }, dueDate: Date,
+  // El período ("2026-10") al que va la factura, también en el libro IVA: el mes de la factura salvo que se diga otro.
+  period: { type: String, match: PERIOD_PATTERN },
   netCents: Number, vatPct: Number, vatCents: Number,
   amountCents: money, collectedCents: money,
   // "sustituida": una X que se reemplazó por un comprobante fiscal. Deja de contar; lo cobrado pasa al nuevo.
@@ -813,19 +823,41 @@ const InvoiceSchema = new Schema({
 // El mismo número puede existir en las dos empresas, o en una A y una X: lo único es empresa + tipo + número (+ cliente, como antes).
 // El índice viejo (solo número y cliente) lo saca src/lib/db.ts al conectar.
 InvoiceSchema.index({ company: 1, voucherType: 1, number: 1, clientId: 1 }, { unique: true });
+// Todo proveedor y cliente nuevo recibe su código, venga de donde venga.
+SupplierSchema.pre("save", async function () { if (this.isNew && this.get("code") == null) this.set("code", await nextPartyCode("suppliers")); });
+ClientSchema.pre("save", async function () { if (this.isNew && this.get("code") == null) this.set("code", await nextPartyCode("clients")); });
+// Una factura sin período toma el mes de su fecha, venga de donde venga (pantalla, ARCA, certificado, importación).
+for (const schema of [ExpenseSchema, InvoiceSchema]) schema.pre("validate", function () { if (!this.get("period") && this.get("issueDate")) this.set("period", periodOf(this.get("issueDate"))); });
 
 // Un cobro es un recibo: número propio y a qué facturas se aplica, cuánto a cada una.
 // Los cobros viejos tienen una sola factura en `invoiceId` y no tienen `allocations`.
+/*
+ * Un medio de cobro o de pago: con qué (transferencia, efectivo, cheque…), de o
+ * a qué caja o cuenta del maestro y cuánto. El cheque queda en Tesorería ›
+ * Cheques (`checkId`); el comprobante del medio, en `attachment`.
+ */
+const CashLineSchema = new Schema({
+  method: { type: String, enum: [...new Set([...PAYMENT_METHODS, ...COLLECTION_METHODS])], required: true },
+  cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" }, account: String,
+  amountCents: { type: Number, min: 0, required: true },
+  reference: String, attachment: String,
+  checkId: { type: Schema.Types.ObjectId, ref: "Check" },
+}, { _id: false });
+
 const CollectionSchema = new Schema({
   number: { type: String, trim: true },
   clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true }, invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice" },
   allocations: { type: [{ _id: false, invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", required: true }, amountCents: { type: Number, min: 0, required: true } }], default: undefined },
   date: { type: Date, required: true }, amountCents: money,
   userName: String,
-  method: { type: String, enum: ["transferencia", "efectivo", "cheque", "retencion", "otro"], required: true },
+  method: { type: String, enum: [...COLLECTION_METHODS, "retencion"], required: true },
   // `cashAccountId` es la caja o el banco donde entró (del maestro) y `account`, su nombre; `accountId`, la cuenta del plan (CI) a la que se imputa.
   cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
   account: String, reference: String, notes: String,
+  // Con qué se cobró: uno o varios medios, cada uno a su caja o cuenta (anexo Tesorería v5.1). Los de antes no tienen: su único medio es `method`/`cashAccountId`.
+  lines: { type: [CashLineSchema], default: undefined },
+  // Lo que el cliente retuvo: con lo cobrado suma lo aplicado a las facturas. Va a la cuenta de retenciones de la empresa.
+  retentions: { type: [{ _id: false, type: { type: String, enum: RETENTION_TYPES, required: true }, jurisdiction: String, certificateNumber: String, amountCents: { type: Number, min: 0, required: true }, cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" }, account: String }], default: undefined },
   accountId: { type: Schema.Types.ObjectId, ref: "Account" }, accountHistory: { type: [AccountChangeSchema], default: undefined },
 }, options);
 
@@ -851,9 +883,11 @@ const PaymentSchema = new Schema({
   purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase", index: true }, requestId: { type: Schema.Types.ObjectId, ref: "Purchase" },
   status: { type: String, enum: ["emitida", "pagada", "anulada"], default: "pagada" },
   date: { type: Date, required: true }, dueDate: Date, amountCents: money, retentionsCents: money,
-  method: { type: String, enum: ["transferencia", "efectivo", "cheque", "echeq", "otro"], required: true },
-  // El cheque o e-Cheq que se le dio al proveedor (en Tesorería › Cheques).
+  method: { type: String, enum: PAYMENT_METHODS, required: true },
+  // El cheque o e-Cheq que se le dio al proveedor (en Tesorería › Cheques), en una OP de un solo medio.
   checkId: { type: Schema.Types.ObjectId, ref: "Check" },
+  // Con qué se paga: uno o varios medios, cada uno de su caja o cuenta (anexo Tesorería v5.1). `method`, `cashAccountId` y `account` repiten los del primero.
+  lines: { type: [CashLineSchema], default: undefined },
   // De qué caja o cuenta del maestro sale (`account` es su nombre, lo único que tienen los de antes).
   cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
   account: String, reference: String, notes: String,
@@ -870,9 +904,14 @@ const CheckSchema = new Schema({
   amountCents: money, dueDate: { type: Date, required: true },
   status: { type: String, enum: ["cartera", "depositado", "cobrado", "endosado", "rechazado", "emitido"], default: "cartera" },
   clientId: { type: Schema.Types.ObjectId, ref: "Client" }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
-  // Papel o electrónico; el emitido, la orden de pago con que se entregó.
+  // Papel o electrónico; el emitido, la orden de pago con que se entregó (y el de terceros, la que lo endosó).
   format: { type: String, enum: ["fisico", "echeq"], default: "fisico" },
   paymentId: { type: Schema.Types.ObjectId, ref: "Payment" },
+  // El recibido, el recibo por el que entró. La cuenta donde está: Valores al Cobro (recibido) o los cheques diferidos de su banco (emitido).
+  collectionId: { type: Schema.Types.ObjectId, ref: "Collection" },
+  cashAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
+  // Cuando el banco debitó el propio o se depositó el de terceros: la fecha y el pase entre cuentas que lo registró.
+  settledAt: Date, transferId: String,
 }, options);
 
 /*
@@ -1069,6 +1108,20 @@ export const StockReservation = mongoose.models.StockReservation || mongoose.mod
 export const Account = mongoose.models.Account || mongoose.model("Account", AccountSchema);
 export const VoucherBook = mongoose.models.VoucherBook || mongoose.model("VoucherBook", VoucherBookSchema);
 export const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
+
+/**
+ * El próximo código de proveedor o de cliente. La primera vez arranca desde el
+ * más alto que ya haya (los que numeró la migración o el listado de TANGO).
+ */
+export async function nextPartyCode(kind: "suppliers" | "clients") {
+  const model = kind === "suppliers" ? Supplier : Client;
+  const counter = `party_${kind}`;
+  if (!await Counter.exists({ _id: counter })) {
+    const highest = await model.findOne({ code: { $ne: null } }).sort({ code: -1 }).select("code").lean<{ code?: number }>();
+    await Counter.updateOne({ _id: counter }, { $setOnInsert: { seq: highest?.code || 0 } }, { upsert: true });
+  }
+  return (await Counter.findByIdAndUpdate(counter, { $inc: { seq: 1 } }, { returnDocument: "after" })).seq as number;
+}
 export const CalendarSettings = mongoose.models.CalendarSettings || mongoose.model("CalendarSettings", CalendarSettingsSchema);
 export const ArcaTicket = mongoose.models.ArcaTicket || mongoose.model("ArcaTicket", ArcaTicketSchema);
 export const CalendarBooking = mongoose.models.CalendarBooking || mongoose.model("CalendarBooking", CalendarBookingSchema);
