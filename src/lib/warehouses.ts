@@ -1,6 +1,9 @@
+import type { CompanyKey } from "./companies";
+
 /*
  * Los lugares con stock. Lo que se compra entra al Galpón
- * o, si la orden se pidió para ahí, al Salón de Ventas; del Galpón se transfiere al Salón de Ventas (el mostrador),
+ * o, si la orden se pidió para ahí, al Salón de Ventas. En la Caja, la empresa que compró
+ * define el depósito (ENTRY_WAREHOUSE). Del Galpón se transfiere al Salón de Ventas (el mostrador),
  * que es de donde sale el remito al cliente. Los dos pueden mandar material
  * directo a una obra. Para sumar otro lugar (la camioneta, un obrador) alcanza
  * con agregarlo acá.
@@ -14,6 +17,12 @@ export const WAREHOUSES = [
 export type WarehouseKey = (typeof WAREHOUSES)[number]["key"];
 export const WAREHOUSE_KEYS = WAREHOUSES.map(warehouse => warehouse.key) as unknown as [WarehouseKey, ...WarehouseKey[]];
 export const DEFAULT_WAREHOUSE: WarehouseKey = "central";
+
+/**
+ * Entrada por la Caja: cada empresa compra para su depósito.
+ * TV Pino → Galpón; Constructora Pino → Salón de Ventas.
+ */
+export const ENTRY_WAREHOUSE: Record<CompanyKey, WarehouseKey> = { tvp: "central", constructora: "salon" };
 
 export function warehouseLabel(key?: string | null) {
   return WAREHOUSES.find(warehouse => warehouse.key === key)?.label || "Galpón";

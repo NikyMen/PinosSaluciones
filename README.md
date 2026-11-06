@@ -207,6 +207,10 @@ Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisio
 - Al guardar una factura, el servidor la frena si pasa de lo pendiente de su cotización, de su certificado o de lo elegido de sus remitos (`checkInvoiceExcess`). Gerencia la puede guardar igual con un motivo, que queda en el historial de la cotización.
 - Un remito de venta se puede facturar en partes: cada renglón lleva `invoicedQty` y la factura `remitoLines`. Al anular o borrar la factura, vuelve lo que facturaba.
 
+## Entradas por la Caja
+
+- Stock y logística › Caja › Entrada: empresa que compró (**TV Pino / Galpón** o **Constructora Pino / Salón de Ventas**), fecha, observaciones y los materiales. Se escanean o se cargan **ítem por ítem** (producto, cantidad, unidad, costo y rubro): si el producto ya está en Stock se suma a lo que hay; si no, se da de alta al confirmar. Proveedor y comprobante son opcionales. Todo entra junto con un comprobante `CJ-n` y una orden de compra recibida.
+
 ## Salidas a obra
 
 - **Carrito para obra** (`src/lib/work-cart.ts`): en Stock y logística › Stock, cada material tiene el botón "Carrito" con su cantidad. La barra de abajo muestra lo que se lleva y el costo aproximado. "Hacer salida a obra" abre la Caja con el carrito cargado: se elige la obra y se confirma todo junto, con un comprobante `CJ-n` y un remito por depósito. Al confirmar, el carrito se vacía. El carrito vive en el navegador de quien lo arma.
@@ -248,6 +252,6 @@ Las listas de precios de proveedores se cargan aparte, desde la ficha del provee
 - El worker genera tareas por facturas y cheques próximos a vencer.
 - Bitácora completa (usuario, fecha y hora, valor anterior y nuevo) en Seguridad › Bitácora de cambios, solo para gerencia.
 - Todo ingreso y egreso de plata (caja y bancos, recibos, pagos) se imputa a una cuenta del plan de cuentas. El catálogo y los talonarios de comprobantes se crean solos la primera vez; no hace falta correr nada al actualizar.
-- Toda compra entra al Galpón, salvo la orden de compra pedida para entregar en el Salón de Ventas, que entra directo al Salón; la entrada manual desde Stock es siempre al Galpón, y al Salón el material llega por transferencia (queda en tránsito hasta que se confirma la recepción).
+- Toda compra entra al Galpón, salvo la orden de compra pedida para entregar en el Salón de Ventas, que entra directo al Salón. En la Caja, la empresa que compró define el depósito: TV Pino entra al Galpón y Constructora Pino al Salón de Ventas (`ENTRY_WAREHOUSE` en `src/lib/warehouses.ts`). La entrada manual desde la ficha de Stock es siempre al Galpón, y al Salón el material llega por transferencia (queda en tránsito hasta que se confirma la recepción).
 - Para actualizar producción: ver [Actualizar producción](#actualizar-producción).
 - Comandos de calidad: `pnpm lint`, `pnpm test`, `pnpm build`.

@@ -2031,6 +2031,16 @@ tr.row-inactive td { color: var(--muted); background: #fafbfc; }
 .counter-totals b { color: var(--brand-navy-deep); font-size: 1rem; }
 .counter-totals strong { color: var(--brand-navy-deep); font-size: 1.35rem; letter-spacing: -.02em; }
 .counter-note { margin: 0; color: var(--muted); font-size: .7rem; }
+.counter-manual { margin: 0; padding: 12px 14px 14px; display: grid; gap: 10px; min-width: 0; border: 1px dashed var(--line-strong); border-radius: 12px; background: #fbfcfe; }
+.counter-manual legend { padding: 0 6px; color: var(--brand-navy-deep); font-size: .64rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+.counter-manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.counter-manual-grid .money-input { min-width: 0; }
+.counter-manual-grid .money-input input { min-width: 0; width: 100%; }
+.counter-field > select { width: 100%; min-height: 43px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--ink); background: #fff; font-weight: 500; }
+.counter-field > select:disabled { color: var(--muted); background: #f4f6f9; }
+.counter-manual-results { margin-top: -4px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.counter-manual-add { justify-content: center; }
+.counter-new-badge { margin-left: 7px; vertical-align: middle; color: #0c6b3f; background: #e3f5ea; }
 .counter-side footer { padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); background: #fbfcfe; }
 .counter-side footer .primary-btn { flex: 1; min-height: 48px; justify-content: center; }
 .counter-confirm-text { flex-basis: 100%; color: #9e2630; font-size: .7rem; font-weight: 750; }

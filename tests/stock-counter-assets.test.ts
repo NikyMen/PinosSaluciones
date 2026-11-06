@@ -161,6 +161,19 @@ describe("caja del depósito (API)", () => {
     expect(await StockTicket.countDocuments()).toBe(3);
   });
 
+  it("la entrada va al depósito de la empresa que compró: TV Pino al Galpón, Constructora Pino al Salón de Ventas", async () => {
+    const tape = await StockItem.create({ name: "Cinta de papel", unit: "rollo" });
+    const line = [{ itemId: String(tape._id), quantity: 4, unitCostCents: 2_000 }];
+    const tvp = await call(await caja.POST(post({ kind: "ingreso", owner: "tvp", lines: line })));
+    expect(tvp.status).toBe(201);
+    expect(tvp.body.warehouse).toBe("central");
+    const constructora = await call(await caja.POST(post({ kind: "ingreso", owner: "constructora", lines: line })));
+    expect(constructora.status).toBe(201);
+    expect(constructora.body.warehouse).toBe("salon");
+    expect(await StockItem.findById(tape._id).lean()).toMatchObject({ qty_central: 4, qty_salon: 4, quantity: 8, owners: { central: { tvp: 4 }, salon: { constructora: 4 } } });
+    expect(await Purchase.findOne({ number: constructora.body.number }).lean()).toMatchObject({ company: "constructora", deliverTo: "salon", stockedWarehouse: "salon" });
+  });
+
   it("el registro de salidas a obra se filtra por obra y fecha, y su PDF lleva el costo de cada material y el total", async () => {
     const client = await Client.create({ name: "Galerías del Centro", cuit: "30-32345678-9" });
     const work = await Work.create({ code: "OB-10", name: "Galería", clientId: client._id, budgetCents: 1000, status: "en_curso" });

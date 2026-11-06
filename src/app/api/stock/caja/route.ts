@@ -8,7 +8,7 @@ import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
 import { StockError } from "@/lib/stock-service";
 import { registerCounterOperation, type CounterInput } from "@/lib/stock-counter";
-import { WAREHOUSE_KEYS } from "@/lib/warehouses";
+import { ENTRY_WAREHOUSE, WAREHOUSE_KEYS } from "@/lib/warehouses";
 
 /**
  * La caja del depósito: entradas y salidas de varios materiales de una vez,
@@ -21,7 +21,7 @@ const warehouse = z.enum(WAREHOUSE_KEYS);
 const line = z.object({ itemId: objectId, quantity: z.coerce.number().positive("Cada cantidad tiene que ser mayor a cero"), unitCostCents: z.coerce.number().int().min(0).optional() });
 const common = { note: z.string().trim().max(1000).optional().default(""), date: z.coerce.date().optional(), lines: z.array(line).min(1, "Escaneá al menos un material").max(200) };
 const schema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("ingreso"), warehouse: z.literal("central", { error: "Toda compra entra al Galpón" }).default("central"), owner: z.enum(["tvp", "constructora"]).default("tvp"), supplierId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), reference: z.string().trim().max(120).optional().default(""), ...common }),
+  z.object({ kind: z.literal("ingreso"), warehouse: z.union([warehouse, z.literal("")]).optional().transform(value => value || undefined), owner: z.enum(["tvp", "constructora"]).default("tvp"), supplierId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), reference: z.string().trim().max(120).optional().default(""), ...common }),
   z.object({ kind: z.literal("egreso"), workId: objectId, warehouse: z.union([warehouse, z.literal("")]).optional().transform(value => value || undefined), ...common }),
 ]);
 
@@ -54,8 +54,10 @@ export async function POST(request: Request) {
     if (!canWrite(session, "stock")) throw new Error("FORBIDDEN");
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || "Datos inválidos" }, { status: 400 });
+    // Una entrada va al depósito de la empresa que compró: TV Pino al Galpón, Constructora Pino al Salón.
+    const input = parsed.data.kind === "ingreso" ? { ...parsed.data, warehouse: parsed.data.warehouse || ENTRY_WAREHOUSE[parsed.data.owner] } : parsed.data;
     await connectDB();
-    const { ticket, changed } = await registerCounterOperation(parsed.data as CounterInput, session);
+    const { ticket, changed } = await registerCounterOperation(input as CounterInput, session);
     const ip = request.headers.get("x-forwarded-for") || undefined;
     for (const entry of changed) await audit(session, `stock_${parsed.data.kind}`, "stock", entry.item._id, entry.before, entry.after, ip);
     return Response.json(ticket, { status: 201 });

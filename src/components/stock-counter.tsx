@@ -7,7 +7,7 @@ import { DateInput, SearchSelect, type Option } from "@/components/fields";
 import { CameraScanner, scanFeedback, useKeyboardScanner } from "@/components/barcode-scanner";
 import { amountToInput, dateTime, money, parseAmount, qty, todayIso } from "@/lib/format";
 import { levelsOf, splitDelivery, totalOf } from "@/lib/stock-levels";
-import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
+import { ENTRY_WAREHOUSE, WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
 import { COMPANIES, COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { downloadRemitoPdf, type RemitoData } from "@/lib/remito-pdf";
 import { printLabels, printTicket, readPrinterSettings, savePrinterSettings, type PrinterSettings, type TicketData } from "@/lib/ticket-print";
@@ -31,6 +31,8 @@ type Mode = "ingreso" | "egreso";
 type CounterItem = {
   _id: string; name: string; unit: string; sku?: string; barcode?: string; category?: string;
   quantity?: number; avgCostCents?: number; lastPriceCents?: number; supplierId?: string;
+  /** Cargado a mano en la entrada y todavía no está en Stock: se da de alta al confirmar. */
+  isNew?: boolean;
 } & Record<string, unknown>;
 type Line = { item: CounterItem; quantity: string; unitCost: string };
 type Ticket = TicketData & { _id: string; quoteNumber?: string };
@@ -39,6 +41,9 @@ const units = ["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "
 const categories = ["materiales", "herramientas", "seguridad", "consumibles", "otros"];
 const toNumber = (value: string) => Number(String(value).replace(",", ".")) || 0;
 const round = (value: number) => Math.round(value * 1000) / 1000;
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+/** En la entrada, cada empresa compra para su depósito. */
+const entryLabel = (key: CompanyKey) => `${COMPANIES[key].short} / ${warehouseLabel(ENTRY_WAREHOUSE[key])}`;
 
 function codeOf(item: CounterItem) {
   return item.barcode || item.sku || "";
@@ -66,7 +71,8 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
   const [camera, setCamera] = useState(false);
   const [suppliers, setSuppliers] = useState<Option[]>([]);
   const [works, setWorks] = useState<Option[]>([]);
-  // Una entrada es una compra: entra al Galpón, a nombre de la empresa que compró (CUIT propietario).
+  // Una entrada es una compra, a nombre de la empresa que compró (CUIT propietario) y en su depósito:
+  // TV Pino al Galpón, Constructora Pino al Salón de Ventas (ENTRY_WAREHOUSE).
   const [owner, setOwner] = useState<CompanyKey>("tvp");
   // En la salida, vacío es "automático": primero del Galpón y lo que falte del Salón.
   const [outFrom, setOutFrom] = useState<"" | WarehouseKey>("");
@@ -167,6 +173,18 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     });
     say(`${item.name}: +${qty(amount)} ${item.unit}`);
   }, []);
+
+  /** Un ítem cargado a mano en la entrada: con su cantidad y costo. Si no está en Stock, queda como nuevo. */
+  function addManual(item: CounterItem, amount: number, unitCost: string) {
+    setDone(null); setConfirming(false);
+    setLines(current => {
+      const existing = current.find(line => line.item._id === item._id || (item.isNew && line.item.isNew && sameName(line.item.name, item.name)));
+      if (existing) return [{ ...existing, quantity: String(round(toNumber(existing.quantity) + amount)), unitCost: unitCost || existing.unitCost }, ...current.filter(line => line !== existing)];
+      const cents = Number(item.lastPriceCents || item.avgCostCents || 0);
+      return [{ item, quantity: String(amount), unitCost: unitCost || (cents ? amountToInput(cents / 100) : "") }, ...current];
+    });
+    say(`${item.name}: +${qty(amount)} ${item.unit}${item.isNew ? " (nuevo en Stock)" : ""}`);
+  }
 
   const searchByName = useCallback(async (query: string) => {
     const response = await fetch(`/api/records/stock?limit=12&search=${encodeURIComponent(query)}`).catch(() => null);
@@ -284,8 +302,20 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     setConfirming(false); setSaving(true); setError("");
     const form = new FormData(event.currentTarget);
     const common = { note: String(form.get("note") || ""), date: String(form.get("date") || "") || undefined };
+    // Los ítems cargados a mano que no estaban en Stock se dan de alta primero (sin stock: la cantidad la suma la entrada).
+    const ids = new Map<string, string>();
+    if (mode === "ingreso") for (const row of checked.filter(candidate => candidate.line.item.isNew)) {
+      const { item } = row.line;
+      const created = await fetch("/api/records/stock", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, unit: item.unit, category: item.category || "materiales", sku: "", barcode: "" }) }).catch(() => null);
+      const result = created ? await created.json().catch(() => ({})) : {};
+      if (!created?.ok) { setSaving(false); return setError(result.error || `No se pudo dar de alta ${item.name} en Stock`); }
+      ids.set(item._id, String(result._id));
+      // Si después falla la entrada, el material ya existe: no se vuelve a crear.
+      setLines(current => current.map(line => line.item._id === item._id ? { ...line, item: result as CounterItem } : line));
+    }
+    const idOf = (row: (typeof checked)[number]) => ids.get(row.line.item._id) || row.line.item._id;
     const body = mode === "ingreso"
-      ? { kind: mode, warehouse: "central", owner, supplierId, reference: String(form.get("reference") || ""), ...common, lines: checked.map(row => ({ itemId: row.line.item._id, quantity: row.amount, unitCostCents: row.unitCents })) }
+      ? { kind: mode, warehouse: ENTRY_WAREHOUSE[owner], owner, supplierId, reference: String(form.get("reference") || ""), ...common, lines: checked.map(row => ({ itemId: idOf(row), quantity: row.amount, unitCostCents: row.unitCents })) }
       : { kind: mode, workId, warehouse: outFrom, ...common, lines: checked.map(row => ({ itemId: row.line.item._id, quantity: row.amount })) };
     const response = await fetch("/api/stock/caja", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const result = await response.json();
@@ -372,8 +402,8 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
         </div> : <ul className="counter-lines">
           {checked.map(({ line, amount, levels, short, parts, unitCents, totalCents: lineCents }) => <li key={line.item._id} className={short || amount <= 0 ? "counter-line problem" : "counter-line"}>
             <div className="counter-line-info">
-              <b>{line.item.name}</b>
-              <small>{[codeOf(line.item) && `Cód. ${codeOf(line.item)}`, WAREHOUSES.map(entry => `${entry.short} ${qty(levels[entry.key])}`).join(" · ")].filter(Boolean).join(" · ")} {line.item.unit}</small>
+              <b>{line.item.name}{line.item.isNew && <span className="badge counter-new-badge">Nuevo</span>}</b>
+              {line.item.isNew ? <small>Se da de alta en Stock al confirmar la entrada</small> : <small>{[codeOf(line.item) && `Cód. ${codeOf(line.item)}`, WAREHOUSES.map(entry => `${entry.short} ${qty(levels[entry.key])}`).join(" · ")].filter(Boolean).join(" · ")} {line.item.unit}</small>}
               {mode === "egreso" && amount > 0 && (short
                 ? <small className="below">No alcanza: {outFrom ? `en ${warehouseLabel(outFrom)} hay ${qty(levels[outFrom])}` : `entre los depósitos hay ${qty(totalOf(levels))}`} {line.item.unit}</small>
                 : parts.length > 1 && <small>Sale {parts.map(part => `${qty(part.quantity)} del ${WAREHOUSES.find(entry => entry.key === part.warehouse)?.short}`).join(" y ")}</small>)}
@@ -389,7 +419,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
               : <span className="counter-cost readonly"><span>Costo a obra</span><b>{money(lineCents)}</b></span>}
             {entry && <strong className="counter-line-total">{money(Math.round(amount * unitCents))}</strong>}
             <div className="counter-line-actions">
-              <button type="button" title="Imprimir la etiqueta con el código de barras" onClick={() => { void printLabel(line.item); }}><Tag size={16} /></button>
+              <button type="button" title={line.item.isNew ? "La etiqueta se imprime una vez dado de alta" : "Imprimir la etiqueta con el código de barras"} disabled={line.item.isNew} onClick={() => { void printLabel(line.item); }}><Tag size={16} /></button>
               <button type="button" title="Sacar de la lista" onClick={() => { setConfirming(false); setLines(current => current.filter(candidate => candidate !== line)); }}><Trash2 size={16} /></button>
             </div>
           </li>)}
@@ -400,9 +430,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
         <div className="counter-side-body">
           <p className="eyebrow">{entry ? "ENTRADA" : "SALIDA A OBRA"}</p>
           {entry ? <>
-            <div className="counter-field"><span>Empresa que compró *<em className="field-hint">Entra al Galpón a su nombre</em></span><div className="counter-segment">{COMPANY_KEYS.map(key => <button key={key} type="button" className={owner === key ? "active" : ""} aria-pressed={owner === key} onClick={() => { setOwner(key); setConfirming(false); }}>{COMPANIES[key].short}</button>)}</div></div>
-            <label className="counter-field"><span>Proveedor</span><SearchSelect name="supplierId" options={suppliers} value={supplierId} onChange={setSupplierId} placeholder="Elegí el proveedor…" /></label>
-            <label className="counter-field"><span>Factura o remito del proveedor</span><input name="reference" placeholder="Número del comprobante" /></label>
+            <div className="counter-field"><span>Empresa que compró *<em className="field-hint">Entra a su nombre y a su depósito: {warehouseLabel(ENTRY_WAREHOUSE[owner])}</em></span><div className="counter-segment">{COMPANY_KEYS.map(key => <button key={key} type="button" className={owner === key ? "active" : ""} aria-pressed={owner === key} onClick={() => { setOwner(key); setConfirming(false); }}>{entryLabel(key)}</button>)}</div></div>
           </> : <>
             <label className="counter-field"><span>Obra *</span><SearchSelect name="workId" options={works} value={workId} onChange={value => { setWorkId(value); setConfirming(false); }} placeholder="¿A qué obra se entrega?" /></label>
             <div className="counter-field"><span>Sale de</span><div className="counter-segment">
@@ -412,6 +440,11 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
           </>}
           <label className="counter-field"><span>Fecha</span><DateInput name="date" defaultValue={todayIso()} recent /></label>
           <label className="counter-field"><span>Observaciones</span><textarea name="note" rows={2} placeholder={entry ? "Detalle de la entrada" : "Quién retiró, en qué vehículo…"} /></label>
+          {entry && <>
+            <ManualItem onAdd={addManual} />
+            <label className="counter-field"><span>Proveedor</span><SearchSelect name="supplierId" options={suppliers} value={supplierId} onChange={setSupplierId} placeholder="Elegí el proveedor…" /></label>
+            <label className="counter-field"><span>Factura o remito del proveedor</span><input name="reference" placeholder="Número del comprobante" /></label>
+          </>}
 
           <div className="counter-totals">
             <div><span>Materiales</span><b>{lines.length}</b></div>
@@ -423,7 +456,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
           {!entry && lines.length > 0 && !workId && <p className="counter-note">Elegí la obra para poder confirmar.</p>}
         </div>
         <footer>
-          {confirming && <span className="counter-confirm-text">{entry ? "Entran" : "Salen"} {qty(totalUnits)} unidades de {lines.length} {lines.length === 1 ? "material" : "materiales"}. Queda a tu nombre.</span>}
+          {confirming && <span className="counter-confirm-text">{entry ? "Entran" : "Salen"} {qty(totalUnits)} unidades de {lines.length} {lines.length === 1 ? "material" : "materiales"}{entry ? ` al ${warehouseLabel(ENTRY_WAREHOUSE[owner])}, a nombre de ${COMPANIES[owner].short}` : ""}. Queda a tu nombre.</span>}
           {confirming && <button type="button" className="secondary-btn" onClick={() => setConfirming(false)}>Volver</button>}
           <button className={confirming ? "primary-btn confirming" : "primary-btn"} disabled={saving || !ready}>
             {saving ? "Registrando…" : confirming ? <><Check size={16} /> Sí, confirmar</> : entry ? <><PackagePlus size={16} /> Confirmar entrada</> : <><HardHat size={16} /> Confirmar salida</>}
@@ -455,6 +488,73 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
 
     {camera && <CameraScanner continuous onDetected={onCameraCode} onClose={closeCamera} title={entry ? "Escanear lo que entra" : "Escanear lo que sale"} />}
   </>;
+}
+
+/**
+ * Cargar la entrada ítem por ítem, sin escanear: se busca el producto en Stock
+ * o, si no está, se escribe el nombre y se da de alta al confirmar la entrada.
+ */
+function ManualItem({ onAdd }: { onAdd: (item: CounterItem, amount: number, unitCost: string) => void }) {
+  const [name, setName] = useState("");
+  const [picked, setPicked] = useState<CounterItem | null>(null);
+  const [rows, setRows] = useState<CounterItem[]>([]);
+  const [amount, setAmount] = useState("1");
+  const [unit, setUnit] = useState("unidad");
+  const [category, setCategory] = useState("materiales");
+  const [cost, setCost] = useState("");
+  const query = name.trim();
+
+  useEffect(() => {
+    if (picked || query.length < 2) return;
+    const timer = window.setTimeout(() => {
+      void fetch(`/api/records/stock?limit=6&search=${encodeURIComponent(query)}`)
+        .then(response => response.ok ? response.json() : { items: [] })
+        .then(result => setRows((result.items || []) as CounterItem[]))
+        .catch(() => setRows([]));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query, picked]);
+
+  const suggestions = picked || query.length < 2 ? [] : rows;
+  // Si el nombre escrito es igual al de un material que ya está, se usa ése: no se duplica.
+  const match = picked || suggestions.find(row => sameName(row.name, query)) || null;
+  const quantity = toNumber(amount);
+  const canAdd = !!query && quantity > 0;
+
+  function pick(item: CounterItem) {
+    setPicked(item); setName(item.name); setUnit(item.unit || "unidad"); setRows([]);
+    const cents = Number(item.lastPriceCents || item.avgCostCents || 0);
+    if (cents && !cost) setCost(amountToInput(cents / 100));
+  }
+
+  function add() {
+    if (!canAdd) return;
+    const item: CounterItem = match || { _id: `nuevo-${Date.now()}`, name: query, unit, category, isNew: true };
+    onAdd(item, round(quantity), cost);
+    setName(""); setPicked(null); setRows([]); setAmount("1"); setCost("");
+  }
+
+  // Enter suma el ítem; no confirma la entrada.
+  const onEnter = (event: React.KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); add(); } };
+  const onlyAmount = (value: string) => value.replace(/[^\d,.]/g, "");
+
+  return <fieldset className="counter-manual">
+    <legend>Cargar ítem por ítem</legend>
+    <label className="counter-field"><span>Producto</span>
+      <input value={name} onChange={event => { setName(event.target.value); setPicked(null); }} onKeyDown={onEnter} placeholder="Buscá en Stock o escribí uno nuevo…" autoComplete="off" />
+    </label>
+    {suggestions.length > 0 && !match && <div className="counter-results flat counter-manual-results">{suggestions.map(item => <button type="button" key={item._id} onClick={() => pick(item)}>
+      <span><b>{item.name}</b><small>{[codeOf(item) && `Cód. ${codeOf(item)}`, `${qty(Number(item.quantity || 0))} ${item.unit} en stock`].filter(Boolean).join(" · ")}</small></span><Plus size={16} />
+    </button>)}</div>}
+    {query.length >= 2 && <small className="field-hint">{match ? `Ya está en Stock (en ${match.unit}): se suma a lo que hay.` : suggestions.length ? "Elegí uno de la lista o, si no está, se da de alta como producto nuevo al confirmar." : "Producto nuevo: se da de alta en Stock al confirmar."}</small>}
+    <div className="counter-manual-grid">
+      <label className="counter-field"><span>Cantidad</span><input inputMode="decimal" value={amount} onChange={event => setAmount(onlyAmount(event.target.value))} onKeyDown={onEnter} /></label>
+      <label className="counter-field"><span>Unidad</span><select value={match ? match.unit : unit} disabled={!!match} onChange={event => setUnit(event.target.value)}>{units.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+      <label className="counter-field"><span>Costo unit.</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={cost} placeholder="0,00" onChange={event => setCost(onlyAmount(event.target.value))} onKeyDown={onEnter} aria-label="Costo unitario" /></div></label>
+      {!match && <label className="counter-field"><span>Rubro</span><select value={category} onChange={event => setCategory(event.target.value)}>{categories.map(option => <option key={option} value={option}>{option[0].toUpperCase() + option.slice(1)}</option>)}</select></label>}
+    </div>
+    <button type="button" className="secondary-btn counter-manual-add" disabled={!canAdd} onClick={add}><Plus size={16} /> Agregar a la entrada</button>
+  </fieldset>;
 }
 
 /** Un código que no es de ningún material: se le asigna a uno que ya existe o se da de alta el material. */
