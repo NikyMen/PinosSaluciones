@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { CashAccount, CashMovement } from "./models";
 import { resolveCashAccount } from "./cash-accounts";
+import { SHARED_COMPANY } from "./cash-account-kinds";
 import { accountByName } from "./account-service";
 import { TRANSFER_IN_ACCOUNT, TRANSFER_OUT_ACCOUNT } from "./account-catalog";
 import { HttpError } from "./api";
@@ -52,13 +53,23 @@ export async function createCashTransfer(input: CashTransferInput) {
   const detail = input.description ? ` · ${input.description}` : "";
   const common = { date: input.date, amountCents: input.amountCents, reference: input.reference || transferId, transferId, description: `Pase ${from.name} → ${to.name}${detail}` };
   const [out, into] = await CashMovement.create([
-    { ...common, direction: "egreso", cashAccountId: from._id, account: from.name, company: from.company, accountId: outAccount._id },
-    { ...common, direction: "ingreso", cashAccountId: to._id, account: to.name, company: to.company, accountId: inAccount._id },
+    { ...common, direction: "egreso", cashAccountId: from._id, account: from.name, company: transferCompany(from, to), accountId: outAccount._id },
+    { ...common, direction: "ingreso", cashAccountId: to._id, account: to.name, company: transferCompany(to, from), accountId: inAccount._id },
   ]);
   return { transferId, out: out.toObject(), into: into.toObject() };
 }
 
+/**
+ * La empresa de cada mitad del pase: la de su cuenta. Una caja de las dos
+ * empresas toma la de la otra cuenta (depositar el efectivo en el banco de TV
+ * Pino es plata de TV Pino); si las dos son compartidas, queda sin empresa.
+ */
+function transferCompany(account: { company: string }, other: { company: string }) {
+  if (account.company !== SHARED_COMPANY) return account.company;
+  return other.company !== SHARED_COMPANY ? other.company : undefined;
+}
+
 /** Las cajas y cuentas bancarias activas del maestro. */
 export async function knownCashAccounts() {
-  return CashAccount.find({ active: { $ne: false } }).select("name company type currency").sort({ name: 1 }).lean();
+  return CashAccount.find({ active: { $ne: false } }).select("code name company type currency").sort({ code: 1, name: 1 }).lean();
 }

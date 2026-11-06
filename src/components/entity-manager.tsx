@@ -36,6 +36,7 @@ import { isCreditNote } from "@/lib/invoice-labels";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
 import { invoiceLabel, voucherLabels } from "@/lib/invoice-labels";
 import { companyOf } from "@/lib/companies";
+import { SHARED_COMPANY } from "@/lib/cash-account-kinds";
 import { AssetMaintenanceModal, NextDueCell, type AssetRecord } from "@/components/asset-maintenance";
 import { CashTransferModal } from "@/components/cash-transfer";
 import { meterLabels, sectorLabels } from "@/lib/assets";
@@ -231,6 +232,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     if (key === "description" && value) { const text = String(value).split(/\r?\n/).map(line => line.trim()).filter(Boolean).join(" · "); return <span className="cell-clamp" title={text}>{text}</span>; }
     if (entity === "purchases" && key === "number") return <span className="invoice-number">{String(value || "—")}{item.legacyNumber ? <small> · antes {String(item.legacyNumber)}</small> : null}</span>;
     if (entity === "invoices" && key === "number") return <span className="invoice-number">{String(value || "—").replace(/^X-/, "")}{item.replacedById ? <small> · sustituida</small> : item.replacesId ? <small> · sustituye una X</small> : null}</span>;
+    if (entity === "cashAccounts" && key === "company" && value === SHARED_COMPANY) return <span className="company-badge ambas" title="La usan Trabajos Verticales Pino y Constructora Pino">Las dos</span>;
     if (key === "company") { const company = companyOf(value); return <span className={`company-badge ${company.key}`} title={`${company.legalName} · CUIT ${company.cuit}`}>{company.short}</span>; }
     if (key === "voucherType" && value === "factura_x") return <span className="voucher-x" title="Comprobante interno: no pasa por ARCA ni va al libro IVA">Factura X</span>;
     if (key === "voucherType") return value ? voucherLabels[String(value)] || titleCase(String(value)) : "—";
@@ -240,7 +242,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     const labels = config.fields.find(field => field.key === key)?.optionLabels;
     if (key === "status" && value) return <span className={`badge ${value}`}>{labels?.[String(value)] ?? titleCase(String(value))}</span>;
     if (entity === "accounts" && key === "active") return <span className={`badge ${value === false ? "anulada" : "activo"}`}>{value === false ? "Desactivada" : "Activa"}</span>;
-    if (entity === "accounts" && key === "code") return <span className="account-code">{String(value || "")}</span>;
+    if ((entity === "accounts" || entity === "cashAccounts") && key === "code") return <span className="account-code">{String(value || "")}</span>;
     if (labels && value) return labels[String(value)] ?? titleCase(String(value));
     if (key === "lastPriceCents") return item.lastPriceDate ? <span className="cell-stack">{money(Number(value || 0))}<small>{item.lastPriceSource === "compra" ? "Compra" : "Lista"} del {date(String(item.lastPriceDate))}</small></span> : "—";
     if (key.startsWith("qty_")) { const amount = levelsOf(item)[key.slice(4) as WarehouseKey] ?? 0; return amount ? qty(amount) : "—"; }

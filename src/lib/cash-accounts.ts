@@ -2,6 +2,7 @@ import type { Types } from "mongoose";
 import { CashAccount, CashMovement, Collection, Payment } from "./models";
 import { HttpError } from "./api";
 import { companyOf } from "./companies";
+import { cashAccountCompanyShort, cashAccountServes, SHARED_COMPANY } from "./cash-account-kinds";
 import { paidByPayment } from "./balances";
 
 /*
@@ -11,7 +12,7 @@ import { paidByPayment } from "./balances";
  */
 
 type Lean = Record<string, unknown> & { _id: Types.ObjectId };
-export type CashAccountDoc = Lean & { name: string; company: string; active?: boolean; openingBalanceCents?: number; openingDate?: Date };
+export type CashAccountDoc = Lean & { code?: number; name: string; company: string; type?: string; active?: boolean; openingBalanceCents?: number; openingDate?: Date };
 
 /** El nombre para comparar: sin mayúsculas, acentos, puntos ni espacios de más. "Bco. Nación  TVP" y "bco nacion tvp" son el mismo. */
 export function cashAccountKey(name: unknown) {
@@ -21,15 +22,15 @@ export function cashAccountKey(name: unknown) {
 /**
  * La cuenta que eligió un movimiento: tiene que existir y estar activa (salvo
  * que el movimiento ya la tuviera, si se edita otra cosa) y ser de la empresa
- * del movimiento, si la tiene. Devuelve su nombre, que se guarda junto.
+ * del movimiento, si la tiene, o de las dos. Devuelve su nombre, que se guarda junto.
  */
 export async function resolveCashAccount(id: unknown, options: { company?: unknown; allowInactive?: boolean } = {}) {
   if (!id) return null;
   const account = await CashAccount.findById(id).lean<CashAccountDoc>();
   if (!account) throw new HttpError("La caja o cuenta elegida no existe");
   if (account.active === false && !options.allowInactive) throw new HttpError(`La cuenta ${account.name} está inactiva: elegí otra`);
-  if (options.company && companyOf(options.company).key !== companyOf(account.company).key) {
-    throw new HttpError(`La cuenta ${account.name} es de ${companyOf(account.company).short}: elegí una de ${companyOf(options.company).short}`);
+  if (options.company && !cashAccountServes(account.company, companyOf(options.company).key)) {
+    throw new HttpError(`La cuenta ${account.name} es de ${cashAccountCompanyShort(account.company)}: elegí una de ${companyOf(options.company).short}`);
   }
   return account;
 }
@@ -58,12 +59,26 @@ export async function prepareCashAccount(entity: "cash" | "collections" | "payme
   const account = await resolveCashAccount(merged.cashAccountId, { company });
   if (!account) return;
   data.account = account.name;
-  // Un movimiento de caja sin empresa queda con la de su cuenta.
-  if (entity === "cash" && !merged.company) data.company = account.company;
+  // Un movimiento de caja sin empresa queda con la de su cuenta (si es de una sola).
+  if (entity === "cash" && !merged.company && account.company !== SHARED_COMPANY) data.company = account.company;
 }
 
-/** Antes de guardar una cuenta del maestro: nombre sin repetir y saldo inicial sólo de Gerencia. */
+/**
+ * Antes de guardar una cuenta del maestro: nombre y código sin repetir, el banco
+ * de los cheques diferidos de la misma empresa, y saldo inicial sólo de Gerencia.
+ */
 export async function prepareCashAccountRecord(data: Record<string, unknown>, before: Record<string, unknown> | null, role: string) {
+  if (data.code !== undefined) {
+    const twin = await CashAccount.findOne({ code: data.code, ...(before ? { _id: { $ne: before._id } } : {}) }).select("name").lean<{ name: string }>();
+    if (twin) throw new HttpError(`El código ${data.code} ya es de "${twin.name}"`, 409);
+  }
+  if (data.bankAccountId) {
+    const bank = await CashAccount.findById(data.bankAccountId).select("name company type").lean<CashAccountDoc>();
+    if (!bank) throw new HttpError("El banco que debita los cheques no existe");
+    if (bank.type === "cheques_diferidos" || String(bank._id) === String(before?._id || "")) throw new HttpError("Los cheques diferidos se debitan de una cuenta bancaria: elegí el banco");
+    const company = data.company ?? before?.company;
+    if (company && bank.company !== company) throw new HttpError(`${bank.name} es de ${cashAccountCompanyShort(bank.company)}: los cheques diferidos tienen que ser de la misma empresa`);
+  }
   if ("name" in data) {
     const nameKey = cashAccountKey(data.name);
     if (!nameKey) throw new HttpError("Poné el nombre de la cuenta");

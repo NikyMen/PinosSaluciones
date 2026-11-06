@@ -6,6 +6,7 @@ import { LEGACY_NOTIFICATION_STATUSES, NOTIFICATION_STATUSES } from "./notificat
 import { ACCOUNT_CODES } from "./account-catalog";
 import { INVOICE_STATUSES, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES, VOUCHER_TYPES } from "./invoice-labels";
 import { VAT_CONDITION_KEYS } from "./fiscal";
+import { CASH_ACCOUNT_COMPANIES, CASH_ACCOUNT_TYPES, CASH_CURRENCIES } from "./cash-account-kinds";
 
 const options = { timestamps: true, strict: true } as const;
 const money = { type: Number, min: 0, default: 0 };
@@ -879,14 +880,18 @@ const CheckSchema = new Schema({
  * movimiento de plata elige una de acá: ya no se crea una caja escribiendo un
  * nombre nuevo. `nameKey` es el nombre sin mayúsculas, acentos ni espacios de
  * más: dos que se escriben distinto no pueden ser la misma cuenta dos veces.
- * Una cuenta usada no se borra: se inactiva.
+ * Una cuenta usada no se borra: se inactiva. `code` es el número para elegirla
+ * rápido, como en TANGO (los rangos, en src/lib/cash-account-kinds.ts); las de
+ * antes pueden no tenerlo todavía. Una caja de las dos empresas tiene `company: "ambas"`.
  */
-export const CASH_ACCOUNT_TYPES = ["caja", "cuenta_corriente", "caja_ahorro", "cuenta_dolares", "otra"] as const;
 const CashAccountSchema = new Schema({
-  company: { type: String, enum: ["tvp", "constructora"], required: true },
+  code: { type: Number, unique: true, sparse: true },
+  company: { type: String, enum: CASH_ACCOUNT_COMPANIES, required: true },
   name: { type: String, required: true, trim: true }, nameKey: { type: String, required: true, unique: true },
   type: { type: String, enum: CASH_ACCOUNT_TYPES, required: true },
-  bank: String, currency: { type: String, enum: ["ARS", "USD"], default: "ARS" },
+  bank: String, currency: { type: String, enum: CASH_CURRENCIES, default: "ARS" },
+  // La de cheques diferidos: el banco que los debita.
+  bankAccountId: { type: Schema.Types.ObjectId, ref: "CashAccount" },
   cbu: String, alias: String, internalId: String,
   active: { type: Boolean, default: true },
   // El saldo con el que arranca y desde qué fecha: lo de antes de esa fecha no suma.

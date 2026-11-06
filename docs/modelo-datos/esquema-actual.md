@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-10-20 · 28 colecciones.
+Generado el 2026-10-30 · 28 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -753,12 +753,14 @@ Colección `cashaccounts` · entidad `cashAccounts`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
-| `company` | texto | sí | valores: `tvp` · `constructora` |
+| `code` | número | — | único |
+| `company` | texto | sí | valores: `tvp` · `constructora` · `ambas` |
 | `name` | texto | sí | — |
 | `nameKey` | texto | sí | único |
-| `type` | texto | sí | valores: `caja` · `cuenta_corriente` · `caja_ahorro` · `cuenta_dolares` · `otra` |
+| `type` | texto | sí | valores: `caja` · `billetera` · `cuenta_corriente` · `caja_ahorro` · `cuenta_dolares` · `valores_cobro` · `cheques_diferidos` · `tarjeta_credito` · `retenciones` · `otra` |
 | `bank` | texto | — | — |
-| `currency` | texto | — | valores: `ARS` · `USD` · por defecto `"ARS"` |
+| `currency` | texto | — | valores: `ARS` · `USD` · `BRL` · `EUR` · por defecto `"ARS"` |
+| `bankAccountId` | referencia | — | apunta a **CashAccount** |
 | `cbu` | texto | — | — |
 | `alias` | texto | — | — |
 | `internalId` | texto | — | — |

@@ -133,6 +133,76 @@ describe("maestro de cajas y cuentas bancarias", () => {
     const unused = await post("cashAccounts", { company: "tvp", name: "Cuenta de prueba", type: "otra" });
     expect((await call(await recordRoute.DELETE(new Request("http://test", { method: "DELETE" }), params({ entity: "cashAccounts", id: unused.body._id })))).status).toBe(200);
   });
+
+  it("cada cuenta tiene su código sin repetir, como en TANGO, y la lista va por código", async () => {
+    asRole("gerencia");
+    const nacion = String((await CashAccount.findOne({ nameKey: "bco nacion tvp" }).lean<{ _id: unknown }>())!._id);
+    expect((await patch("cashAccounts", nacion, { code: "33" })).status).toBe(200);
+    const twin = await post("cashAccounts", { code: 33, company: "tvp", name: "Banco Macro TVP", type: "cuenta_corriente" });
+    expect(twin.status).toBe(409);
+    expect(twin.body.error).toContain("Bco. Nación TVP");
+    expect((await post("cashAccounts", { code: 32, company: "tvp", name: "Banco Macro TVP", type: "cuenta_corriente" })).status).toBe(201);
+
+    const list = await call(await recordsRoute.GET(new Request("http://test/api/records/cashAccounts?limit=100"), params({ entity: "cashAccounts" })));
+    const coded = list.body.items.filter((item: { code?: number }) => item.code).map((item: { code: number }) => item.code);
+    expect(coded).toEqual([32, 33]);
+    // Se busca por el número.
+    const search = await call(await recordsRoute.GET(new Request("http://test/api/records/cashAccounts?search=33"), params({ entity: "cashAccounts" })));
+    expect(search.body.items.map((item: { name: string }) => item.name)).toEqual(["Bco. Nación TVP"]);
+  });
+
+  it("una caja de las dos empresas sirve para las dos; en un pase toma la empresa de la otra cuenta", async () => {
+    const efectivo = await post("cashAccounts", { code: 50, company: "ambas", name: "Caja Efectivo", type: "caja" });
+    expect(efectivo.status).toBe(201);
+    const dolares = await post("cashAccounts", { code: 51, company: "ambas", name: "Caja Dólares", type: "caja", currency: "USD" });
+    expect((await post("cashAccounts", { code: 52, company: "ambas", name: "Caja Reales", type: "caja", currency: "BRL" })).status).toBe(201);
+    const base = { date: "2026-10-05", direction: "egreso", description: "Viáticos", amountCents: 10_000_00, accountId: await accountId("GGI - Alquileres"), cashAccountId: efectivo.body._id };
+    expect((await post("cash", { ...base, company: "tvp" })).body.company).toBe("tvp");
+    expect((await post("cash", { ...base, company: "constructora" })).body.company).toBe("constructora");
+    // Sin empresa, no toma ninguna: la caja es de las dos.
+    expect((await post("cash", base)).body.company).toBeUndefined();
+
+    const nacion = String((await CashAccount.findOne({ nameKey: "bco nacion tvp" }).lean<{ _id: unknown }>())!._id);
+    const deposit = await call(await transferRoute.POST(json("POST", { date: "2026-10-05", from: efectivo.body._id, to: nacion, amountCents: 5_000_00 })));
+    expect(await CashMovement.countDocuments({ transferId: deposit.body.transferId, company: "tvp" })).toBe(2);
+    const between = await call(await transferRoute.POST(json("POST", { date: "2026-10-05", from: efectivo.body._id, to: dolares.body._id, amountCents: 1_000_00 })));
+    expect(await CashMovement.countDocuments({ transferId: between.body.transferId, company: { $exists: true } })).toBe(0);
+  });
+
+  it("la cuenta de cheques diferidos se debita de un banco de su misma empresa", async () => {
+    const macro = String((await CashAccount.findOne({ code: 32 }).lean<{ _id: unknown }>())!._id);
+    const corrientes = await post("cashAccounts", { code: 10, company: "constructora", name: "Banco Corrientes Constructora", type: "cuenta_corriente" });
+    const wrong = await post("cashAccounts", { code: 20, company: "constructora", name: "Cheques diferidos Corrientes Constructora", type: "cheques_diferidos", bankAccountId: macro });
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.error).toContain("misma empresa");
+    const right = await post("cashAccounts", { code: 42, company: "tvp", name: "Cheques diferidos Macro TVP", type: "cheques_diferidos", bankAccountId: macro });
+    expect(right.status).toBe(201);
+    expect(right.body.bankAccountId).toBe(macro);
+    expect(corrientes.status).toBe(201);
+  });
+});
+
+describe("carga del maestro con los códigos acordados", () => {
+  it("completa las que ya existen, da de alta las que faltan y ata cada cuenta de cheques diferidos a su banco", async () => {
+    const run = (...args: string[]) => promisify(execFile)(process.execPath, ["--import", "tsx", "scripts/load-cash-accounts.ts", ...args], { env: { ...process.env, MONGODB_URI: uri } });
+    const before = await CashAccount.countDocuments();
+    const dry = await run();
+    expect(dry.stdout).toContain("No se cambió nada");
+    expect(await CashAccount.countDocuments()).toBe(before);
+
+    await run("--apply");
+    // La 33 ya existía con otro nombre: se completa, no se duplica.
+    expect(await CashAccount.countDocuments({ code: 33 })).toBe(1);
+    expect(await CashAccount.findOne({ code: 33 }).lean()).toMatchObject({ name: "Bco. Nación TVP", company: "tvp", type: "cuenta_corriente" });
+    expect(await CashAccount.findOne({ code: 53 }).lean()).toMatchObject({ name: "Caja Euros", company: "ambas", currency: "EUR" });
+    const nacion = await CashAccount.findOne({ code: 33 }).lean<{ _id: unknown }>();
+    expect(String((await CashAccount.findOne({ code: 43 }).lean<{ bankAccountId: unknown }>())!.bankAccountId)).toBe(String(nacion!._id));
+    for (const code of [1, 6, 10, 20, 30, 31, 32, 33, 34, 40, 41, 42, 43, 44, 50, 51, 52, 53, 54, 60, 61, 62, 70, 71, 72]) expect(await CashAccount.exists({ code })).toBeTruthy();
+
+    // Correrlo de nuevo no cambia nada.
+    const again = await run();
+    expect(again.stdout).not.toContain("→ nueva");
+  }, 60_000);
 });
 
 describe("migración de los nombres que se usaban", () => {

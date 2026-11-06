@@ -78,7 +78,8 @@ export function DateInput({ name, defaultValue = "", required, autoFocus, quickR
   </div>;
 }
 
-export type Option = { value: string; label: string; hint?: string };
+/** `code`: el número para elegirla escribiéndolo, como en TANGO (una caja, una cuenta). */
+export type Option = { value: string; label: string; hint?: string; code?: string };
 
 /** Select buscable y redondeado. `onCreate` agrega el atajo "Crear nuevo…" al final. */
 export function SearchSelect({ name, options, defaultValue = "", placeholder = "Seleccionar…", required, autoFocus, createLabel, onCreate, value: controlled, onChange }: {
@@ -93,9 +94,13 @@ export function SearchSelect({ name, options, defaultValue = "", placeholder = "
   const wrapRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
+  // Con código, primero la que tiene justo ese número y después las que empiezan con él: "3" y Enter es la 3, no la 30.
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return needle ? options.filter(option => option.label.toLowerCase().includes(needle) || option.hint?.toLowerCase().includes(needle)) : options;
+    if (!needle) return options;
+    const rank = (option: Option) => option.code === needle ? 0 : option.code?.startsWith(needle) ? 1 : 2;
+    return options.filter(option => rank(option) < 2 || option.label.toLowerCase().includes(needle) || option.hint?.toLowerCase().includes(needle))
+      .map((option, index) => ({ option, index })).sort((a, b) => rank(a.option) - rank(b.option) || a.index - b.index).map(entry => entry.option);
   }, [options, query]);
 
   useEffect(() => {
@@ -121,12 +126,17 @@ export function SearchSelect({ name, options, defaultValue = "", placeholder = "
   const current = options.find(option => option.value === selected);
 
   return <div className="select-field" ref={wrapRef}>
-    <button type="button" className={open ? "select-trigger open" : "select-trigger"} autoFocus={autoFocus} onClick={toggle} aria-haspopup="listbox" aria-expanded={open} aria-controls={listId}>
+    <button type="button" className={open ? "select-trigger open" : "select-trigger"} autoFocus={autoFocus} onClick={toggle} aria-haspopup="listbox" aria-expanded={open} aria-controls={listId}
+      onKeyDown={event => {
+        // Parado en el campo, lo que se escribe ya busca: el código y Enter, como en TANGO.
+        if (open || options.length <= 6 || event.key.length !== 1 || event.key === " " || event.ctrlKey || event.metaKey || event.altKey) return;
+        event.preventDefault(); setQuery(event.key); setHighlight(0); setOpen(true);
+      }}>
       <span className={current ? "select-value" : "select-value placeholder"}>{current?.label || placeholder}</span>
       <ChevronDown size={16} className={open ? "chevron open" : "chevron"} />
     </button>
     {open && <div className="select-popover" id={listId} role="listbox">
-      {options.length > 6 && <div className="select-search"><Search size={15} /><input autoFocus value={query} placeholder="Buscar…" onChange={event => { setQuery(event.target.value); setHighlight(0); }} onKeyDown={event => {
+      {options.length > 6 && <div className="select-search"><Search size={15} /><input autoFocus value={query} placeholder="Buscar…" onFocus={event => { const end = event.currentTarget.value.length; event.currentTarget.setSelectionRange(end, end); }} onChange={event => { setQuery(event.target.value); setHighlight(0); }} onKeyDown={event => {
         if (event.key === "ArrowDown") { event.preventDefault(); setHighlight(index => Math.min(index + 1, filtered.length - 1)); }
         if (event.key === "ArrowUp") { event.preventDefault(); setHighlight(index => Math.max(index - 1, 0)); }
         if (event.key === "Enter") { event.preventDefault(); const option = filtered[highlight]; if (option) pick(option.value); }

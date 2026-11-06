@@ -4,6 +4,7 @@ import { WAREHOUSE_KEYS } from "./warehouses";
 import { ACCOUNT_CODES } from "./account-catalog";
 import { INVOICE_STATUSES, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES } from "./invoice-labels";
 import { VAT_CONDITION_KEYS } from "./fiscal";
+import { CASH_ACCOUNT_COMPANIES, CASH_ACCOUNT_TYPES, CASH_CURRENCIES } from "./cash-account-kinds";
 import { isPurchaseVatRate } from "./purchase-taxes";
 import { CHECK_RESULTS, INSPECTION_RUBROS, MATERIAL_CONDITIONS, ORDER_STATUS, PERFORMANCE, PRODUCTION_CONSUMPTION, WEATHER } from "./inspections";
 
@@ -66,7 +67,9 @@ export const schemas: Record<Entity, z.ZodObject<z.ZodRawShape>> = {
   checks: z.object({ direction: z.enum(["recibido", "emitido"]), bank: text, number: text, issuer: optionalText, amountCents: cents, dueDate: date, status: z.enum(["cartera", "depositado", "cobrado", "endosado", "rechazado", "emitido"]), clientId: optionalId, supplierId: optionalId, format: z.enum(["fisico", "echeq"]).default("fisico") }),
   cash: z.object({ date, direction: z.enum(["ingreso", "egreso"]), cashAccountId: optionalId, account: optionalText, accountId: optionalId, accountChangeReason, company: z.union([company, z.literal("")]).optional().transform(v => v || undefined), workId: optionalId, costCenter: optionalText, category: optionalText, description: text, amountCents: cents, reference: optionalText, reconciled: z.boolean().optional().default(false) }),
   // El maestro de cajas y cuentas bancarias. El saldo inicial puede ser negativo (un descubierto).
-  cashAccounts: z.object({ company, name: text, type: z.enum(["caja", "cuenta_corriente", "caja_ahorro", "cuenta_dolares", "otra"]), bank: optionalText, currency: z.enum(["ARS", "USD"]).default("ARS"), cbu: optionalText, alias: optionalText, internalId: optionalText,
+  // El código es el número para elegirla rápido, como en TANGO; las de antes pueden no tenerlo.
+  cashAccounts: z.object({ code: z.union([z.literal(""), z.coerce.number().int("El código es un número entero").min(1, "El código va del 1 en adelante").max(9999, "El código va hasta el 9999")]).optional().transform(v => v === "" ? undefined : v),
+    company: z.enum(CASH_ACCOUNT_COMPANIES), name: text, type: z.enum(CASH_ACCOUNT_TYPES), bank: optionalText, currency: z.enum(CASH_CURRENCIES).default("ARS"), bankAccountId: optionalId, cbu: optionalText, alias: optionalText, internalId: optionalText,
     active: z.preprocess(value => value === "false" || value === "no" ? false : value === "true" || value === "si" ? true : value, z.boolean()).optional().default(true),
     openingBalanceCents: z.coerce.number().int().default(0), openingDate: optionalDate, notes: optionalText }),
   // La dirección (ingreso o egreso) sale del código: CI es ingreso, el resto egreso.

@@ -25,7 +25,8 @@
     "migrate:cash-accounts": "node --env-file-if-exists=.env scripts/migrate-cash-accounts.mjs",
     "migrate:purchases": "node --env-file-if-exists=.env scripts/migrate-purchases.mjs",
     "migrate:heic": "tsx --env-file-if-exists=.env scripts/convert-heic-uploads.ts",
-    "stock:galpon": "tsx --env-file-if-exists=.env scripts/import-galpon-stock.ts"
+    "stock:galpon": "tsx --env-file-if-exists=.env scripts/import-galpon-stock.ts",
+    "cash:codes": "tsx --env-file-if-exists=.env scripts/load-cash-accounts.ts"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

@@ -2092,6 +2092,7 @@ tr.row-inactive td { color: var(--muted); background: #fafbfc; }
 td > .company-badge:first-child { margin-left: 0; }
 .company-badge.tvp { background: #e7eef6; color: var(--brand-navy); }
 .company-badge.constructora { background: #fdecec; color: var(--brand-red-dark); }
+.company-badge.ambas { background: #eef3ea; color: #3f5f2e; }
 .company-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--brand-navy); vertical-align: middle; }
 .company-dot.constructora { background: var(--brand-red); }
 
