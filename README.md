@@ -252,6 +252,6 @@ Las listas de precios de proveedores se cargan aparte, desde la ficha del provee
 - El worker genera tareas por facturas y cheques próximos a vencer.
 - Bitácora completa (usuario, fecha y hora, valor anterior y nuevo) en Seguridad › Bitácora de cambios, solo para gerencia.
 - Todo ingreso y egreso de plata (caja y bancos, recibos, pagos) se imputa a una cuenta del plan de cuentas. El catálogo y los talonarios de comprobantes se crean solos la primera vez; no hace falta correr nada al actualizar.
-- Toda compra entra al Galpón, salvo la orden de compra pedida para entregar en el Salón de Ventas, que entra directo al Salón. En la Caja, la empresa que compró define el depósito: TV Pino entra al Galpón y Constructora Pino al Salón de Ventas (`ENTRY_WAREHOUSE` en `src/lib/warehouses.ts`). La entrada manual desde la ficha de Stock es siempre al Galpón, y al Salón el material llega por transferencia (queda en tránsito hasta que se confirma la recepción).
+- Una orden de compra entra al depósito que pide (Galpón o Salón de Ventas). En la Caja, la empresa que compró define el depósito: TV Pino entra al Galpón y Constructora Pino al Salón de Ventas (`ENTRY_WAREHOUSE` en `src/lib/warehouses.ts`). La entrada manual desde la ficha de un material sigue la misma regla. Entre depósitos el material pasa por transferencia (queda en tránsito hasta que se confirma la recepción).
 - Para actualizar producción: ver [Actualizar producción](#actualizar-producción).
 - Comandos de calidad: `pnpm lint`, `pnpm test`, `pnpm build`.

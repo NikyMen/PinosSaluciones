@@ -38,8 +38,11 @@ afterAll(async () => {
 });
 
 async function material(name: string, central: number, owner: "tvp" | "constructora" = "tvp") {
-  const item = await StockItem.create({ name, unit: "bolsa", category: "materiales" });
-  if (central) await call(await movements.POST(json("POST", { kind: "ingreso", warehouse: "central", owner, quantity: central, unitCostCents: 10_000 }), params({ id: String(item._id) })));
+  // Ya en el Galpón a nombre de la empresa (desde la ficha, lo de Constructora entraría al Salón).
+  const item = await StockItem.create({
+    name, unit: "bolsa", category: "materiales",
+    ...(central && { qty_central: central, quantity: central, avgCostCents: 10_000, valueCents: central * 10_000, owners: { central: { [owner]: central } } }),
+  });
   return String(item._id);
 }
 

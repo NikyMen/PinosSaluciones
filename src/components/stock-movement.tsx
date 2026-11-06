@@ -5,7 +5,7 @@ import { ArrowDownToLine, ArrowRightLeft, Check, FileText, HardHat, PackageSearc
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
 import { date, dateTime, money, qty } from "@/lib/format";
 import { levelsOf, minimumsOf, splitDelivery, totalOf, type Levels } from "@/lib/stock-levels";
-import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
+import { ENTRY_WAREHOUSE, WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
 import { downloadRemitoPdf, remitoFromMovement } from "@/lib/remito-pdf";
 import { COMPANIES, COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-owners";
@@ -26,7 +26,7 @@ export type StockItem = {
 type Kind = "ingreso" | "egreso" | "transferencia" | "ajuste";
 
 const tabs: Array<{ kind: Kind; label: string; icon: typeof ArrowDownToLine; help: string }> = [
-  { kind: "ingreso", label: "Entrada", icon: ArrowDownToLine, help: "Una compra que llegó: entra siempre al Galpón, a nombre de la empresa que compró. Todavía no es costo de ninguna obra." },
+  { kind: "ingreso", label: "Entrada", icon: ArrowDownToLine, help: "Una compra que llegó, a nombre de la empresa que compró y en su depósito: TV Pino al Galpón, Constructora Pino al Salón de Ventas. Todavía no es costo de ninguna obra." },
   { kind: "transferencia", label: "Transferir", icon: ArrowRightLeft, help: "Sale del depósito de origen con su remito y queda en tránsito hasta que el otro depósito confirma la recepción (en Stock y logística > Transferencias). No es una venta ni mueve plata." },
   { kind: "egreso", label: "Salida a obra", icon: HardHat, help: "Sale del Galpón y, si no alcanza, lo que falta sale del Salón. Un remito por depósito. Carga el costo a la obra; no es una venta." },
   { kind: "ajuste", label: "Ajustar inventario", icon: Scale, help: "Fija lo que contaste físicamente en un depósito. No mueve plata." },
@@ -92,7 +92,7 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
 
   // Cómo queda cada depósito si se confirma.
   const after: Levels = { ...levels };
-  if (kind === "ingreso") after.central = round(after.central + amount);
+  if (kind === "ingreso") after[ENTRY_WAREHOUSE[owner]] = round(after[ENTRY_WAREHOUSE[owner]] + amount);
   if (kind === "ajuste") after[warehouse] = round(amount);
   // La transferencia descuenta del origen ya; al destino suma recién cuando se confirma la recepción.
   if (kind === "transferencia") after[warehouse] = round(after[warehouse] - amount);
@@ -111,7 +111,7 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
     const form = new FormData(event.currentTarget);
     const common = { note: String(form.get("note") || ""), date: String(form.get("date") || "") || undefined };
     const body = kind === "ingreso"
-      ? { kind, warehouse: "central", owner, quantity: amount, unitCostCents: Math.round(Number(form.get("unitCostCents") || 0) * 100), supplierId: String(form.get("supplierId") || ""), reference: String(form.get("reference") || ""), ...common }
+      ? { kind, warehouse: ENTRY_WAREHOUSE[owner], owner, quantity: amount, unitCostCents: Math.round(Number(form.get("unitCostCents") || 0) * 100), supplierId: String(form.get("supplierId") || ""), reference: String(form.get("reference") || ""), ...common }
       : kind === "egreso"
         ? { kind, workId: String(form.get("workId") || ""), parts: delivery.parts, reference: "", ...common }
         : kind === "transferencia"
@@ -177,9 +177,9 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
               <label><span>Va a *</span><SearchSelect name="to" options={warehouseOptions.filter(option => option.value !== warehouse)} value={toWarehouse} onChange={value => setToWarehouse(value as WarehouseKey)} /></label>
             </> : kind === "ajuste" && <label><span>Depósito que contaste *</span>
               <SearchSelect name="warehouse" options={warehouseOptions} value={warehouse} onChange={value => setWarehouse(value as WarehouseKey)} /></label>}
-            {kind === "ingreso" && <label className="readonly-field"><span>Entra a</span><output>Galpón</output></label>}
+            {kind === "ingreso" && <label className="readonly-field"><span>Entra a</span><output>{warehouseLabel(ENTRY_WAREHOUSE[owner])}</output></label>}
             {(kind === "ingreso" || kind === "ajuste") && <label><span>{kind === "ingreso" ? "Empresa que compró (propietaria) *" : "Si sobra, a nombre de"}</span>
-              <select value={owner} onChange={event => setOwner(event.target.value as CompanyKey)}>{COMPANY_KEYS.map(key => <option key={key} value={key}>{COMPANIES[key].legalName}</option>)}</select></label>}
+              <select value={owner} onChange={event => setOwner(event.target.value as CompanyKey)}>{COMPANY_KEYS.map(key => <option key={key} value={key}>{kind === "ingreso" ? `${COMPANIES[key].short} / ${warehouseLabel(ENTRY_WAREHOUSE[key])}` : COMPANIES[key].legalName}</option>)}</select></label>}
 
             {kind === "egreso" && <label><span>Obra *</span><SearchSelect name="workId" options={works} required placeholder="¿A qué obra se entrega?" /></label>}
 

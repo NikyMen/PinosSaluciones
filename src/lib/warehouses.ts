@@ -2,7 +2,7 @@ import type { CompanyKey } from "./companies";
 
 /*
  * Los lugares con stock. Lo que se compra entra al Galpón
- * o, si la orden se pidió para ahí, al Salón de Ventas. En la Caja, la empresa que compró
+ * o, si la orden se pidió para ahí, al Salón de Ventas. En la Caja y en la ficha de un material, la empresa que compró
  * define el depósito (ENTRY_WAREHOUSE). Del Galpón se transfiere al Salón de Ventas (el mostrador),
  * que es de donde sale el remito al cliente. Los dos pueden mandar material
  * directo a una obra. Para sumar otro lugar (la camioneta, un obrador) alcanza

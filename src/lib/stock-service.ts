@@ -3,9 +3,9 @@ import { Counter, Expense, Purchase, Quote, StockItem, StockReservation, Work } 
 import { notify } from "./notifications";
 import { money } from "./format";
 import { levelsOf, lowWarehouses, qtyField, totalOf, type Levels } from "./stock-levels";
-import { warehouseLabel, WAREHOUSES, type WarehouseKey } from "./warehouses";
+import { ENTRY_WAREHOUSE, warehouseLabel, WAREHOUSES, type WarehouseKey } from "./warehouses";
 import { addOwners, compactOwners, isOwner, ownersOf, takeOwners, type OwnerKey, type OwnerMatrix, type OwnerPart } from "./stock-owners";
-import type { CompanyKey } from "./companies";
+import { COMPANIES, type CompanyKey } from "./companies";
 import type { Session } from "./auth";
 
 /*
@@ -79,11 +79,12 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
   let consumed: { workId: Types.ObjectId; quoteId?: Types.ObjectId; quantity: number } | null = null;
 
   if (input.kind === "ingreso") {
-    // La entrada cargada a mano entra al Galpón; al Salón llega por transferencia.
-    // Solo una orden de compra pedida para el Salón puede entrar directo ahí.
-    const into: WarehouseKey = input.purchaseId && input.warehouse === "salon" ? "salon" : "central";
-    if (input.warehouse && input.warehouse !== into) throw new StockError("Toda compra entra al Galpón. Al Salón de Ventas el material llega con una transferencia desde el Galpón.");
     const owner: CompanyKey = isOwner(input.owner) ? input.owner : "tvp";
+    // Con orden de compra (o desde la Caja) entra donde dice la orden: el Galpón o el Salón.
+    // La entrada cargada a mano desde la ficha va al depósito de la empresa que compró:
+    // TV Pino al Galpón, Constructora Pino al Salón de Ventas (ENTRY_WAREHOUSE).
+    const into: WarehouseKey = input.purchaseId ? (input.warehouse === "salon" ? "salon" : "central") : ENTRY_WAREHOUSE[owner];
+    if (!input.purchaseId && input.warehouse && input.warehouse !== into) throw new StockError(`Lo que compra ${COMPANIES[owner].short} entra al ${warehouseLabel(into)}.`);
     const totalCents = Math.round(input.quantity * input.unitCostCents);
     // Promedio ponderado: mezcla lo que ya había (en todos lados) con lo que entra al precio nuevo.
     const newTotal = totalOf(levels) + transit + input.quantity;
@@ -95,10 +96,10 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
     if (!purchaseId) {
       const purchase = await Purchase.create({
         number: input.reference || `STK-${Date.now().toString(36).toUpperCase()}`, company: owner,
-        supplierId: input.supplierId, description: `${input.quantity} ${item.unit} de ${item.name} (Galpón)`,
+        supplierId: input.supplierId, description: `${input.quantity} ${item.unit} de ${item.name} (${warehouseLabel(into)})`,
         amountCents: totalCents, stage: "orden", status: "cerrada", receptionStatus: "recibida", closedAt: new Date(),
-        requestedDate: date, receivedDate: date, receiptNotes: input.note, deliverTo: "central",
-        stockedAt: new Date(), stockedWarehouse: "central", stockedByName: session.name,
+        requestedDate: date, receivedDate: date, receiptNotes: input.note, deliverTo: into,
+        stockedAt: new Date(), stockedWarehouse: into, stockedByName: session.name,
       });
       purchaseId = String(purchase._id);
     }

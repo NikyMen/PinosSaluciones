@@ -68,13 +68,13 @@ describe("movimientos entre depósitos (API)", () => {
     const id = String(item._id);
     const move = async (body: unknown) => call(await movements.POST(post(body), params({ id })));
 
-    // Toda compra entra al Galpón: al Salón no se puede cargar una entrada.
-    expect((await move({ kind: "ingreso", warehouse: "salon", quantity: 1, unitCostCents: 1 })).status).toBe(400);
-    const entry = await move({ kind: "ingreso", warehouse: "central", owner: "constructora", quantity: 10, unitCostCents: 120_000 });
+    // La entrada va al depósito de la empresa que compró: lo de TV Pino no puede entrar al Salón.
+    expect((await move({ kind: "ingreso", warehouse: "salon", owner: "tvp", quantity: 1, unitCostCents: 1 })).status).toBe(409);
+    const entry = await move({ kind: "ingreso", owner: "tvp", quantity: 10, unitCostCents: 120_000 });
     expect(entry.status).toBe(201);
     expect(entry.body.item).toMatchObject({ qty_central: 20, qty_salon: 0, quantity: 20, avgCostCents: 110_000 });
     // Lo de antes queda sin dueño; lo que entra es de la empresa que compró.
-    expect(entry.body.item.owners.central).toEqual({ constructora: 10, sin_asignar: 10 });
+    expect(entry.body.item.owners.central).toEqual({ tvp: 10, sin_asignar: 10 });
 
     // La transferencia sale del Galpón y queda en tránsito hasta que el Salón la recibe.
     const transfer = await move({ kind: "transferencia", from: "central", to: "salon", quantity: 5 });
@@ -103,6 +103,19 @@ describe("movimientos entre depósitos (API)", () => {
     const counted = await move({ kind: "ajuste", warehouse: "salon", quantity: 4 });
     expect(counted.body.item).toMatchObject({ qty_central: 0, qty_salon: 4, quantity: 4 });
     expect(counted.body.movements[0]).toMatchObject({ kind: "ajuste", warehouse: "salon", quantity: 2 });
+  });
+
+  it("la entrada desde la ficha de Constructora Pino va al Salón de Ventas, con su orden recibida", async () => {
+    const item = await StockItem.create({ name: "Sellador poliuretánico", unit: "unidad" });
+    const id = String(item._id);
+    const entry = await call(await movements.POST(post({ kind: "ingreso", owner: "constructora", quantity: 6, unitCostCents: 9_000 }), params({ id })));
+    expect(entry.status).toBe(201);
+    expect(entry.body.item).toMatchObject({ qty_central: 0, qty_salon: 6, quantity: 6 });
+    expect(entry.body.item.owners.salon).toEqual({ constructora: 6 });
+    expect(entry.body.movements[0]).toMatchObject({ kind: "ingreso", warehouse: "salon", owner: "constructora" });
+    expect(await Purchase.findById(entry.body.movements[0].purchaseId).lean()).toMatchObject({ company: "constructora", deliverTo: "salon", stockedWarehouse: "salon" });
+    // Lo de Constructora no puede entrar al Galpón desde la ficha.
+    expect((await call(await movements.POST(post({ kind: "ingreso", warehouse: "central", owner: "constructora", quantity: 1, unitCostCents: 1 }), params({ id })))).status).toBe(409);
   });
 
   it("una orden de compra entra al Galpón una sola vez, a nombre de la empresa que compró; lo que no estaba se da de alta", async () => {

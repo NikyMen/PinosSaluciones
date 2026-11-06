@@ -35,7 +35,7 @@ Leyenda: ✅ hecho · 🟡 parcial · ⏳ pendiente (o esperando una decisión d
 
 | Requisito | Estado | Cómo |
 |---|---|---|
-| Toda compra entra al Galpón | ✅ (cambiado 06/11/2026) | La entrada manual desde la ficha de Stock rechaza cualquier otro depósito; "Pasar a stock" de una OC pedida para el Salón de Ventas entra directo al Salón. En la Caja, la empresa que compró define el depósito: TV Pino → Galpón, Constructora Pino → Salón de Ventas |
+| Toda compra entra al Galpón | ✅ (cambiado 06/11/2026) | "Pasar a stock" de una OC entra al depósito que pide la orden (Galpón o Salón de Ventas). En la Caja y en la ficha de un material, la empresa que compró define el depósito: TV Pino → Galpón, Constructora Pino → Salón de Ventas |
 | Galpón → Salón con estado "en tránsito" | ✅ | `src/lib/stock-transfers.ts`; pantalla Stock y logística › Transferencias |
 | Recepción confirmada en el Salón, con diferencias documentadas | ✅ | Por renglón: llegó bien, dañado (pasa a "no utilizable") y faltante |
 | La transferencia no es venta ni factura | ✅ | No toca plata ni costo |
