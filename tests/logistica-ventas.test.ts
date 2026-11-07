@@ -185,3 +185,15 @@ describe("ruta de compras", () => {
     expect(route.unlinked.purchaseInvoices.map((invoice: { label: string }) => invoice.label)).toEqual(["0002-9 · Factura suelta"]);
   });
 });
+
+describe("lista de stock por depósito", () => {
+  it("la pestaña de un depósito trae solo lo que hay ahí (o con mínimo); los materiales viejos cuentan como Galpón", async () => {
+    const onlyGalpon = await StockItem.create({ name: "Rodillo lana 22 cm (lista)", unit: "unidad", qty_central: 43, qty_salon: 0, quantity: 43, avgCostCents: 500_000, valueCents: 21_500_000 });
+    const onlySalon = await StockItem.create({ name: "Pincel 2 (lista)", unit: "unidad", qty_central: 0, qty_salon: 5, quantity: 5 });
+    const minSalon = await StockItem.create({ name: "Lija 120 (lista)", unit: "unidad", qty_central: 0, qty_salon: 0, quantity: 0, min_salon: 10 });
+    const legacy = await StockItem.create({ name: "Masilla (lista)", unit: "balde", quantity: 2 });
+    const list = async (warehouse: string) => (await call(await recordsRoute.GET(new Request(`http://test?limit=100&search=(lista)&warehouse=${warehouse}`), params({ entity: "stock" })))).body.items.map((item: { _id: string }) => item._id).sort();
+    expect(await list("salon")).toEqual([String(onlySalon._id), String(minSalon._id)].sort());
+    expect(await list("central")).toEqual([String(onlyGalpon._id), String(legacy._id)].sort());
+  });
+});

@@ -211,6 +211,8 @@ Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisio
 
 - Stock y logística › Caja › Entrada: empresa que compró (**TV Pino / Galpón** o **Constructora Pino / Salón de Ventas**), fecha, observaciones y los materiales. Se escanean o se cargan **ítem por ítem** (producto, cantidad, unidad, costo y rubro): si el producto ya está en Stock se suma a lo que hay; si no, se da de alta al confirmar. Proveedor y comprobante son opcionales. Todo entra junto con un comprobante `CJ-n` y una orden de compra recibida.
 
+- En Stock y logística › Stock, las pestañas Galpón y Salón de Ventas muestran solo los materiales con existencia (o un mínimo cargado) en ese depósito, y el propietario y la valorización de lo que hay ahí. "Ambos depósitos" muestra todo y los totales.
+
 ## Salidas a obra
 
 - **Carrito para obra** (`src/lib/work-cart.ts`): en Stock y logística › Stock, cada material tiene el botón "Carrito" con su cantidad. La barra de abajo muestra lo que se lleva y el costo aproximado. "Hacer salida a obra" abre la Caja con el carrito cargado: se elige la obra y se confirma todo junto, con un comprobante `CJ-n` y un remito por depósito. Al confirmar, el carrito se vacía. El carrito vive en el navegador de quien lo arma.

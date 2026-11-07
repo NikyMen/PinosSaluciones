@@ -19,6 +19,7 @@ import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
 import { closeCertificate } from "@/lib/certificate-billing";
 import { cashAccountBalances, type CashAccountDoc } from "@/lib/cash-accounts";
+import { DEFAULT_WAREHOUSE, isWarehouse } from "@/lib/warehouses";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
 
@@ -55,7 +56,12 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
       // Un CUIT escrito sin guiones encuentra al que se guardó con guiones.
       : /^\d{11}$/.test(search) ? [{ cuit: `${search.slice(0, 2)}-${search.slice(2, 10)}-${search.slice(10)}` }] : [];
     const searchFilter = search ? { $or: [...["name", "title", "number", "code", "description", "bank", "cuit", "contactName", "firstName", "lastName", "dni", "sku", "barcode", "position", "workType", "identifier", "brand", "responsible", "tradeName"].filter(key => !(numericCode && key === "code")).map(key => ({ [key]: { $regex: search, $options: "i" } })), ...byFileNumber] } : {};
-    const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] } : searchFilter;
+    // Stock por depósito: lo que tiene existencia ahí o un mínimo cargado (para ver lo que falta).
+    const warehouse = url.searchParams.get("warehouse");
+    // Los materiales de antes (sin cantidad por depósito) tienen todo en el Galpón, como lee levelsOf.
+    const legacy = warehouse === DEFAULT_WAREHOUSE ? [{ qty_central: { $exists: false }, qty_salon: { $exists: false }, $or: [{ quantity: { $gt: 0 } }, { minQuantity: { $gt: 0 } }] }] : [];
+    const warehouseFilter = entity === "stock" && isWarehouse(warehouse) ? { $or: [{ [`qty_${warehouse}`]: { $gt: 0 } }, { [`min_${warehouse}`]: { $gt: 0 } }, ...legacy] } : null;
+    const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] } : warehouseFilter ? { $and: [searchFilter, warehouseFilter] } : searchFilter;
     const model = modelByEntity[entity];
     // En ventas interesa lo que se movio recien, no lo que se creo primero. El plan de cuentas y las cajas van por código.
     const sort: Record<string, 1 | -1> = entity === "quotes" ? { updatedAt: -1 } : entity === "accounts" || entity === "cashAccounts" ? { code: 1, name: 1 } : { createdAt: -1 };
