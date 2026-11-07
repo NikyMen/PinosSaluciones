@@ -604,7 +604,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {canDeleteRecords && (entity !== "purchases" || (item.stage === "solicitud" && item.status === "borrador")) && <button title="Eliminar" onClick={() => { void remove(item); }}><Trash2 size={16} /></button>}
         </td>
       </tr>;
-    })}</tbody></table></div>{loading ? <div className="loading-state">Cargando…</div> : !items.length && <div className="empty-state compact"><p>No hay registros para mostrar.</p>{canEdit && <button onClick={() => { void openCreate(); }}>Crear {config.singular}</button>}</div>}</section>
+    })}</tbody></table></div>{loading ? <div className="loading-state">Cargando…</div> : !items.length && <div className="empty-state compact"><p>{entity === "stock" && warehouseView && !search ? `No hay materiales en el ${warehouseLabel(warehouseView)}. Llegan con una entrada de ${warehouseView === "salon" ? "Constructora Pino" : "TV Pino"} o con una transferencia.` : "No hay registros para mostrar."}</p>{canEdit && <button onClick={() => { void openCreate(); }}>Crear {config.singular}</button>}</div>}</section>
 
     {checkAction && <CheckActionModal check={checkAction.check} action={checkAction.action} onClose={() => setCheckAction(null)} onSaved={() => { setCheckAction(null); void load(); }} />}
     {modal && entity === "tasks" && <TaskModal task={editing} config={config} fieldProps={fieldProps} error={error} saving={saving} onClose={() => setModal(false)} onSubmit={submit} />}
