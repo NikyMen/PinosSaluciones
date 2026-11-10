@@ -89,7 +89,7 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
   };
 
   const renderField = (field: Field) => <FormField key={field.key} {...props(field)} />;
-  const basic = ["company", "deliverTo", "requestedDate", "paymentTerms", "cashMethod", "termDays"];
+  const basic = stockMode ? ["company", "deliverTo", "requestedDate"] : ["company", "deliverTo", "requestedDate", "paymentTerms", "cashMethod", "termDays"];
   const visible = shown.filter(field => !itemMode || !["description", "subtotalCents", "vatPct"].includes(field.key));
 
   return <div className="form-grid" ref={wrap}>
