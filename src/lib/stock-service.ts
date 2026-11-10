@@ -250,14 +250,21 @@ export class PurchaseStockError extends Error {}
  * busca por su código y, si no está, se da de alta. Lo usan los remitos de
  * compra (src/lib/purchase-flow.ts) al sumar lo recibido.
  */
-export async function stockItemForPurchaseLine(line: { code?: string; name: string; presentation?: string; minSale?: string }, purchase: { number?: unknown; supplierId?: unknown }) {
+export async function stockItemForPurchaseLine(line: { stockItemId?: unknown; code?: string; name: string; presentation?: string; minSale?: string; unit?: string; category?: string }, purchase: { number?: unknown; supplierId?: unknown }) {
+  if (line.stockItemId) {
+    const item = await StockItem.findById(line.stockItemId) as Doc | null;
+    if (!item) throw new PurchaseStockError(`El material ${line.name} ya no existe en Stock`);
+    return { item, isNew: false };
+  }
   const code = String(line.code || "").trim();
   const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const found = (code ? await StockItem.findOne({ sku: { $regex: `^${escaped}$`, $options: "i" } }) : null) as Doc | null;
+  const name = line.name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = (code ? await StockItem.findOne({ $or: [{ sku: { $regex: `^${escaped}$`, $options: "i" } }, { barcode: code }] })
+    : line.unit ? await StockItem.findOne({ name: { $regex: `^${name}$`, $options: "i" }, unit: line.unit }) : null) as Doc | null;
   if (found) return { item: found, isNew: false };
   const item = await StockItem.create({
     name: line.presentation ? `${line.name} · ${line.presentation}` : line.name,
-    sku: code || undefined, category: "materiales", unit: unitFor(line.presentation, line.minSale),
+    sku: code || undefined, category: line.category || "materiales", unit: line.unit || unitFor(line.presentation, line.minSale),
     supplierId: purchase.supplierId, notes: `Alta automática desde la orden ${String(purchase.number || "")}`,
   }) as unknown as Doc;
   return { item, isNew: true };

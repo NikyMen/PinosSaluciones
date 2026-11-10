@@ -43,7 +43,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/purchas
         emit: canWrite(session, "purchases") && request?.status === "borrador",
         decide: canApprovePurchases(session) && request?.status === "pendiente_autorizacion",
         cancel: session.role === "gerencia" && (live(order) || (live(request) && request?.status !== "borrador")),
-        paymentOrder: canWrite(session, "payments") && (order ? live(order) : request?.status === "autorizada") && total - committedCents > 100,
+        paymentOrder: canWrite(session, "payments") && Boolean((order || request)?.supplierId) && (order ? live(order) : request?.status === "autorizada") && total - committedCents > 100,
         receive: canWrite(session, "purchases") && canWrite(session, "stock") && Boolean(order) && live(order) && order!.status !== "cerrada",
         invoice: canWrite(session, "expenses") && Boolean(order) && live(order),
         // Adjuntar: comprobantes de pago Tesorería; lo de la compra y los remitos, Compras.

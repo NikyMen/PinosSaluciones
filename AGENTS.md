@@ -16,6 +16,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Producción
 
+- Compras › Solicitudes y órdenes: carga por ítems con IVA 0/10,5/21/27 %. `stockOnApproval` requiere aprobación explícita por cualquier importe, proveedor opcional y destino Galpón o Salón de Ventas; recién al aprobar genera OC y recepción a stock. La compra a proveedor mantiene la aprobación por monto y la recepción por remito. Ver `docs/decisiones/2026-11-solicitudes-stock.md`.
+
 Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en VPS", "Actualizar producción" y "Backups". En resumen:
 
 - Código en `/var/www/pino-soluciones`; PM2 corre `pinos-web` (puerto 3515) y `pinos-worker`; nginx + Certbot adelante; MongoDB en Docker (container `mongodb`).

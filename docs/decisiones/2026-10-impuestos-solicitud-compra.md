@@ -1,5 +1,7 @@
 # Impuestos en la solicitud de compra
 
+Actualización de noviembre: también se admite IVA 0 % y la carga manual por ítems. Para la modalidad que ingresa a stock al aprobar, ver [[2026-11-solicitudes-stock]].
+
 - **Fecha:** 2026-10-19
 - **Estado:** aceptada
 - **Afecta a:** [[../requerimientos/especificacion-v1-5]], [[../requerimientos/respuesta-v4]], [[../modelo-datos/esquema-actual]], [[2026-10-orden-de-pago-varias-facturas]]
@@ -9,7 +11,7 @@
 En la reunión con Tesorería de octubre de 2026 quedaron anotados estos pedidos para la solicitud
 de compra:
 
-1. IVA a elegir: 21 %, 10,5 % o 27 %.
+1. IVA a elegir: 0 %, 21 %, 10,5 % o 27 %.
 2. Percepciones de IVA (por ejemplo 3 %), de IIBB (por ejemplo 2 %) e IIBB provincial (por ejemplo
    1,5 %), con el porcentaje editable.
 3. Impuesto interno, que arranca en 0 % y se puede cambiar.

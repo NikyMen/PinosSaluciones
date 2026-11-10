@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { z } from "zod";
-import { Expense, Payment, Purchase, PurchaseReceipt, Quote, Supplier, nextPurchaseNumber, nextPurchaseReceiptNumber, nextRequestNumber } from "./models";
+import { Expense, Payment, Purchase, PurchaseReceipt, Quote, StockItem, Supplier, nextPurchaseNumber, nextPurchaseReceiptNumber, nextRequestNumber } from "./models";
 import { HttpError } from "./api";
 import { releasePaymentChecks } from "./payment-checks";
 import { money, qty } from "./format";
@@ -37,7 +37,7 @@ import { PURCHASE_TAX_PCT_KEYS, purchaseTaxFields, storedPurchaseTaxes, type Tax
  */
 
 type Lean = Record<string, unknown> & { _id: Types.ObjectId };
-type PurchaseLine = { code?: string; name: string; presentation?: string; minSale?: string; quantity: number; unitCents: number; receivedQty?: number };
+type PurchaseLine = { stockItemId?: Types.ObjectId; code?: string; name: string; unit?: string; category?: string; presentation?: string; minSale?: string; quantity: number; unitCents: number; receivedQty?: number };
 type PurchaseDoc = Lean & {
   number: string; stage: string; status: string; company?: CompanyKey; supplierId?: Types.ObjectId; amountCents?: number;
   requestId?: Types.ObjectId; orderId?: Types.ObjectId; items?: PurchaseLine[]; paymentTerms?: string; termDays?: number;
@@ -54,6 +54,13 @@ export function needsApproval(amountCents: number) {
 }
 
 const history = (action: string, session: Session, note?: string) => ({ action, note, at: new Date(), userName: session.name });
+
+async function checkStockReferences(request: PurchaseDoc) {
+  if (!request.stockOnApproval) return;
+  const ids = (request.items || []).flatMap(line => line.stockItemId ? [String(line.stockItemId)] : []);
+  const unique = [...new Set(ids)];
+  if (unique.length && await StockItem.countDocuments({ _id: { $in: unique } }) !== unique.length) throw new HttpError("Uno de los materiales ya no existe en Stock: revisá la solicitud");
+}
 
 async function load(id: string) {
   if (!Types.ObjectId.isValid(id)) throw new HttpError("ID inválido");
@@ -75,10 +82,12 @@ export async function emitRequest(id: string, session: Session) {
   const request = await load(id);
   if (request.stage !== "solicitud") throw new HttpError("Sólo se emite una solicitud de compra");
   if (request.status !== "borrador") throw new HttpError(`La solicitud ${request.number} ya está ${requestStatusLabels[request.status]?.toLowerCase() || request.status}`, 409);
-  if (!request.supplierId) throw new HttpError("Elegí el proveedor antes de emitirla: Tesorería le va a pagar a él");
+  if (!request.supplierId && !request.stockOnApproval) throw new HttpError("Elegí el proveedor antes de emitirla: Tesorería le va a pagar a él");
+  if (request.stockOnApproval && (!request.items?.length || !["central", "salon"].includes(String(request.deliverTo)))) throw new HttpError("Cargá los materiales y elegí Galpón o Salón de Ventas");
+  await checkStockReferences(request);
   if (!(Number(request.amountCents) > 0)) throw new HttpError("Poné el neto de la solicitud antes de emitirla: el total sale de ahí y de los impuestos");
   if (String(request.paymentTerms || "contado") === "contado" && !request.cashMethod) throw new HttpError("Es de contado: elegí si se paga en efectivo o por transferencia");
-  const approval = needsApproval(Number(request.amountCents));
+  const approval = Boolean(request.stockOnApproval) || needsApproval(Number(request.amountCents));
   const update = approval
     ? { status: "pendiente_autorizacion", emittedAt: new Date() }
     : { status: "autorizada", emittedAt: new Date(), approval: { at: new Date(), automatic: true, reason: `Menos de ${money(PURCHASE_APPROVAL_LIMIT_CENTS)}: no necesita autorización` } };
@@ -104,13 +113,13 @@ async function notifyTreasury(request: PurchaseDoc, supplierName?: string) {
   const cash = String(request.paymentTerms || "contado") === "contado";
   const terms = purchaseTermsText(request);
   await notify({
-    title: `Orden de compra ${order?.number || "nueva"} de la solicitud ${request.number}${cash ? ": pagar de contado" : ""}`,
-    body: `${supplierName || "Proveedor"} · ${money(Number(request.amountCents))} · ${terms}. ${cash ? "Se paga con una orden de pago contra la OC." : "Se paga con la orden de pago de sus facturas cuando lleguen."}`,
+    title: `Orden de compra ${order?.number || "nueva"} de la solicitud ${request.number}${!request.supplierId ? ": ingreso a stock sin proveedor" : cash ? ": pagar de contado" : ""}`,
+    body: `${supplierName || "Compra para stock"} · ${money(Number(request.amountCents))} · ${terms}. ${!request.supplierId ? "Registrada sin proveedor; no se emiten órdenes de pago contra esta compra." : cash ? "Se paga con una orden de pago contra la OC." : "Se paga con la orden de pago de sus facturas cuando lleguen."}`,
     kind: "compra", href: `/app/purchases?ver=${request._id}`, roles: ["administracion"], event: "compra.tesoreria", dedupeKey: `purchase-treasury-${request._id}`,
   });
   await notify({
-    title: `Orden de compra ${order?.number || "nueva"} lista para el proveedor`,
-    body: `${supplierName || "Proveedor"} · ${money(Number(request.amountCents))} · ${terms}. Cuando llegue la mercadería, cargá el remito.`,
+    title: `Orden de compra ${order?.number || "nueva"} ${request.stockOnApproval ? "ingresada a stock" : "lista para el proveedor"}`,
+    body: `${supplierName || "Compra para stock"} · ${money(Number(request.amountCents))} · ${terms}. ${request.stockOnApproval ? "La aprobación registró la recepción de los materiales en el depósito elegido." : "Cuando llegue la mercadería, cargá el remito."}`,
     kind: "compra", href: `/app/purchases?ver=${request._id}`, roles: ["compras"], userIds: request.userId ? [request.userId] : undefined, event: "compra.orden", dedupeKey: `purchase-order-${request._id}`,
   });
 }
@@ -122,6 +131,7 @@ export async function decideRequest(id: string, input: { approve: boolean; reaso
   if (request.stage !== "solicitud" || request.status !== "pendiente_autorizacion") throw new HttpError(`La solicitud ${request.number} no está esperando autorización`, 409);
   const reason = String(input.reason || "").trim();
   if (!input.approve && reason.length < 3) throw new HttpError("Poné por qué se rechaza");
+  if (input.approve) await checkStockReferences(request);
   const decision = { userId: session.userId, userName: session.name, at: new Date(), reason: reason || undefined };
   const saved = await Purchase.findOneAndUpdate({ _id: request._id, status: "pendiente_autorizacion" }, {
     $set: input.approve ? { status: "autorizada", approval: decision } : { status: "rechazada", rejection: decision },
@@ -130,11 +140,14 @@ export async function decideRequest(id: string, input: { approve: boolean; reaso
   if (!saved) throw new HttpError("La solicitud ya se resolvió", 409);
   const supplier = await Supplier.findById(request.supplierId).select("name").lean<{ name?: string }>();
   if (input.approve) {
-    await orderFor(saved, session);
+    const order = await orderFor(saved, session);
+    if (saved.stockOnApproval && order && order.status !== "cerrada") await registerPurchaseReceipt(String(order._id), {
+      final: true, status: "conforme", supplierRemito: "", attachment: undefined, notes: `Ingreso aprobado desde la solicitud ${saved.number}`,
+    }, session);
     await notifyTreasury({ ...saved, orderId: (await Purchase.findById(saved._id).select("orderId").lean<{ orderId?: Types.ObjectId }>())?.orderId }, supplier?.name);
   }
   else await notify({ title: `Solicitud ${saved.number} rechazada`, body: `${session.name}: ${reason}`, kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: ["compras"], userIds: request.userId ? [request.userId] : undefined, event: "compra.rechazada", dedupeKey: `purchase-rejected-${saved._id}` });
-  return saved;
+  return Purchase.findById(saved._id).lean<PurchaseDoc>();
 }
 
 /* ── Anular ─────────────────────────────────────────────────────────────────── */
@@ -204,7 +217,7 @@ async function orderFor(request: PurchaseDoc, session: Session) {
   if (!claimed.modifiedCount) return Purchase.findById((await Purchase.findById(request._id).select("orderId").lean<{ orderId: unknown }>())?.orderId).lean<PurchaseDoc>();
   const copy = ["company", "supplierId", "workId", "quoteId", "quoteNumber", "neededBy", "priority", "description", "amountCents", "subtotalCents", "vatCents", "notes",
     "vatPct", "perceptionVatPct", "perceptionVatCents", "perceptionIibbPct", "perceptionIibbCents", "perceptionIibbProvPct", "perceptionIibbProvCents", "internalTaxPct", "internalTaxCents", "cashMethod",
-    "priceListId", "priceListDate", "deliverTo", "paymentTerms", "termDays", "requiresAdvance", "requestedDate", "expectedDate"];
+    "priceListId", "priceListDate", "deliverTo", "paymentTerms", "termDays", "requiresAdvance", "stockOnApproval", "requestedDate", "expectedDate"];
   const data: Record<string, unknown> = Object.fromEntries(copy.filter(key => request[key] !== undefined).map(key => [key, request[key]]));
   const order = await Purchase.create({
     ...data, _id: orderId, number: await nextPurchaseNumber(), stage: "orden", status: "emitida", requestId: request._id,
@@ -234,6 +247,7 @@ export async function issuePaymentOrder(id: string, input: PaymentOrderInput, se
   }
   if (!order) throw new HttpError("No se pudo generar la orden de compra");
   if (["anulada", "cancelada"].includes(order.status)) throw new HttpError(`La orden ${order.number} está anulada`, 409);
+  if (!order.supplierId) throw new HttpError("Esta compra se registró sin proveedor y no admite una orden de pago");
   const balance = Number(order.amountCents || 0) - await committedCents(order._id);
   if (input.amountCents > balance + TOLERANCE_CENTS) throw new HttpError(`A la orden ${order.number} le quedan ${money(Math.max(0, balance))} sin orden de pago (total ${money(Number(order.amountCents || 0))})`, 409);
 
@@ -463,7 +477,8 @@ export function checkPurchaseChanges(before: Record<string, unknown>, changes: R
 export function preparePurchaseAmounts(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
   if ("paymentTerms" in data && data.paymentTerms !== "contado") data.cashMethod = null;
   if (before._id && !(before.stage === "solicitud" && before.status === "borrador")) return;
-  const touched = ["subtotalCents", "amountCents", ...PURCHASE_TAX_PCT_KEYS].some(key => key in data && data[key] !== undefined);
+  if (Array.isArray(data.items)) data.items = data.items.map(line => ({ ...line, totalCents: Math.round(Number(line.quantity) * Number(line.unitCents)), receivedQty: 0 }));
+  const touched = ["items", "subtotalCents", "amountCents", ...PURCHASE_TAX_PCT_KEYS].some(key => key in data && data[key] !== undefined);
   if (!touched) return;
   const merged = { ...before, ...data };
   const items = Array.isArray(merged.items) ? merged.items as TaxedLine[] : [];

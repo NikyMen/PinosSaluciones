@@ -6,6 +6,10 @@ import { date, money } from "@/lib/format";
 import { FormField, type FieldProps } from "@/components/record-form";
 import { PURCHASE_PERCEPTIONS, pctLabel, purchaseTotals, storedPurchaseTaxes, voucherTaxFields } from "@/lib/purchase-taxes";
 import { baseInvoiceType, isCreditNote } from "@/lib/invoice-labels";
+import { MoneyInput } from "@/components/fields";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
+import { todayIso } from "@/lib/format";
+import { PURCHASE_VAT_RATES } from "@/lib/purchase-taxes";
 
 type Item = Record<string, unknown> & { _id: string };
 type Rates = { perceptionVatPct: number; perceptionIibbPct: number; perceptionIibbProvPct: number; internalTaxPct: number };
@@ -58,22 +62,66 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
   const wrap = useRef<HTMLDivElement>(null);
   const stored = editing ? storedPurchaseTaxes(editing) : null;
   const { values, number } = useFormValues(wrap);
+  const [stockMode, setStockMode] = useState(editing ? Boolean(editing.stockOnApproval) : true);
+  const [catalog, setCatalog] = useState<Item[]>([]);
+  type Line = { key: number; stockItemId?: string; code: string; name: string; unit: string; category: string; quantity: number; unitCents: number; vatPct: number; presentation?: string; minSale?: string };
+  const initial = Array.isArray(editing?.items) ? editing.items as Partial<Line>[] : [];
+  const nextKey = useRef(initial.length + 1);
+  const blank = (key: number): Line => ({ key, code: "", name: "", unit: "unidad", category: "materiales", quantity: 1, unitCents: 0, vatPct: 21 });
+  const [lines, setLines] = useState<Line[]>(() => initial.length ? initial.map((line, key) => ({ ...blank(key), ...line, key })) : [blank(0)]);
+  useEffect(() => { let active = true; fetchAllRecords("stock").then(items => { if (active) setCatalog(items as Item[]); }).catch(() => {}); return () => { active = false; }; }, []);
+  const patchLine = (key: number, patch: Partial<Line>) => setLines(current => current.map(line => line.key === key ? { ...line, ...patch } : line));
+  const itemMode = stockMode || !editing || initial.length > 0;
 
   const terms = values.paymentTerms || String(editing?.paymentTerms || "contado");
   const shown = fields.filter(field => !field.readOnly && !(field.key === "termDays" && terms !== "plazo") && !(field.key === "cashMethod" && terms !== "contado"));
   const rates = ratesOf(number);
-  const totals = purchaseTotals([{ totalCents: Math.round(number("subtotalCents") * 100) }], { ...rates, vatPct: number("vatPct") || stored?.vatPct });
+  const totals = purchaseTotals(itemMode ? lines.map(line => ({ totalCents: Math.round(line.quantity * line.unitCents), vatPct: line.vatPct })) : [{ totalCents: Math.round(number("subtotalCents") * 100) }], { ...rates, vatPct: values.vatPct === undefined ? stored?.vatPct : number("vatPct") });
 
   const props = (field: Field) => {
     const base = fieldProps(field);
     // Una de antes no tiene el neto ni la alícuota guardados: se muestran los que valen.
     if (stored && field.key === "subtotalCents") return { ...base, value: stored.subtotalCents };
     if (stored && field.key === "vatPct") return { ...base, value: String(stored.vatPct) };
+    if (!editing && field.key === "requestedDate") return { ...base, value: todayIso() };
+    if (!editing && field.key === "cashMethod") return { ...base, value: "transferencia" };
     return base;
   };
 
+  const renderField = (field: Field) => <FormField key={field.key} {...props(field)} />;
+  const basic = ["company", "deliverTo", "requestedDate", "paymentTerms", "cashMethod", "termDays"];
+  const visible = shown.filter(field => !itemMode || !["description", "subtotalCents", "vatPct"].includes(field.key));
+
   return <div className="form-grid" ref={wrap}>
-    {shown.map((field, index) => <FormField key={field.key} {...props(field)} autoFocus={index === 0} />)}
+    <label className="wide"><span>Destino de la compra</span><select value={stockMode ? "stock" : "proveedor"} onChange={event => setStockMode(event.target.value === "stock")}>
+      <option value="stock">Cargar a stock después de aprobar</option><option value="proveedor">Compra a proveedor (recepción por remito)</option>
+    </select></label>
+    <input type="hidden" name="stockOnApproval" value={String(stockMode)} />
+    {visible.filter(field => basic.includes(field.key)).map(field => renderField(stockMode && field.key === "deliverTo" ? { ...field, label: "Depósito de destino", options: ["central", "salon"], required: true } : field))}
+    {stockMode && <p className="invoice-note wide">La solicitud queda pendiente de aprobación, cualquiera sea el importe. Al aprobarla se genera la orden de compra y los ítems ingresan al depósito elegido.</p>}
+    {itemMode && <>
+      <input type="hidden" name="items" value={JSON.stringify(lines)} />
+      <input type="hidden" name="description" value={lines.map(line => `${line.quantity} × ${line.name}`).join(", ").slice(0, 2000)} />
+      <input type="hidden" name="subtotalCents" value={totals.subtotalCents / 100} />
+      <input type="hidden" name="vatPct" value={stored?.vatPct ?? 21} />
+      <datalist id="purchase-stock-products">{catalog.map(item => <option key={item._id} value={String(item.name)}>{String(item.barcode || item.sku || "")}</option>)}</datalist>
+      <div className="purchase-item-list wide">{lines.map((line, index) => <fieldset key={line.key} className="form-grid">
+        <legend>Ítem {index + 1}</legend>
+        <label className="wide"><span>Producto *</span><input required list="purchase-stock-products" value={line.name} placeholder="Buscá un material o escribí uno nuevo" onChange={event => {
+          const name = event.target.value;
+          const item = catalog.find(item => String(item.name).toLocaleLowerCase() === name.trim().toLocaleLowerCase() || String(item.barcode || item.sku || "") === name);
+          patchLine(line.key, item ? { stockItemId: item._id, name: String(item.name), code: String(item.sku || item.barcode || ""), unit: String(item.unit || "unidad"), category: String(item.category || "materiales"), unitCents: Number(item.avgCostCents || item.lastPriceCents || 0) } : { name, stockItemId: undefined, code: "" });
+        }} /></label>
+        <label><span>Cantidad *</span><input type="number" min="0.001" step="0.001" required value={line.quantity || ""} onChange={event => patchLine(line.key, { quantity: Number(event.target.value) })} /></label>
+        <label><span>Unidad</span><select value={line.unit} disabled={Boolean(line.stockItemId)} onChange={event => patchLine(line.key, { unit: event.target.value })}>{["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "rollo"].map(unit => <option key={unit}>{unit}</option>)}</select></label>
+        <label><span>Costo unitario sin IVA</span><MoneyInput name={`item-cost-${line.key}`} defaultValue={line.unitCents / 100} key={`${line.key}-${line.stockItemId || "nuevo"}`} onValueChange={value => patchLine(line.key, { unitCents: Math.round(value * 100) })} /></label>
+        <label><span>IVA</span><select value={line.vatPct} onChange={event => patchLine(line.key, { vatPct: Number(event.target.value) })}>{PURCHASE_VAT_RATES.map(rate => <option value={rate} key={rate}>{pctLabel(rate)}</option>)}</select></label>
+        {!line.stockItemId && <label><span>Rubro</span><select value={line.category} onChange={event => patchLine(line.key, { category: event.target.value })}>{["materiales", "herramientas", "seguridad", "consumibles", "otros"].map(category => <option key={category}>{category}</option>)}</select></label>}
+        <div><span>Neto: {money(Math.round(line.quantity * line.unitCents))}</span> <button type="button" className="secondary-btn" disabled={lines.length === 1} onClick={() => setLines(current => current.filter(row => row.key !== line.key))}>Quitar ítem</button></div>
+      </fieldset>)}<button type="button" className="secondary-btn" disabled={lines.length >= 200} onClick={() => setLines(current => [...current, blank(nextKey.current++)])}>Agregar ítem</button></div>
+    </>}
+    {itemMode ? <details className="wide"><summary>Proveedor, observaciones y otros datos</summary><div className="form-grid">{visible.filter(field => !basic.includes(field.key)).map(field => renderField(stockMode && field.key === "supplierId" ? { ...field, label: "Proveedor (opcional)", hint: undefined } : field))}</div></details>
+      : visible.filter(field => !basic.includes(field.key)).map(renderField)}
     <TaxPreview netCents={totals.subtotalCents} vatRows={totals.vatByRate} rates={rates} amounts={totals} totalLabel="Total de la solicitud" />
   </div>;
 }
@@ -90,7 +138,7 @@ const invoicedNetCents = (expense: Item) => (isCreditNote(expense.voucherType) ?
 function useOrderInvoices(purchaseId: string) {
   const [data, setData] = useState<OrderInvoices | null>(null);
   useEffect(() => {
-    if (!purchaseId) { setData(null); return; }
+    if (!purchaseId) return;
     const controller = new AbortController();
     fetch(`/api/purchases/${purchaseId}/detail`, { signal: controller.signal })
       .then(response => response.ok ? response.json() : null)

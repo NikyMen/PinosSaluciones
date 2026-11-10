@@ -9,7 +9,7 @@ import { WAREHOUSE_KEYS } from "@/lib/warehouses";
 import { DEFAULT_PURCHASE_VAT_PCT, isPurchaseVatRate } from "@/lib/purchase-taxes";
 
 const id = z.string().regex(/^[a-f\d]{24}$/i, "ID inválido");
-const vatPct = z.coerce.number().refine(isPurchaseVatRate, "El IVA es 21 %, 10,5 % o 27 %");
+const vatPct = z.coerce.number().refine(isPurchaseVatRate, "El IVA es 0 %, 21 %, 10,5 % o 27 %");
 const taxPct = z.coerce.number().min(0, "El porcentaje no puede ser negativo").max(100, "El porcentaje no puede pasar el 100 %").optional().default(0);
 const schema = z.object({
   company: z.enum(["tvp", "constructora"]).default("tvp"),

@@ -1,6 +1,6 @@
 /*
  * Los impuestos de una solicitud de compra (reunión con Tesorería, octubre de
- * 2026). Todo sale del neto: el IVA de cada renglón con su alícuota (21 %,
+ * 2026). Todo sale del neto: el IVA de cada renglón con su alícuota (0 %, 21 %,
  * 10,5 % o 27 %; si el renglón no dice, la de la solicitud), y sobre el neto
  * total las percepciones (de IVA, de IIBB e IIBB provincial) y el impuesto
  * interno, con el porcentaje que se cargue. El total no se escribe a mano: es
@@ -8,7 +8,7 @@
  * el pedido, el formulario, el servidor y el PDF.
  */
 
-export const PURCHASE_VAT_RATES = [21, 10.5, 27] as const;
+export const PURCHASE_VAT_RATES = [0, 21, 10.5, 27] as const;
 export const DEFAULT_PURCHASE_VAT_PCT = 21;
 
 /** Las percepciones, cada una con su porcentaje y su importe en la solicitud. */
@@ -38,7 +38,7 @@ export type PurchaseTotals = {
   amountCents: number;
 };
 
-export const isPurchaseVatRate = (value: unknown) => PURCHASE_VAT_RATES.some(rate => rate === Number(value));
+export const isPurchaseVatRate = (value: unknown) => value !== undefined && value !== null && value !== "" && PURCHASE_VAT_RATES.some(rate => rate === Number(value));
 const pct = (value: unknown) => { const number = Number(value); return Number.isFinite(number) && number > 0 ? number : 0; };
 const share = (cents: number, percent: number) => Math.round(cents * percent / 100);
 /** Cómo se lee un porcentaje: "10,5 %". */

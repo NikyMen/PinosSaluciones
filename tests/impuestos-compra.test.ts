@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { purchaseTaxFields, purchaseTaxRows, purchaseTotals, storedPurchaseTaxes, voucherTaxFields } from "../src/lib/purchase-taxes";
 
 describe("impuestos de la solicitud de compra", () => {
+  it("respeta IVA cero por ítem y general, sin confundirlo con una alícuota ausente", () => {
+    expect(purchaseTotals([{ totalCents: 10000, vatPct: 0 }, { totalCents: 10000 }], { vatPct: 21 })).toMatchObject({ vatCents: 2100, amountCents: 22100 });
+    expect(purchaseTotals([{ totalCents: 10000, vatPct: null }], { vatPct: 0 })).toMatchObject({ vatCents: 0, amountCents: 10000 });
+    expect(purchaseTotals([{ totalCents: 10000, vatPct: null }])).toMatchObject({ vatCents: 2100 });
+    expect(storedPurchaseTaxes({ subtotalCents: 10000, amountCents: 10000, vatPct: 0 }).vatPct).toBe(0);
+  });
   it("el total sale del neto, el IVA, las percepciones y el impuesto interno", () => {
     const totals = purchaseTotals([{ totalCents: 1_000_000_00 }], { vatPct: 21, perceptionVatPct: 3, perceptionIibbPct: 2, perceptionIibbProvPct: 1.5 });
     expect(totals).toMatchObject({

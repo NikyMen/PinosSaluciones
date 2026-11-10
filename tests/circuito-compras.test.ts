@@ -381,3 +381,55 @@ describe("migración de las compras de antes", () => {
     expect(Number(next.number.slice(3))).toBeGreaterThan(Number(String(request!.number).slice(3)));
   }, 60_000);
 });
+
+describe("solicitudes para stock", () => {
+  it("carga por ítems sin proveedor y sólo ingresa al depósito elegido después de aprobar, incluso por debajo del límite", async () => {
+    const item = await StockItem.create({ name: "Sellador para aprobar", sku: "APR-1", category: "materiales", unit: "balde" });
+    const request = await newRequest(1, { supplierId: "", stockOnApproval: true, deliverTo: "salon", items: [
+      { stockItemId: String(item._id), name: item.name, quantity: 2, unitCents: 10000, vatPct: 0, totalCents: 999999 },
+      { name: "Material nuevo por aprobar", unit: "kg", category: "consumibles", quantity: 3, unitCents: 5000, vatPct: 21 },
+      { name: "Material nuevo por aprobar", unit: "kg", category: "consumibles", quantity: 1, unitCents: 5000, vatPct: 0 },
+    ] });
+    expect(request).toMatchObject({ subtotalCents: 40000, vatCents: 3150, amountCents: 43150 });
+    expect((await StockItem.findById(item._id)).quantity).toBe(0);
+    expect(await StockItem.exists({ name: "Material nuevo por aprobar" })).toBeNull();
+    expect((await action(emitRoute, request._id)).body.status).toBe("pendiente_autorizacion");
+    expect((await StockItem.findById(item._id)).quantity).toBe(0);
+    as("compras", "Compras");
+    expect((await action(decisionRoute, request._id, { approve: true })).status).toBe(403);
+    as("gerencia", "Gerencia");
+    const approved = await action(decisionRoute, request._id, { approve: true });
+    expect(approved.status).toBe(200);
+    const order = await Purchase.findById(approved.body.orderId);
+    expect(order).toMatchObject({ stage: "orden", status: "cerrada", stockOnApproval: true, deliverTo: "salon", receptionStatus: "recibida" });
+    expect((await StockItem.findById(item._id)).toObject()).toMatchObject({ quantity: 2, qty_salon: 2, qty_central: 0 });
+    const added = await StockItem.findOne({ name: "Material nuevo por aprobar" });
+    expect(added.toObject()).toMatchObject({ quantity: 4, qty_salon: 4, unit: "kg", category: "consumibles" });
+    expect(await StockItem.countDocuments({ name: "Material nuevo por aprobar" })).toBe(1);
+    expect(await PurchaseReceipt.countDocuments({ purchaseId: order._id })).toBe(1);
+    expect((await action(decisionRoute, request._id, { approve: true })).status).toBe(409);
+    expect((await StockItem.findById(item._id)).quantity).toBe(2);
+    expect((await action(receiveRoute, String(order._id), { final: true })).status).toBe(409);
+  });
+
+  it("rechazar una carga a stock no crea materiales ni movimientos", async () => {
+    const request = await newRequest(10000, { supplierId: "", stockOnApproval: true, deliverTo: "central", items: [{ name: "Material rechazado", unit: "unidad", quantity: 1, unitCents: 10000, vatPct: 0 }] });
+    await action(emitRoute, request._id);
+    as("gerencia", "Gerencia");
+    expect((await action(decisionRoute, request._id, { approve: false, reason: "No corresponde" })).body.status).toBe("rechazada");
+    expect(await StockItem.exists({ name: "Material rechazado" })).toBeNull();
+  });
+
+  it("recalcula los ítems editados e ingresa al Galpón una sola vez ante dos aprobaciones simultáneas", async () => {
+    const request = await newRequest(1, { supplierId: "", stockOnApproval: true, deliverTo: "central", items: [{ name: "Compra editada al Galpón", unit: "rollo", quantity: 1, unitCents: 10000, vatPct: 21 }] });
+    const edited = await call(await recordRoute.PATCH(json("PATCH", { items: [{ name: "Compra editada al Galpón", unit: "rollo", quantity: 4, unitCents: 2500, vatPct: 0 }] }), params({ entity: "purchases", id: request._id })));
+    expect(edited.body).toMatchObject({ amountCents: 10000, vatCents: 0, subtotalCents: 10000 });
+    await action(emitRoute, request._id);
+    as("gerencia", "Gerencia");
+    const results = await Promise.all([action(decisionRoute, request._id, { approve: true }), action(decisionRoute, request._id, { approve: true })]);
+    expect(results.map(result => result.status).sort()).toEqual([200, 409]);
+    const item = await StockItem.findOne({ name: "Compra editada al Galpón" });
+    expect(item.toObject()).toMatchObject({ quantity: 4, qty_central: 4, qty_salon: 0, avgCostCents: 2500 });
+  });
+
+});

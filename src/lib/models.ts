@@ -650,12 +650,13 @@ export const FileRefSchema = new Schema({
 // copian de la lista vigente al cerrar la orden y quedan congelados: si mañana
 // llega otra lista, la orden sigue diciendo lo que se le pidió al proveedor.
 const PurchaseLineSchema = new Schema({
+  stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" }, unit: String, category: String,
   priceListItemId: { type: Schema.Types.ObjectId, ref: "PriceListItem" },
   code: String, name: { type: String, required: true }, presentation: String, minSale: String,
   quantity: { type: Number, required: true, min: 0 },
   // Sin IVA: precio de lista, descuento del proveedor y lo que queda por unidad.
   listPriceCents: money, discountPct: { type: Number, default: 0 }, unitCents: money, totalCents: money,
-  // La alícuota de IVA del renglón (21, 10,5 o 27). Sin ella vale la de la solicitud.
+  // La alícuota de IVA del renglón (0, 21, 10,5 o 27). Sin ella vale la de la solicitud.
   vatPct: Number,
   // Lo que ya llegó de este renglón con los remitos del proveedor.
   receivedQty: { type: Number, min: 0, default: 0 },
@@ -688,6 +689,7 @@ const PurchaseSchema = new Schema({
   // La condición de compra: contado, cuenta corriente o a plazo (con los días), y si hay que pagar antes de la entrega.
   paymentTerms: { type: String, enum: ["contado", "cuenta_corriente", "plazo"], default: "contado" }, termDays: Number,
   requiresAdvance: { type: Boolean, default: false },
+  stockOnApproval: { type: Boolean, default: false },
   // De contado: si se paga en efectivo o por transferencia. Tesorería lo ve en el aviso y en la orden de pago.
   cashMethod: { type: String, enum: ["efectivo", "transferencia", null] },
   emittedAt: Date, approval: PurchaseDecisionSchema, rejection: PurchaseDecisionSchema, cancellation: PurchaseDecisionSchema,

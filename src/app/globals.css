@@ -1510,6 +1510,11 @@ tbody tr.price-best:hover { background: #e8f6ef; }
 .receipt-picker label small { color: var(--muted); }
 .receipt-picker .muted { color: var(--muted); font-size: .72rem; }
 .invoice-warning { grid-column: 1 / -1; margin: 0; }
+.form-grid > .wide { grid-column: 1 / -1; }
+.purchase-item-list { display: grid; gap: 12px; min-width: 0; }
+.purchase-item-list fieldset { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.purchase-item-list legend { padding: 0 6px; font-size: .78rem; font-weight: 750; color: var(--brand-navy-deep); }
+.purchase-item-list > button { justify-self: start; }
 .purchase-taxes-preview { grid-column: 1 / -1; margin: 0; padding: 10px 12px; display: grid; gap: 3px; border: 1px solid var(--line); border-radius: 10px; background: #f7f9fb; }
 .purchase-taxes-preview div { display: flex; justify-content: space-between; gap: 16px; color: var(--muted); font-size: .74rem; }
 .purchase-taxes-preview dd { margin: 0; font-variant-numeric: tabular-nums; }

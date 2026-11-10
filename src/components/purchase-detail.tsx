@@ -78,7 +78,9 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
 
   async function emit() {
     const amount = Number(detail?.request?.amountCents || 0);
-    const message = amount >= PURCHASE_APPROVAL_LIMIT_CENTS
+    const message = detail?.request?.stockOnApproval
+      ? `Se emite por ${money(amount)} y queda pendiente de aprobación. Al aprobarla se genera la orden y los materiales ingresan a ${warehouseLabel(String(detail.request.deliverTo))}. ¿Emitir?`
+      : amount >= PURCHASE_APPROVAL_LIMIT_CENTS
       ? `Se emite por ${money(amount)}: desde ${money(PURCHASE_APPROVAL_LIMIT_CENTS)} la tiene que autorizar Gerencia o Presidencia. Después no se puede cambiar, sólo anular. ¿Emitir?`
       : `Se emite por ${money(amount)}: por debajo de ${money(PURCHASE_APPROVAL_LIMIT_CENTS)} queda autorizada y pasa a Tesorería. Después no se puede cambiar, sólo anular. ¿Emitir?`;
     if (confirm(message)) await act("emit", {}, "Solicitud emitida.");
@@ -87,7 +89,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
   async function decide(approve: boolean) {
     const reason = approve ? "" : prompt("¿Por qué se rechaza? Compras recibe el aviso con el motivo.") || "";
     if (!approve && reason.trim().length < 3) return;
-    await act("decision", { approve, reason }, approve ? "Autorizada: pasa a Tesorería para la orden de pago." : "Rechazada.");
+    await act("decision", { approve, reason }, approve ? (detail?.request?.stockOnApproval ? "Autorizada: orden de compra generada e ítems ingresados a stock." : "Autorizada: pasa a Tesorería para la orden de pago.") : "Rechazada.");
   }
 
   async function cancel() {

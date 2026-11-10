@@ -14,6 +14,17 @@ const optionalId = z.union([id, z.literal("")]).optional().transform(v => v || u
 const text = z.string().trim().min(1);
 const optionalText = z.string().trim().optional().default("");
 const cents = z.coerce.number().int().min(0);
+const purchaseItems = z.preprocess(value => {
+  if (typeof value !== "string") return value;
+  try { return JSON.parse(value); } catch { return null; }
+}, z.array(z.object({
+  stockItemId: optionalId, code: optionalText, name: text.max(300),
+  unit: z.enum(["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "rollo"]).optional(),
+  category: z.enum(["materiales", "herramientas", "seguridad", "consumibles", "otros"]).optional(),
+  presentation: optionalText, minSale: optionalText,
+  quantity: z.coerce.number().positive().max(1e9), unitCents: cents.max(1e12),
+  vatPct: z.coerce.number().refine(isPurchaseVatRate, "El IVA es 0 %, 21 %, 10,5 % o 27 %").optional(),
+})).max(200)).optional();
 const company = z.enum(["tvp", "constructora"]);
 // Un porcentaje de impuesto: una percepción o el impuesto interno. Vacío es cero.
 const taxPct = z.preprocess(v => v === "" || v === null ? undefined : v, z.coerce.number().min(0, "El porcentaje no puede ser negativo").max(100, "El porcentaje no puede pasar el 100 %").optional());
@@ -48,8 +59,9 @@ export const schemas: Record<Entity, z.ZodObject<z.ZodRawShape>> = {
   // Sin número, el sistema pone el siguiente OC-: el mismo correlativo que las órdenes del buscador de precios.
   purchases: z.object({ company: z.enum(["tvp", "constructora"]).default("tvp"), number: z.string().trim().optional().transform(v => v || undefined), supplierId: optionalId, workId: optionalId, quoteId: optionalId, neededBy: optionalDate, priority: z.enum(["alta", "media", "baja"]).default("media"), description: text,
     // El total no se escribe: sale del neto y los impuestos (src/lib/purchase-taxes.ts). Si llega sólo el total, es con IVA al 21 %.
-    amountCents: cents.optional(), subtotalCents: cents.optional(),
-    vatPct: z.preprocess(v => v === "" || v === null ? undefined : v, z.coerce.number().refine(isPurchaseVatRate, "El IVA es 21 %, 10,5 % o 27 %").optional()),
+    amountCents: cents.optional(), subtotalCents: cents.optional(), items: purchaseItems,
+    stockOnApproval: z.preprocess(v => v === true || v === "true", z.boolean()).optional(),
+    vatPct: z.preprocess(v => v === "" || v === null ? undefined : v, z.coerce.number().refine(isPurchaseVatRate, "El IVA es 0 %, 21 %, 10,5 % o 27 %").optional()),
     perceptionVatPct: taxPct, perceptionIibbPct: taxPct, perceptionIibbProvPct: taxPct, internalTaxPct: taxPct,
     cashMethod: z.preprocess(v => v || undefined, z.enum(["efectivo", "transferencia"]).optional()),
     // La etapa y el estado no se eligen: los mueven las acciones del circuito (src/lib/purchase-flow.ts).

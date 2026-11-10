@@ -464,6 +464,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       else if (field.type === "number") value = Number(value || 0);
       body[field.key] = value;
     }
+    if (entity === "purchases") {
+      body.stockOnApproval = form.get("stockOnApproval") === "true";
+      if (form.has("items")) body.items = String(form.get("items"));
+    }
     const url = editing ? `/api/records/${entity}/${editing._id}` : `/api/records/${entity}`;
     let response = await fetch(url, { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     let result = await response.json();
