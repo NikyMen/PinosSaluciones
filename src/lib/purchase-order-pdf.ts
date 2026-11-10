@@ -198,7 +198,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
     doc.text(plain(qty(item.quantity)), col.qty, y, { align: "right" });
     doc.text(plain(money(item.listPriceCents)), col.list, y, { align: "right" });
     doc.text(item.discountPct ? plain(`${qty(item.discountPct)}%`) : "-", col.discount, y, { align: "right" });
-    doc.text(item.vatPct ? plain(pctLabel(item.vatPct).replace(" ", "")) : "-", col.vat, y, { align: "right" });
+    doc.text(item.vatPct !== undefined ? plain(pctLabel(item.vatPct).replace(" ", "")) : "-", col.vat, y, { align: "right" });
     doc.text(plain(money(item.unitCents)), col.unit, y, { align: "right" });
     doc.setFont("helvetica", "bold");
     doc.text(plain(money(item.totalCents)), col.total, y, { align: "right" });

@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-11-06 · 28 colecciones.
+Generado el 2026-11-10 · 28 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -339,6 +339,7 @@ Colección `purchases` · entidad `purchases`
 | `paymentTerms` | texto | — | valores: `contado` · `cuenta_corriente` · `plazo` · por defecto `"contado"` |
 | `termDays` | número | — | — |
 | `requiresAdvance` | sí/no | — | por defecto `false` |
+| `stockOnApproval` | sí/no | — | por defecto `false` |
 | `cashMethod` | texto | — | valores: `efectivo` · `transferencia` · `null` |
 | `emittedAt` | fecha | — | — |
 | `approval` | objeto | — | — |
@@ -383,6 +384,9 @@ Colección `purchases` · entidad `purchases`
 | `receivedDate` | fecha | — | — |
 | `receiptNotes` | texto | — | — |
 | `items` | lista de objetos | — | — |
+| `items.stockItemId` | referencia | — | apunta a **StockItem** |
+| `items.unit` | texto | — | — |
+| `items.category` | texto | — | — |
 | `items.priceListItemId` | referencia | — | apunta a **PriceListItem** |
 | `items.code` | texto | — | — |
 | `items.name` | texto | sí | — |
