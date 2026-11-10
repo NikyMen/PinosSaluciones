@@ -45,7 +45,7 @@ La etapa 3 está desarrollada, con el circuito del grupo:
 > **Actualizado el 15/10/2026:** en la reunión con Tesorería se cambió el punto de la OC. Ahora **la OC nace al autorizarse la solicitud** y la OP paga (de contado o anticipo contra la OC, o las facturas cuando llegan). Ver [[../decisiones/2026-10-orden-de-pago-varias-facturas]].
 
 - La solicitud se numera SC-n, lleva su condición de compra y, una vez emitida, queda en sólo lectura.
-- Por debajo de $500.000 queda autorizada sola y pasa a Tesorería. Desde $500.000 la autoriza Gerencia o quien tenga el permiso "Autorizar compras" (Socio, Presidencia), que se da por usuario en Configuración › Usuarios.
+- Todas las compras requieren aprobación explícita. Hasta $500.000 aprueba quien puede gestionar compras (o tiene Autorizar compras); por encima de $500.000 sólo el rol Gerencia, aunque otro usuario tenga ese permiso. El límite se mide sobre el total final con impuestos.
 - Tesorería emite la orden de pago y con ella nace la OC (OC-n), atada a la solicitud.
   - La OP se paga en el momento, con su caja y su comprobante, o queda emitida con su vencimiento.
   - Una OC admite varias OP parciales y muestra total, pagado y saldo.
@@ -90,9 +90,7 @@ La etapa 4 está desarrollada:
    en el grupo (ver abajo): **la OC se genera cuando Tesorería emite la OP** de una solicitud autorizada.
    La solicitud, la OC y la OP quedan vinculadas y la OC tiene numeración propia.
    *Actualizado el 15/10/2026: la OC pasó a generarse al autorizarse la solicitud, como en el PDF.*
-6. **Límite de $500.000.** Tomado así: hasta $499.999,99 no requiere autorización; desde $500.000
-   inclusive la autoriza Gerencia o quien tenga el permiso "Autorizar compras" (Socio / Presidencia).
-   Los dos tienen el mismo nivel.
+6. **Límite de $500.000.** Todas las compras requieren aprobación explícita. Hasta $500.000 aprueba quien puede gestionar compras (o tiene Autorizar compras); por encima de $500.000 sólo el rol Gerencia, aunque otro usuario tenga ese permiso. El límite se mide sobre el total final con impuestos.
 7. **Bandeja de notificaciones y pendientes por rol.** Etapa 5.
    - Una bandeja con los estados Nueva, Leída, En gestión, Resuelta y Descartada (con motivo).
    - Asignación a una persona, fecha límite y escalamiento automático a Gerencia cuando se vence.
@@ -113,7 +111,7 @@ Donde el PDF y lo conversado en el grupo no coinciden, seguimos lo del grupo:
 
 1. **Compras** genera la solicitud según la necesidad, con su condición de compra (contado, cuenta
    corriente o plazo). Una vez generada queda en **sólo lectura**: no se modifica, sólo la anula Gerencia, con motivo.
-2. Si el monto es **desde $500.000**, la autoriza Gerencia o Presidencia. Por debajo, pasa directo a Tesorería.
+2. Todas las compras requieren aprobación explícita. Hasta $500.000 aprueba quien puede gestionar compras (o tiene Autorizar compras); por encima de $500.000 sólo el rol Gerencia, aunque otro usuario tenga ese permiso. El límite se mide sobre el total final con impuestos.
 3. **Tesorería** emite la Orden de Pago, y con ella **se genera la Orden de Compra**.
    - De contado, el pago se registra enseguida con su comprobante.
    - En cuenta corriente o a plazo, la OP queda emitida con su vencimiento y se paga después.
@@ -149,6 +147,6 @@ El sistema ya tiene roles. Para no duplicarlos, las áreas del documento se asig
 | Tesorería / Administración y Finanzas | Administración |
 | Producción | Arquitecto |
 | Recursos Humanos | Administración |
-| Gerencia / Socio / Presidencia | Gerencia, o cualquier usuario con el permiso "Autorizar compras" |
+| Aprobación de compras | Hasta $500.000, gestión de compras o Autorizar compras; más de $500.000, sólo rol Gerencia |
 | Compras y Logística / Depósito | Compras |
 | Ventas | Ventas |

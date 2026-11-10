@@ -30,7 +30,7 @@ export const NOTIFICATION_EVENTS = {
   "cotizacion.aprobada.compras": { label: "Cotización aprobada · Compras: reserva, faltantes y abastecimiento", hours: 48 },
   "cotizacion.aprobada.produccion": { label: "Cotización aprobada · Producción: planificar la obra y la fecha de inicio", hours: 48 },
   "cotizacion.aprobada.administracion": { label: "Cotización aprobada · Administración: anticipo, crédito y condiciones", hours: 48 },
-  "compra.autorizar": { label: "Solicitud desde el límite · Gerencia o Presidencia: autorizar o rechazar", hours: 24 },
+  "compra.autorizar": { label: "Compra pendiente: aprobar o rechazar; más de $500.000 sólo Gerencia", hours: 24 },
   "compra.tesoreria": { label: "OC generada · Tesorería: pago de contado o, al llegar la factura, la OP", hours: 48 },
   "compra.orden": { label: "OC generada · Compras: pedir al proveedor y cargar el remito", hours: 48 },
   "compra.pago": { label: "OP, pago o comprobante · Compras: ver la OC y seguir la recepción", hours: 72 },

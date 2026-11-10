@@ -13,8 +13,8 @@ La especificación funcional v1.5 de administración (octubre 2026) ordena todo 
 suma multi-CUIT, depósitos con tránsito, remitos de venta, Factura X y plan de cuentas. Estado
 punto por punto: [[especificacion-v1-5]].
 
-El **Requerimiento Funcional Integral v4** (7/10/2026) suma el circuito de compras con autorización desde
-$500.000, el maestro de cajas y bancos, la facturación parcial de cotizaciones, los certificados por ítem,
+El **Requerimiento Funcional Integral v4** (7/10/2026) suma el circuito de compras (actualizado en noviembre:
+aprobación explícita siempre y más de $500.000 sólo Gerencia), el maestro de cajas y bancos, la facturación parcial de cotizaciones, los certificados por ítem,
 la bandeja de avisos y la clasificación financiera por documento. Se entrega en ocho etapas; la respuesta
 al cliente, con las etapas y las preguntas abiertas, está en [[respuesta-v4]]. Donde el PDF y lo conversado
 en el grupo de clientes no coinciden, manda el grupo.

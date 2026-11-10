@@ -10,8 +10,8 @@ import type { Session } from "./auth";
 /*
  * Cerrar el pedido armado en el buscador de precios: una solicitud de compra
  * por proveedor, con los precios de su lista vigente y el descuento de hoy. Sale
- * emitida: por debajo del límite queda autorizada y nace la OC; desde el
- * límite espera la autorización. Cada renglón lleva su IVA (o el de la
+ * emitida y pendiente de aprobación por cualquier monto. Por encima de
+ * $500.000 sólo aprueba Gerencia. Cada renglón lleva su IVA (o el de la
  * solicitud) y sobre el neto van las percepciones y el impuesto interno: el
  * total sale de src/lib/purchase-taxes.ts. Los precios que trae el carrito del
  * navegador no se usan: pueden haber quedado viejos si entretanto llegó otra

@@ -36,6 +36,15 @@ function as(role: Role, name: string, extra: Partial<UserPermissions> = {}, user
   Object.assign(session, { role, name, userId, permissions: { ...defaultPermissionsForRole(role), ...extra } });
 }
 
+async function emitAndApprove(id: string) {
+  const emitted = await action(emitRoute, id);
+  expect(emitted.status).toBe(200);
+  const previous = { ...session };
+  as("gerencia", "Gerencia");
+  try { const approved = await action(decisionRoute, id, { approve: true }); expect(approved.status).toBe(200); return approved; }
+  finally { Object.assign(session, previous); }
+}
+
 async function newRequest(amountCents: number, extra: Record<string, unknown> = {}) {
   as("compras", "Compras");
   const created = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId, description: "Membrana y selladores", amountCents, paymentTerms: "contado", cashMethod: "transferencia", requestedDate: "2026-10-08", ...extra }), params({ entity: "purchases" })));
@@ -64,7 +73,7 @@ afterAll(async () => {
 });
 
 describe("solicitud de compra", () => {
-  it("se numera SC, se edita en borrador y al emitirla por debajo del límite queda autorizada y en sólo lectura", async () => {
+  it("se numera SC, se edita en borrador, al emitir espera aprobación y Compras aprueba por debajo del límite", async () => {
     const request = await newRequest(499_999_99);
     expect(request).toMatchObject({ number: "SC-1", status: "borrador" });
     // En borrador se cambia.
@@ -73,9 +82,13 @@ describe("solicitud de compra", () => {
     const noSupplier = await newRequest(1_000_00, { supplierId: "" });
     expect((await action(emitRoute, noSupplier._id)).status).toBe(400);
 
-    const emitted = await action(emitRoute, request._id);
+    let emitted = await action(emitRoute, request._id);
     expect(emitted.status).toBe(200);
-    expect(emitted.body).toMatchObject({ status: "autorizada", approval: { automatic: true } });
+    expect(emitted.body).toMatchObject({ status: "pendiente_autorizacion" });
+    expect(emitted.body.orderId).toBeUndefined();
+    emitted = await action(decisionRoute, request._id, { approve: true });
+    expect(emitted.status).toBe(200);
+    expect(emitted.body).toMatchObject({ status: "autorizada", approval: { userName: "Compras" } });
     // Al autorizarse nace la OC, atada a la solicitud.
     const order = await Purchase.findById(emitted.body.orderId).lean();
     expect(order).toMatchObject({ number: "OC-1", stage: "orden", status: "emitida", requestId: new Types.ObjectId(request._id), amountCents: 499_999_99 });
@@ -93,14 +106,14 @@ describe("solicitud de compra", () => {
     expect((await action(emitRoute, request._id)).status).toBe(409);
   });
 
-  it("desde $500.000 espera autorización: la da Gerencia o el Socio, Compras no; rechazar pide motivo", async () => {
-    const request = await newRequest(500_000_00);
+  it("por encima de $500.000 sólo Gerencia aprueba, incluso si otro usuario tiene Autorizar compras", async () => {
+    const request = await newRequest(500_000_01);
     expect((await action(emitRoute, request._id)).body.status).toBe("pendiente_autorizacion");
-    // El aviso le llega a Gerencia y, por nombre, al Socio.
+    // Los avisos de importes superiores al límite van sólo a Gerencia.
     const notice = await Notification.findOne({ dedupeKey: `purchase-approve-${request._id}` }).lean<{ roles: string[]; userIds: unknown[] }>();
     expect(notice!.roles).toContain("gerencia");
-    expect(notice!.userIds.map(String)).toEqual([String(approverId)]);
-    as("administracion", "Socio", { actions: ["approvePurchases"] }, String(approverId));
+    expect(notice!.userIds || []).toEqual([]);
+    as("gerencia", "Gerencia");
     const inbox = await call(await notificationsRoute.GET(new Request("http://test/api/notifications")));
     expect(inbox.body.items.some((item: { title: string }) => item.title.includes(request.number))).toBe(true);
 
@@ -110,10 +123,12 @@ describe("solicitud de compra", () => {
     expect((await action(decisionRoute, request._id, { approve: true })).status).toBe(403);
 
     as("administracion", "Socio", { actions: ["approvePurchases"] }, String(approverId));
+    expect((await action(decisionRoute, request._id, { approve: true })).status).toBe(403);
+    as("gerencia", "Gerencia");
     expect((await action(decisionRoute, request._id, { approve: false })).status).toBe(400);
     const approved = await action(decisionRoute, request._id, { approve: true });
-    expect(approved.body).toMatchObject({ status: "autorizada", approval: { userName: "Socio" } });
-    // Autorizada por el Socio, también nace la OC; esperando autorización, no.
+    expect(approved.body).toMatchObject({ status: "autorizada", approval: { userName: "Gerencia" } });
+    // Al autorizar Gerencia nace la OC; esperando autorización, no.
     expect((await Purchase.findById(request._id).lean<{ orderId?: unknown }>())!.orderId).toBeTruthy();
 
     const other = await newRequest(900_000_00);
@@ -132,7 +147,7 @@ describe("solicitud de compra", () => {
 describe("orden de pago contra la orden de compra", () => {
   it("la OC ya nació al autorizar; varias OP parciales (contado o anticipo) suman a la misma OC y no pasan del total", async () => {
     const request = await newRequest(300_000_00, { paymentTerms: "cuenta_corriente" });
-    const ocNumber = String((await Purchase.findById((await action(emitRoute, request._id)).body.orderId).lean<{ number: string }>())!.number);
+    const ocNumber = String((await Purchase.findById((await emitAndApprove(request._id)).body.orderId).lean<{ number: string }>())!.number);
 
     // Compras no emite OP, aunque tenga permisos guardados de antes que se lo daban.
     as("compras", "Compras", { edit: [...defaultPermissionsForRole("compras").edit, "payments"] });
@@ -179,7 +194,7 @@ describe("remitos del proveedor", () => {
       number: "SC-90", company: "constructora", supplierId, description: "Pegamento", amountCents: 121_000_00, cashMethod: "efectivo", stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
       items: [{ code: "PEG-20", name: "Pegatex porcelanato", presentation: "Bolsa 20 KG", quantity: 10, listPriceCents: 10_000_00, discountPct: 0, unitCents: 10_000_00, totalCents: 100_000_00 }],
     });
-    const emitted = await action(emitRoute, String(created._id));
+    const emitted = await emitAndApprove(String(created._id));
     // Se recibe contra la OC, no contra la solicitud.
     expect((await action(receiveRoute, String(created._id), { lines: [{ line: 0, quantity: 1 }] })).status).toBe(409);
     // La OC nació al autorizarse: se recibe sin esperar ninguna orden de pago.
@@ -208,7 +223,7 @@ describe("remitos del proveedor", () => {
 describe("anulación y facturas de compra", () => {
   it("sólo Gerencia anula, con motivo; no lo que ya tiene pagos; las OP emitidas caen con la orden", async () => {
     const request = await newRequest(50_000_00);
-    await action(emitRoute, request._id);
+    await emitAndApprove(request._id);
     as("administracion", "Tesorería");
     const op = await action(paymentOrderRoute, request._id, { amountCents: 50_000_00, date: "2026-10-08", method: "transferencia", accountId: materiales });
 
@@ -224,7 +239,7 @@ describe("anulación y facturas de compra", () => {
 
     // Una con pagos hechos no se anula.
     const paidOne = await newRequest(10_000_00);
-    await action(emitRoute, paidOne._id);
+    await emitAndApprove(paidOne._id);
     as("administracion", "Tesorería");
     await action(paymentOrderRoute, paidOne._id, { amountCents: 10_000_00, date: "2026-10-08", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true });
     as("gerencia", "Gerencia");
@@ -261,7 +276,7 @@ describe("impuestos de la solicitud", () => {
     expect((await patch(request._id, { paymentTerms: "plazo", termDays: 30 })).body.cashMethod).toBeNull();
     expect((await patch(request._id, { paymentTerms: "contado", cashMethod: "efectivo", termDays: 0 })).body).toMatchObject({ cashMethod: "efectivo", amountCents: 468_000_00 });
 
-    const emitted = await action(emitRoute, request._id);
+    const emitted = await emitAndApprove(request._id);
     expect(emitted.body.status).toBe("autorizada");
     // La OC hereda los impuestos y el medio; Tesorería lo ve en el aviso.
     const orderId = String(emitted.body.orderId);
@@ -282,7 +297,7 @@ describe("percepciones en la factura de compra", () => {
   it("la factura hereda la alícuota y los porcentajes de la OC; la C no discrimina IVA; el libro IVA compras suma las percepciones", async () => {
     const ivaRoute = await import("../src/app/api/accounting/iva/route");
     const request = await newRequest(1_00, { subtotalCents: 200_000_00, vatPct: "27", perceptionIibbPct: 2, cashMethod: "efectivo" });
-    const orderId = String((await action(emitRoute, request._id)).body.orderId);
+    const orderId = String((await emitAndApprove(request._id)).body.orderId);
     as("gerencia", "Gerencia");
     const expense = async (body: Record<string, unknown>) => call(await recordsRoute.POST(json("POST", { description: "Factura del proveedor", category: "materiales", issueDate: "2026-11-03", status: "pendiente", amountCents: 0, ...body }), params({ entity: "expenses" })));
 
@@ -320,7 +335,7 @@ describe("remitos en la factura y cotización de venta en la OC", () => {
     // Elegida a mano en la solicitud, guarda el número; sin obra, igual sale en la ficha y en el PDF.
     const request = await newRequest(1_00, { subtotalCents: 80_000_00, quoteId: String(quote._id), cashMethod: "efectivo" });
     expect(request).toMatchObject({ quoteNumber: "COT-4120" });
-    const orderId = String((await action(emitRoute, request._id)).body.orderId);
+    const orderId = String((await emitAndApprove(request._id)).body.orderId);
     expect(await Purchase.findById(orderId).lean()).toMatchObject({ quoteNumber: "COT-4120" });
     const detail = await call(await detailRoute.GET(new Request("http://test"), params({ id: orderId })));
     expect(detail.body.quote).toMatchObject({ number: "COT-4120", title: "Impermeabilización de terraza" });
@@ -331,7 +346,7 @@ describe("remitos en la factura y cotización de venta en la OC", () => {
       const draft = await Purchase.create({ number, company: "tvp", supplierId, description: "Membrana", amountCents: 121_000_00, cashMethod: "efectivo", stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
         items: [{ code: `MEM-${number}`, name: "Membrana 4 mm", quantity: 10, listPriceCents: 10_000_00, discountPct: 0, unitCents: 10_000_00, totalCents: 100_000_00 }] });
       as("compras", "Compras");
-      const order = String((await action(emitRoute, String(draft._id))).body.orderId);
+      const order = String((await emitAndApprove(String(draft._id))).body.orderId);
       const receipt = await action(receiveRoute, order, { supplierRemito: `0001-${number}`, date: "2026-11-05", lines: [{ line: 0, quantity: 4 }] });
       return { order, receiptId: String(receipt.body.receipt._id) };
     };
@@ -383,6 +398,40 @@ describe("migración de las compras de antes", () => {
 });
 
 describe("solicitudes para stock", () => {
+  it("aprueba desde borrador hasta $500.000 y bloquea importes superiores por total final, incluso con permiso especial", async () => {
+    const boundary = await newRequest(500_000_00);
+    const approved = await action(decisionRoute, boundary._id, { approve: true });
+    expect(approved.status).toBe(200);
+    expect(approved.body).toMatchObject({ status: "autorizada", approval: { userName: "Compras" } });
+    expect(approved.body.orderId).toBeTruthy();
+    const big = await newRequest(1, { subtotalCents: 450_000_00, vatPct: 21 });
+    as("administracion", "Con permiso especial", { actions: ["approvePurchases"] });
+    expect((await action(decisionRoute, big._id, { approve: true })).status).toBe(403);
+    expect(await Purchase.findById(big._id).lean()).toMatchObject({ status: "borrador" });
+    const listed = await call(await recordsRoute.GET(new Request("http://test?limit=100"), params({ entity: "purchases" })));
+    expect(listed.body.items.find((row: { _id: string }) => row._id === big._id).canApprovePurchase).toBe(false);
+    const detail = await call(await detailRoute.GET(new Request("http://test"), params({ id: big._id })));
+    expect(detail.body.can.decide).toBe(false);
+    as("gerencia", "Gerencia");
+    expect((await action(decisionRoute, big._id, { approve: true })).status).toBe(200);
+    expect((await action(decisionRoute, big._id, { approve: true })).status).toBe(409);
+  });
+
+  it("permite aprobar órdenes anteriores pendientes, con la misma restricción y sin crear otra orden ni ingresar stock otra vez", async () => {
+    const order = await Purchase.create({ number: "OC-APROBACION", stage: "orden", status: "emitida", company: "tvp", supplierId, description: "Orden anterior pendiente", amountCents: 500_000_01, requestedDate: new Date() });
+    as("compras", "Compras");
+    expect((await action(decisionRoute, String(order._id), { approve: true })).status).toBe(403);
+    as("gerencia", "Gerencia");
+    const before = await Purchase.countDocuments();
+    const receipts = await PurchaseReceipt.countDocuments();
+    const approved = await action(decisionRoute, String(order._id), { approve: true });
+    expect(approved.status).toBe(200);
+    expect(approved.body).toMatchObject({ status: "emitida", approval: { userName: "Gerencia" } });
+    expect((await action(decisionRoute, String(order._id), { approve: true })).status).toBe(409);
+    expect(await Purchase.countDocuments()).toBe(before);
+    expect(await PurchaseReceipt.countDocuments()).toBe(receipts);
+  });
+
   it("carga por ítems sin proveedor y sólo ingresa al depósito elegido después de aprobar, incluso por debajo del límite", async () => {
     const item = await StockItem.create({ name: "Sellador para aprobar", sku: "APR-1", category: "materiales", unit: "balde" });
     const request = await newRequest(1, { supplierId: "", stockOnApproval: true, deliverTo: "salon", items: [
@@ -395,7 +444,7 @@ describe("solicitudes para stock", () => {
     expect(await StockItem.exists({ name: "Material nuevo por aprobar" })).toBeNull();
     expect((await action(emitRoute, request._id)).body.status).toBe("pendiente_autorizacion");
     expect((await StockItem.findById(item._id)).quantity).toBe(0);
-    as("compras", "Compras");
+    as("ventas", "Ventas");
     expect((await action(decisionRoute, request._id, { approve: true })).status).toBe(403);
     as("gerencia", "Gerencia");
     const approved = await action(decisionRoute, request._id, { approve: true });

@@ -295,9 +295,10 @@ describe("listas de precios (base)", () => {
     const first = await call(await order({ supplierId: sikaId, workId: String(work._id), expectedDate: "2026-09-30", notes: "Entregar de 8 a 12",
       items: [{ itemId: idOf("SK1"), quantity: 2 }, { itemId: idOf("SK2"), quantity: 1.5 }, { itemId: idOf("SK1"), quantity: 1 }] }));
     expect(first.status).toBe(201);
-    // Menos de $500.000: sale emitida y autorizada sola, para que Tesorería emita la orden de pago.
-    expect(first.body.purchase).toMatchObject({ number: "SC-1", stage: "solicitud", status: "autorizada", paymentTerms: "contado", subtotalCents: 28_350_000, vatCents: 5_953_500, amountCents: 34_303_500, notes: "Entregar de 8 a 12" });
-    expect(first.body.purchase.approval).toMatchObject({ automatic: true });
+    // Cualquier importe requiere aprobación explícita antes de generar la OC.
+    expect(first.body.purchase).toMatchObject({ number: "SC-1", stage: "solicitud", status: "pendiente_autorizacion", paymentTerms: "contado", subtotalCents: 28_350_000, vatCents: 5_953_500, amountCents: 34_303_500, notes: "Entregar de 8 a 12" });
+    expect(first.body.purchase.approval).toBeUndefined();
+    expect(first.body.purchase.orderId).toBeUndefined();
     expect(first.body.purchase.items).toMatchObject([
       { code: "SK1", quantity: 3, listPriceCents: 10_000_000, discountPct: 10, unitCents: 9_000_000, totalCents: 27_000_000 },
       { code: "SK2", quantity: 1.5, listPriceCents: 1_000_000, discountPct: 10, unitCents: 900_000, totalCents: 1_350_000 },

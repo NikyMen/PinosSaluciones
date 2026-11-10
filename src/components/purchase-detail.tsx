@@ -80,9 +80,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
     const amount = Number(detail?.request?.amountCents || 0);
     const message = detail?.request?.stockOnApproval
       ? `Se emite por ${money(amount)} y queda pendiente de aprobación. Al aprobarla se genera la orden y los materiales ingresan a ${warehouseLabel(String(detail.request.deliverTo))}. ¿Emitir?`
-      : amount >= PURCHASE_APPROVAL_LIMIT_CENTS
-      ? `Se emite por ${money(amount)}: desde ${money(PURCHASE_APPROVAL_LIMIT_CENTS)} la tiene que autorizar Gerencia o Presidencia. Después no se puede cambiar, sólo anular. ¿Emitir?`
-      : `Se emite por ${money(amount)}: por debajo de ${money(PURCHASE_APPROVAL_LIMIT_CENTS)} queda autorizada y pasa a Tesorería. Después no se puede cambiar, sólo anular. ¿Emitir?`;
+      : `Se emite por ${money(amount)} y queda pendiente de aprobación.${amount > PURCHASE_APPROVAL_LIMIT_CENTS ? " Sólo la puede aprobar Gerencia." : ""} Después no se puede cambiar, sólo anular. ¿Emitir?`;
     if (confirm(message)) await act("emit", {}, "Solicitud emitida.");
   }
 
@@ -163,8 +161,8 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
             <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void papers("pdf"); }} title="Un solo PDF con la orden y sus adjuntos (PDF y fotos)"><FileStack size={15} /> {order ? "OC" : "Solicitud"} con adjuntos</button>
             <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void papers("zip"); }} title="Solicitud, orden, órdenes de pago, comprobantes, remitos, facturas y adjuntos"><Archive size={15} /> Expediente ZIP</button>
             {detail.can.emit && <button type="button" className="primary-btn" disabled={busy} onClick={() => { void emit(); }}><Send size={15} /> Emitir</button>}
-            {detail.can.decide && <><button type="button" className="primary-btn" disabled={busy} onClick={() => { void decide(true); }}><CheckCircle2 size={15} /> Autorizar</button>
-              <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void decide(false); }}><XCircle size={15} /> Rechazar</button></>}
+            {detail.can.decide && <><button type="button" className="primary-btn" disabled={busy} onClick={() => { void decide(true); }}><CheckCircle2 size={15} /> Aprobar</button>
+              {request?.status === "pendiente_autorizacion" && <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void decide(false); }}><XCircle size={15} /> Rechazar</button>}</>}
             {detail.can.paymentOrder && <button type="button" className="primary-btn" onClick={() => setPanel(panel === "pay" ? "" : "pay")}><HandCoins size={15} /> Pago de contado o anticipo</button>}
             {detail.can.receive && <button type="button" className="primary-btn" onClick={() => setPanel(panel === "receive" ? "" : "receive")}><PackagePlus size={15} /> Cargar remito</button>}
             {detail.can.invoice && order && <Link className="secondary-btn" href={`/app/expenses?oc=${order._id}`}><ReceiptText size={15} /> Cargar factura</Link>}

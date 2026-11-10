@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { requireSession } from "@/lib/auth";
 import { canApprovePurchases, canRead, canWrite } from "@/lib/permissions";
+import { purchaseApprovalState } from "@/lib/purchase-flow-labels";
 import { connectDB } from "@/lib/db";
 import { apiError } from "@/lib/api";
 import { Expense, Payment, Purchase, PurchaseReceipt, Quote, Supplier, Work } from "@/lib/models";
@@ -41,7 +42,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/purchas
       can: {
         edit: canWrite(session, "purchases") && request?.status === "borrador" && !order,
         emit: canWrite(session, "purchases") && request?.status === "borrador",
-        decide: canApprovePurchases(session) && request?.status === "pendiente_autorizacion",
+        decide: canApprovePurchases(session, total) && purchaseApprovalState(request || order || {}) === "pending",
         cancel: session.role === "gerencia" && (live(order) || (live(request) && request?.status !== "borrador")),
         paymentOrder: canWrite(session, "payments") && Boolean((order || request)?.supplierId) && (order ? live(order) : request?.status === "autorizada") && total - committedCents > 100,
         receive: canWrite(session, "purchases") && canWrite(session, "stock") && Boolean(order) && live(order) && order!.status !== "cerrada",

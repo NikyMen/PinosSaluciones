@@ -6,7 +6,7 @@ import { releasePaymentChecks } from "./payment-checks";
 import { money, qty } from "./format";
 import { PURCHASE_APPROVAL_LIMIT_CENTS, type Role } from "./constants";
 import { canApprovePurchases, canWrite } from "./permissions";
-import { notify, usersWithAction } from "./notifications";
+import { notify } from "./notifications";
 import { applyExpensePayment, paidByPayment, paymentAllocations } from "./balances";
 import { isCreditNote } from "./invoice-labels";
 import { worklessAccount } from "./account-service";
@@ -15,7 +15,7 @@ import { applyStockMovement, stockItemForPurchaseLine } from "./stock-service";
 import type { CompanyKey } from "./companies";
 import type { WarehouseKey } from "./warehouses";
 import type { Session } from "./auth";
-import { purchaseTermsText, requestStatusLabels } from "./purchase-flow-labels";
+import { purchaseApprovalState, purchaseTermsText, requestStatusLabels } from "./purchase-flow-labels";
 import { PURCHASE_TAX_PCT_KEYS, purchaseTaxFields, storedPurchaseTaxes, type TaxedLine } from "./purchase-taxes";
 
 /*
@@ -24,9 +24,8 @@ import { PURCHASE_TAX_PCT_KEYS, purchaseTaxFields, storedPurchaseTaxes, type Tax
  *
  *  1. Compras arma la solicitud (SC-n) con su condición de compra. Mientras es
  *     borrador se edita; al emitirla queda en sólo lectura.
- *  2. Por debajo de $500.000 queda autorizada sola. Desde $500.000 (inclusive)
- *     la autoriza Gerencia o quien tenga el permiso "Autorizar compras"
- *     (Socio, Presidencia).
+ *  2. Siempre espera aprobación explícita. Hasta $500.000 aprueba quien puede
+ *     gestionar compras; por encima de ese importe sólo Gerencia.
  *  3. Al autorizarse nace la orden de compra (OC-n), atada a la solicitud.
  *  4. Compras carga los remitos del proveedor: suman al stock y el remito
  *     final cierra la orden. Después llega la factura, con su remito.
@@ -77,7 +76,7 @@ async function pair(purchase: PurchaseDoc) {
 
 /* ── 1 y 2: emitir y autorizar ─────────────────────────────────────────────── */
 
-/** Emite la solicitud: queda en sólo lectura y, según el importe, autorizada o esperando autorización. */
+/** Emite la solicitud: queda en sólo lectura esperando aprobación, por cualquier importe. */
 export async function emitRequest(id: string, session: Session) {
   const request = await load(id);
   if (request.stage !== "solicitud") throw new HttpError("Sólo se emite una solicitud de compra");
@@ -87,23 +86,16 @@ export async function emitRequest(id: string, session: Session) {
   await checkStockReferences(request);
   if (!(Number(request.amountCents) > 0)) throw new HttpError("Poné el neto de la solicitud antes de emitirla: el total sale de ahí y de los impuestos");
   if (String(request.paymentTerms || "contado") === "contado" && !request.cashMethod) throw new HttpError("Es de contado: elegí si se paga en efectivo o por transferencia");
-  const approval = Boolean(request.stockOnApproval) || needsApproval(Number(request.amountCents));
-  const update = approval
-    ? { status: "pendiente_autorizacion", emittedAt: new Date() }
-    : { status: "autorizada", emittedAt: new Date(), approval: { at: new Date(), automatic: true, reason: `Menos de ${money(PURCHASE_APPROVAL_LIMIT_CENTS)}: no necesita autorización` } };
   const saved = await Purchase.findOneAndUpdate({ _id: request._id, status: "borrador" }, {
-    $set: update, $push: { history: history(approval ? "Emitida: espera autorización" : "Emitida y autorizada sola por monto", session) },
+    $set: { status: "pendiente_autorizacion", emittedAt: new Date() }, $push: { history: history("Emitida: espera autorización", session) },
   }, { returnDocument: "after" }).lean<PurchaseDoc>();
   if (!saved) throw new HttpError("La solicitud ya se emitió", 409);
   const supplier = await Supplier.findById(request.supplierId).select("name").lean<{ name?: string }>();
-  if (!approval) await orderFor(saved, session);
-  if (approval) {
-    await notify({
-      title: `Autorizar la solicitud ${saved.number} por ${money(Number(saved.amountCents))}`,
-      body: `${supplier?.name || "Proveedor"} · ${String(saved.description || "")}. La emitió ${session.name}.`,
-      kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: ["gerencia"], userIds: await usersWithAction("approvePurchases"), event: "compra.autorizar", exception: true, dedupeKey: `purchase-approve-${saved._id}`,
-    });
-  } else await notifyTreasury({ ...saved, orderId: (await Purchase.findById(saved._id).select("orderId").lean<{ orderId?: Types.ObjectId }>())?.orderId }, supplier?.name);
+  await notify({
+    title: `Autorizar la solicitud ${saved.number} por ${money(Number(saved.amountCents))}`,
+    body: `${supplier?.name || "Proveedor"} · ${String(saved.description || "")}. La emitió ${session.name}.`,
+    kind: "compra", href: `/app/purchases?ver=${saved._id}`, roles: Number(saved.amountCents) > PURCHASE_APPROVAL_LIMIT_CENTS ? ["gerencia"] : ["gerencia", "compras", "administracion"], event: "compra.autorizar", exception: true, dedupeKey: `purchase-approve-${saved._id}`,
+  });
   return Purchase.findById(saved._id).lean<PurchaseDoc>();
 }
 
@@ -124,10 +116,24 @@ async function notifyTreasury(request: PurchaseDoc, supplierName?: string) {
   });
 }
 
-/** Gerencia (o quien tenga el permiso) autoriza o rechaza una solicitud desde el límite. Rechazar pide motivo. */
+/** Aprueba desde la fila, incluso un borrador; las compras mayores a $500.000 son exclusivas de Gerencia. */
 export async function decideRequest(id: string, input: { approve: boolean; reason?: string }, session: Session) {
-  if (!canApprovePurchases(session)) throw new HttpError("Las solicitudes desde el límite las autoriza Gerencia o quien tenga el permiso Autorizar compras", 403);
-  const request = await load(id);
+  let request = await load(id);
+  if (!canApprovePurchases(session, Number(request.amountCents || 0))) throw new HttpError(Number(request.amountCents) > PURCHASE_APPROVAL_LIMIT_CENTS ? "Las compras mayores a $500.000 sólo las aprueba Gerencia" : "No tenés permiso para aprobar compras", 403);
+  if (request.stage !== "solicitud") {
+    if (!input.approve || purchaseApprovalState(request) !== "pending") throw new HttpError("Esta orden ya fue aprobada o no admite aprobación", 409);
+    const saved = await Purchase.findOneAndUpdate({ _id: request._id, status: request.status, approval: null, requestId: null, stockedAt: null }, {
+      $set: { approval: { userId: session.userId, userName: session.name, at: new Date(), reason: input.reason || undefined } },
+      $push: { history: history("Orden aprobada", session, input.reason) },
+    }, { returnDocument: "after" }).lean<PurchaseDoc>();
+    if (!saved) throw new HttpError("La orden ya se resolvió: actualizá la lista", 409);
+    return saved;
+  }
+  if (input.approve && request.status === "borrador") {
+    if (!canWrite(session, "purchases")) throw new HttpError("No tenés permiso para emitir esta solicitud", 403);
+    request = (await emitRequest(id, session))!;
+    if (!canApprovePurchases(session, Number(request.amountCents || 0))) throw new HttpError("Las compras mayores a $500.000 sólo las aprueba Gerencia", 403);
+  }
   if (request.stage !== "solicitud" || request.status !== "pendiente_autorizacion") throw new HttpError(`La solicitud ${request.number} no está esperando autorización`, 409);
   const reason = String(input.reason || "").trim();
   if (!input.approve && reason.length < 3) throw new HttpError("Poné por qué se rechaza");
@@ -216,6 +222,7 @@ async function orderFor(request: PurchaseDoc, session: Session) {
   const claimed = await Purchase.updateOne({ _id: request._id, orderId: { $exists: false } }, { $set: { orderId } });
   if (!claimed.modifiedCount) return Purchase.findById((await Purchase.findById(request._id).select("orderId").lean<{ orderId: unknown }>())?.orderId).lean<PurchaseDoc>();
   const copy = ["company", "supplierId", "workId", "quoteId", "quoteNumber", "neededBy", "priority", "description", "amountCents", "subtotalCents", "vatCents", "notes",
+    "approval",
     "vatPct", "perceptionVatPct", "perceptionVatCents", "perceptionIibbPct", "perceptionIibbCents", "perceptionIibbProvPct", "perceptionIibbProvCents", "internalTaxPct", "internalTaxCents", "cashMethod",
     "priceListId", "priceListDate", "deliverTo", "paymentTerms", "termDays", "requiresAdvance", "stockOnApproval", "requestedDate", "expectedDate"];
   const data: Record<string, unknown> = Object.fromEntries(copy.filter(key => request[key] !== undefined).map(key => [key, request[key]]));

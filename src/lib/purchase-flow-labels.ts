@@ -6,6 +6,14 @@ export const requestStatusLabels: Record<string, string> = {
   aprobada: "Aprobada", enviada: "Enviada", recibida: "Recibida", cancelada: "Cancelada",
 };
 export const orderStatusLabels: Record<string, string> = { emitida: "Emitida", cerrada: "Cerrada", anulada: "Anulada", aprobada: "Aprobada", enviada: "Enviada", recibida: "Recibida", cancelada: "Cancelada" };
+/** Las órdenes ya recibidas o nacidas de una solicitud autorizada no se vuelven a aprobar. */
+export function purchaseApprovalState(purchase: Record<string, unknown>): "pending" | "approved" | "unavailable" {
+  const status = String(purchase.status || "");
+  if (["anulada", "cancelada", "rechazada"].includes(status)) return "unavailable";
+  if (purchase.stage === "solicitud") return ["borrador", "pendiente_autorizacion"].includes(status) ? "pending" : ["autorizada", "aprobada", "recibida"].includes(status) ? "approved" : "unavailable";
+  if (purchase.approval || purchase.requestId || purchase.stockedAt || ["cerrada", "aprobada", "recibida"].includes(status)) return "approved";
+  return ["emitida", "enviada"].includes(status) ? "pending" : "unavailable";
+}
 export const paymentTermLabels: Record<string, string> = { contado: "Contado", cuenta_corriente: "Cuenta corriente", plazo: "A plazo" };
 /** De contado: cómo se paga. */
 export const cashMethodLabels: Record<string, string> = { efectivo: "Efectivo", transferencia: "Transferencia" };

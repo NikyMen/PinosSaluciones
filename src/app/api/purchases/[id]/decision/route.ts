@@ -7,7 +7,7 @@ import { decideRequest } from "@/lib/purchase-flow";
 
 const schema = z.object({ approve: z.boolean(), reason: z.string().trim().max(500).optional().default("") });
 
-/** Autorizar o rechazar (con motivo) una solicitud desde el límite: Gerencia o quien tenga el permiso Autorizar compras. */
+/** Aprueba solicitudes u órdenes pendientes; por encima de $500.000 sólo Gerencia. */
 export async function POST(request: Request, context: RouteContext<"/api/purchases/[id]/decision">) {
   try {
     const session = await requireSession();

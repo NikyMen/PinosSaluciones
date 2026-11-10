@@ -5,7 +5,7 @@ import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
 import { emitRequest } from "@/lib/purchase-flow";
 
-/** Emite la solicitud: queda en sólo lectura y, según el importe, autorizada o esperando autorización. */
+/** Emite la solicitud: queda en sólo lectura y siempre espera aprobación explícita. */
 export async function POST(request: Request, context: RouteContext<"/api/purchases/[id]/emit">) {
   try {
     const session = await requireSession();

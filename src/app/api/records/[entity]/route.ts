@@ -4,7 +4,7 @@ import { composeWorkerName, modelByEntity, nextReceiptNumber, nextQuoteNumber, n
 import { afterPaymentChange, refreshOrderPayment } from "@/lib/purchase-flow";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
-import { canRead, canWrite } from "@/lib/permissions";
+import { canApprovePurchases, canRead, canWrite } from "@/lib/permissions";
 import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
@@ -75,6 +75,7 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
       for (const item of items as Array<Record<string, unknown>>) item.balanceCents = balances.get(String(item._id)) ?? 0;
     }
     // El stock muestra el último precio de cada material, con su fecha.
+    if (entity === "purchases") for (const item of items as Array<Record<string, unknown>>) item.canApprovePurchase = canApprovePurchases(session, Number(item.amountCents || 0));
     return Response.json({ items: entity === "stock" ? await withLastPrices(items as Record<string, unknown>[]) : items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) { return apiError(error); }
 }

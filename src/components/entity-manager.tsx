@@ -14,7 +14,7 @@ import { StockMovementModal, type StockItem, type StockMovement } from "@/compon
 import { PurchaseDetailModal } from "@/components/purchase-detail";
 import { AttachmentsModal, type AttachmentEntity } from "@/components/attachments-panel";
 import { downloadPaymentOrderPdf, paymentMethodLabels, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
-import { purchaseStatusText } from "@/lib/purchase-flow-labels";
+import { purchaseApprovalState, purchaseStatusText } from "@/lib/purchase-flow-labels";
 import { levelsOf } from "@/lib/stock-levels";
 import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-owners";
 import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
@@ -27,7 +27,7 @@ import { downloadQuotePdf, quotePdfData } from "@/lib/quote-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
 import { InvoiceFields } from "@/components/invoice-fields";
 import { ExpenseFields, PurchaseFields } from "@/components/purchase-fields";
-import { storedPurchaseTaxes } from "@/lib/purchase-taxes";
+import { purchaseTaxRows, storedPurchaseTaxes } from "@/lib/purchase-taxes";
 import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { WorkTypesModal } from "@/components/work-types-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
@@ -221,6 +221,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   }
 
   function display(key: string, value: unknown, item: Item) {
+    if (entity === "purchases" && key === "amountCents") {
+      const taxes = purchaseTaxRows(item);
+      return <div className="purchase-row-amount"><strong>{money(Number(value || 0))}</strong><small>Neto: {money(taxes.subtotalCents)}</small>{taxes.rows.map((row, index) => <small key={index}>{row.label}: {money(row.cents)}</small>)}</div>;
+    }
     if (entity === "assets" && key === "sector") return <span className={`sector-badge ${String(value || "general")}`}>{sectorLabels[String(value || "general")] || "General"}</span>;
     // Lo que hay en cada depósito: un material viejo no tiene el campo y todo lo suyo está en el Galpón.
     // El último precio va con la fecha de la lista (o de la compra) de donde sale.
@@ -443,6 +447,19 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     if (approved) setConvertFor(approved);
   }
 
+  async function approvePurchase(item: Item) {
+    if (!confirm(`¿Aprobar ${String(item.number)} por ${money(Number(item.amountCents || 0))}?${item.stockOnApproval ? " Los materiales ingresarán al depósito elegido." : ""}`)) return;
+    setStatusBusy(item._id); setError("");
+    try {
+      const response = await fetch(`/api/purchases/${item._id}/decision`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ approve: true }) });
+      const result = await response.json();
+      if (!response.ok) { setError(result.error || "No se pudo aprobar la compra"); return; }
+      setNotice(`${String(item.number)} aprobada.${item.stockOnApproval ? " Los materiales ingresaron a stock." : ""}`);
+      await load();
+    } catch { setError("No se pudo verificar la aprobación. Actualizá la lista antes de volver a intentar."); }
+    finally { setStatusBusy(null); }
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget); const body: Record<string, unknown> = {};
@@ -573,6 +590,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "quotes" && <button className="row-action-wide" title="Descargar la cotización en PDF para mandarla o imprimirla" onClick={() => { void downloadQuote(item); }}><Download size={15} /> PDF</button>}
           {entity === "suppliers" && <Link className="row-action-wide" title="Subir y ver las listas de precios del proveedor" href={`/app/suppliers/${item._id}`}><FileSpreadsheet size={15} /> Listas de precios</Link>}
           {entity === "purchases" && <button className="row-action-wide approve" title="La compra de punta a punta: autorizar, orden de pago, remitos" onClick={() => setPurchaseFor(item._id)}><Eye size={15} /> Ver</button>}
+          {entity === "purchases" && <button className="row-action-wide approve" disabled={Boolean(statusBusy) || purchaseApprovalState(item) !== "pending" || !item.canApprovePurchase}
+            title={purchaseApprovalState(item) === "approved" ? "Esta compra ya está aprobada" : purchaseApprovalState(item) === "unavailable" ? "Esta compra no admite aprobación" : !item.canApprovePurchase ? "No tenés permiso: las compras mayores a $500.000 sólo las aprueba Gerencia" : "Aprobar la compra por su importe final"}
+            onKeyDown={event => event.stopPropagation()} onClick={() => { void approvePurchase(item); }}><CheckCircle2 size={15} /> {statusBusy === item._id ? "Aprobando…" : purchaseApprovalState(item) === "approved" ? "Aprobada" : "Aprobar"}</button>}
           {entity === "purchases" && <button className="row-action-wide" title={item.stage === "solicitud" ? "Descargar la solicitud en PDF" : "Descargar la orden de compra en PDF para mandársela al proveedor"}
             onClick={() => { void downloadPurchaseOrderPdf(purchaseOrderPdfData(item, relations.suppliers?.find(row => row._id === String(item.supplierId || "")), relations.works?.find(row => row._id === String(item.workId || "")), String(relations.quotes?.find(row => row._id === String(item.quoteId || ""))?.number || "") || undefined)).catch(() => setError("No se pudo generar el PDF de la orden")); }}>
             <Download size={15} /> PDF</button>}

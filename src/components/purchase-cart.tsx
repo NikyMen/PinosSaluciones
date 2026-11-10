@@ -16,9 +16,9 @@ import { PURCHASE_APPROVAL_LIMIT_CENTS } from "@/lib/constants";
 /*
  * El pedido de compra: lo que se fue agregando desde el buscador, separado por
  * proveedor, porque a cada proveedor se le manda su propia orden. Cerrar el
- * pedido emite la solicitud de compra (SC-n) y descarga su PDF. Por debajo de
- * $500.000 queda autorizada y nace la orden de compra; desde ahí espera la
- * autorización. Cada renglón lleva su IVA (por defecto, el de la solicitud) y
+ * pedido emite la solicitud de compra (SC-n) y descarga su PDF. Cualquier
+ * importe espera aprobación y después nace la orden de compra.
+ * Cada renglón lleva su IVA (por defecto, el de la solicitud) y
  * sobre el neto van las percepciones y el impuesto interno: el total no se
  * escribe, sale de la cuenta.
  */
@@ -221,7 +221,7 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
     </div>
     {error && <p className="form-error">{error}</p>}
     <div className="cart-group-foot">
-      <span>Queda emitida en Solicitudes y órdenes, en sólo lectura, y se descarga el PDF. {totals.amountCents >= PURCHASE_APPROVAL_LIMIT_CENTS ? `Desde ${money(PURCHASE_APPROVAL_LIMIT_CENTS)} la autoriza Gerencia o Presidencia.` : "Queda autorizada y nace la orden de compra."}</span>
+      <span>Queda emitida en Solicitudes y órdenes, pendiente de aprobación, y se descarga el PDF. {totals.amountCents > PURCHASE_APPROVAL_LIMIT_CENTS ? `Por encima de ${money(PURCHASE_APPROVAL_LIMIT_CENTS)} sólo la aprueba Gerencia.` : "Se aprueba con el botón Aprobar de su fila."}</span>
       <button type="button" className="primary-btn" disabled={busy} onClick={() => { void close(); }}>{busy ? "Emitiendo…" : "Emitir solicitud de compra"}</button>
     </div>
   </section>;

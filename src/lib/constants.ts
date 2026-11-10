@@ -69,16 +69,16 @@ export const entityLabels: Record<Entity, string> = {
 
 /*
  * Acciones que no son "ver" ni "editar" una sección y se dan por persona.
- * "Autorizar compras": las solicitudes desde el límite las autoriza Gerencia o
- * quien tenga este permiso (el Socio, Presidencia): los dos con el mismo nivel.
+ * "Autorizar compras" habilita la aprobación hasta el límite; los importes
+ * mayores son exclusivos del rol Gerencia, aunque se tenga esta acción.
  */
 export const USER_ACTIONS = ["approvePurchases"] as const;
 export type UserAction = (typeof USER_ACTIONS)[number];
 export const userActionLabels: Record<UserAction, { label: string; hint: string }> = {
-  approvePurchases: { label: "Autorizar compras", hint: "Solicitudes desde el límite: Gerencia, Socio o Presidencia" },
+  approvePurchases: { label: "Autorizar compras", hint: "Hasta $500.000; por encima de ese importe sólo el rol Gerencia" },
 };
 
-/** Desde este importe (inclusive, con IVA) una solicitud de compra necesita autorización. Por debajo pasa directo a Tesorería. */
+/** Toda compra requiere aprobación. Por encima de este total final sólo aprueba Gerencia. */
 export const PURCHASE_APPROVAL_LIMIT_CENTS = 500_000_00;
 
 export const viewSectionLabels: Record<ViewSection, string> = {

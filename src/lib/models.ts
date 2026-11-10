@@ -34,7 +34,7 @@ const UserSchema = new Schema({
       edit: [{ type: String, enum: entities }],
       // Las secciones que existían cuando se guardaron: una sección nueva se da según el rol.
       seen: [{ type: String, enum: viewSections }],
-      // Lo que se da por persona: autorizar compras (Socio, Presidencia).
+      // Lo que se da por persona: autorizar compras hasta $500.000; importes superiores sólo Gerencia.
       actions: [{ type: String, enum: USER_ACTIONS }],
     }, { _id: false }),
     default: undefined,

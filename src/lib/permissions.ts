@@ -1,4 +1,4 @@
-import { entities, USER_ACTIONS, viewSections, type Entity, type Role, type UserAction, type ViewSection } from "./constants";
+import { entities, PURCHASE_APPROVAL_LIMIT_CENTS, USER_ACTIONS, viewSections, type Entity, type Role, type UserAction, type ViewSection } from "./constants";
 
 /** `seen`: las secciones que existían cuando se guardaron estos permisos. `actions`: lo que se da por persona (autorizar compras). */
 export type UserPermissions = { view: ViewSection[]; edit: Entity[]; seen?: ViewSection[]; actions?: UserAction[] };
@@ -74,8 +74,10 @@ export function canWrite(subject: PermissionSubject, entity: Entity) {
   if (locked && !locked.includes(typeof subject === "string" ? subject : subject.role)) return false;
   return resolved(subject).edit.includes(entity);
 }
-/** Autorizar solicitudes de compra desde el límite: Gerencia siempre, y quien tenga el permiso (Socio, Presidencia). */
-export function canApprovePurchases(subject: PermissionSubject) {
-  return (typeof subject === "string" ? subject : subject.role) === "gerencia" || Boolean(resolved(subject).actions?.includes("approvePurchases"));
+/** Toda compra se aprueba a mano; por encima de $500.000 sólo Gerencia. */
+export function canApprovePurchases(subject: PermissionSubject, amountCents: number) {
+  if ((typeof subject === "string" ? subject : subject.role) === "gerencia") return true;
+  if (amountCents > PURCHASE_APPROVAL_LIMIT_CENTS) return false;
+  return canWrite(subject, "purchases") || (canRead(subject, "purchases") && Boolean(resolved(subject).actions?.includes("approvePurchases")));
 }
 export function canDelete(subject: PermissionSubject) { return (typeof subject === "string" ? subject : subject.role) === "gerencia"; }
