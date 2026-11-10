@@ -457,7 +457,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       setNotice(`${String(item.number)} aprobada.${item.stockOnApproval ? " Los materiales ingresaron a stock." : ""}`);
       await load();
     } catch { setError("No se pudo verificar la aprobación. Actualizá la lista antes de volver a intentar."); }
-    finally { setStatusBusy(null); }
+    finally { setStatusBusy(""); }
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
