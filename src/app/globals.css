@@ -184,6 +184,15 @@ table { width: 100%; min-width: 700px; border-collapse: collapse; }
 th { padding: 12px 16px; border-bottom: 1px solid var(--line); color: #748093; background: #f7f9fb; font-size: .58rem; font-weight: 850; letter-spacing: .075em; text-align: left; text-transform: uppercase; }
 td { padding: 17px 16px; border-bottom: 1px solid #e9edf2; color: #445064; font-size: .72rem; }
 tbody tr { transition: background-color .16s ease; }
+tbody tr.work-progress-row,
+tbody tr.work-progress-row:hover {
+  background-image: linear-gradient(to right, #fecaca 0%, #fecaca var(--work-progress), transparent var(--work-progress), transparent 100%);
+}
+tbody tr.work-progress-row .row-actions,
+tbody tr.work-progress-row:hover .row-actions {
+  position: static;
+  background: transparent;
+}
 tbody tr:hover { background: #f9fbfd; }
 tbody tr:last-child td { border-bottom: 0; }
 td b { color: #273449; }

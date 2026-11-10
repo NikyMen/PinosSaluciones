@@ -14,6 +14,7 @@ import { prepareCashAccount, prepareCashAccountRecord } from "./cash-accounts";
 import { checkExpenseLimit, checkPurchaseChanges, preparePaymentOrder, preparePurchaseAmounts, preparePurchaseQuote, prepareNewRequest } from "./purchase-flow";
 import type { Entity } from "./constants";
 import type { Session } from "./auth";
+import { prepareWorkChanges } from "./work-status";
 
 /*
  * Las reglas de los comprobantes y de la imputación al plan de cuentas que
@@ -33,6 +34,7 @@ function ledgerDirection(entity: Entity, record: Record<string, unknown>): "ingr
 const ledgerRequired = new Set<Entity>(["cash", "payments", "collections"]);
 
 export async function beforeCreate(entity: Entity, data: Record<string, unknown>, session?: Session) {
+  if (entity === "works") prepareWorkChanges(data);
   delete data.accountChangeReason;
   if (entity === "accounts") data.direction = accountDirection(data.code);
 
@@ -66,6 +68,7 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
 
 /** En un cambio: valida la cuenta nueva y, si cambió, guarda quién, cuándo, de cuál a cuál y por qué. */
 export async function beforeUpdate(entity: Entity, before: Record<string, unknown>, changes: Record<string, unknown>, session: Session) {
+  if (entity === "works") prepareWorkChanges(changes, before);
   const reason = changes.accountChangeReason;
   delete changes.accountChangeReason;
   if (entity === "accounts" && changes.code) changes.direction = accountDirection(changes.code);

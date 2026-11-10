@@ -40,8 +40,8 @@ export type ProgressSummary = WorkProgress & { mode: ProgressMode; progress: num
  * Recalcula el avance fisico de la obra y lo deja guardado en `Work.progress`.
  *
  * Con base de avance manda lo que dicen las inspecciones. Sin base no se
- * inventa un porcentaje: queda "sin base". La unica excepcion es una obra que ya
- * venia con avance manual: ese numero se respeta hasta que se le arme la base.
+ * inventa un porcentaje: queda "sin base". Si se carga un avance manual desde Estado
+ * de obra, se respeta hasta que se le arme la base.
  */
 export async function recomputeWorkProgress(workId: unknown): Promise<ProgressSummary | null> {
   const work = await Work.findById(workId).select("progress progressMode progressBase advances").lean() as Lean | null;

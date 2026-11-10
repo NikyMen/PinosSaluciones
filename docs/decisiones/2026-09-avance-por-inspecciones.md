@@ -6,7 +6,7 @@
 
 ## Decisión
 
-El avance de obra deja de cargarse a mano. Lo calcula el sistema a partir de las **inspecciones
+Con base de avance, el porcentaje de obra lo calcula el sistema a partir de las **inspecciones
 diarias**, armadas sobre las cinco planillas de *PLANILLA DE INSPECCION DE OBRAS.xlsx*
 (albañilería, impermeabilización, espuma de poliuretano, pintura y trabajos en altura).
 
@@ -15,7 +15,8 @@ diarias**, armadas sobre las cinco planillas de *PLANILLA DE INSPECCION DE OBRAS
 - Por línea: producción acumulada / producción prevista (tope 100 %).
 - General: promedio ponderado por importe contratado. Si falta algún importe, las líneas pesan igual.
 - Cerrar una inspección recalcula `Work.progress`. Sin base de avance la obra muestra
-  **"Sin base de avance"**: no se inventa un porcentaje.
+  **"Sin base de avance"** hasta cargarla o registrar un porcentaje manual desde Estado de obra.
+- Desde noviembre de 2026, **Estado de obra** permite cargar avance manual de 0 a 100 % s?lo sin base de inspecciones. Con base, la API impide sobrescribir el c?lculo autom?tico.
 - El consumo de materiales es un **indicador de desvío**: nunca mueve el avance.
 - Los certificados siguen independientes: el avance económico puede no coincidir con el físico.
 
@@ -23,7 +24,7 @@ diarias**, armadas sobre las cinco planillas de *PLANILLA DE INSPECCION DE OBRAS
 
 | Dato | Fuente |
 | --- | --- |
-| Nombre, cliente, fechas, presupuesto, estado | Obra |
+| Nombre, cliente, fechas previstas y reales, estado | Obra (sin presupuesto en listado y edici?n; se conserva internamente para certificar) |
 | Personas y horas | Partes diarios de la obra |
 | Producción y avance físico | Inspecciones cerradas |
 | Materiales que entran | Egresos de stock hacia la obra |

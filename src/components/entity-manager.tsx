@@ -28,6 +28,9 @@ import { WorkerLaborModal } from "@/components/worker-labor-modal";
 import { InvoiceFields } from "@/components/invoice-fields";
 import { ExpenseFields, PurchaseFields } from "@/components/purchase-fields";
 import { purchaseTaxRows, storedPurchaseTaxes } from "@/lib/purchase-taxes";
+import { WorkStatusModal } from "@/components/work-status-modal";
+import { displayedProgress } from "@/lib/inspections";
+import type { CSSProperties } from "react";
 import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { WorkTypesModal } from "@/components/work-types-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
@@ -56,7 +59,7 @@ const inlineEntities = new Set<Entity>(["tasks", "quotes"]);
 // estado lo mueve el formulario y "aprobada" solo sale del boton Aprobar.
 // Una orden de pago se marca pagada desde la lista.
 // El estado de una compra no se elige: lo mueven sus acciones (emitir, autorizar, la orden de pago, los remitos).
-const inlineStatusEntities = new Set<Entity>(["works", "tasks", "payments"]);
+const inlineStatusEntities = new Set<Entity>(["tasks", "payments"]);
 
 // Estados desde los que todavia tiene sentido aprobar una cotizacion.
 const approvable = new Set(["borrador", "enviada", "seguimiento", "vencida"]);
@@ -139,6 +142,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [purchaseView, setPurchaseView] = useState<"" | "solicitud" | "orden">("");
   const [convertFor, setConvertFor] = useState<Item | null>(null);
   const [invoiceFor, setInvoiceFor] = useState<Item | null>(null);
+  const [workStatusFor, setWorkStatusFor] = useState<Item | null>(null);
   const [statusFor, setStatusFor] = useState<Item | null>(null);
   // El bien de uso cuyo mantenimiento está abierto.
   const [maintenanceFor, setMaintenanceFor] = useState<string | null>(null);
@@ -221,6 +225,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   }
 
   function display(key: string, value: unknown, item: Item) {
+    if (entity === "works" && key === "progress") { const progress = displayedProgress(item); return progress === null ? "Sin avance cargado" : `${qty(progress)} %`; }
     if (entity === "purchases" && key === "amountCents") {
       const taxes = purchaseTaxRows(item);
       return <div className="purchase-row-amount"><strong>{money(Number(value || 0))}</strong><small>Neto: {money(taxes.subtotalCents)}</small>{taxes.rows.map((row, index) => <small key={index}>{row.label}: {money(row.cents)}</small>)}</div>;
@@ -567,8 +572,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       const rowAction = entity === "works" ? () => router.push(`/app/works/${item._id}`) : entity === "assets" ? () => setMaintenanceFor(item._id) : entity === "purchases" ? () => setPurchaseFor(item._id) : inlineEntities.has(entity) && canEdit ? () => open(item) : null;
       const rowTitle = entity === "works" ? "Abrir la obra" : entity === "assets" ? "Ver el mantenimiento" : entity === "tasks" ? "Abrir detalle de la tarea" : entity === "purchases" ? "Abrir la compra: autorización, orden de pago y remitos" : "Abrir para editar";
       // Las tareas se pintan enteras según el estado: de un vistazo se ve qué falta.
-      const rowClass = [rowAction ? "clickable-row" : "", entity === "tasks" ? `task-row ${String(item.status || "pendiente")}` : "", entity === "workers" && item.active === false ? "row-inactive" : ""].filter(Boolean).join(" ");
-      return <tr key={item._id} className={rowClass} onClick={rowAction || undefined} onKeyDown={rowAction ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rowAction(); } } : undefined} tabIndex={rowAction ? 0 : undefined} title={rowAction ? rowTitle : undefined}>
+      const rowClass = [rowAction ? "clickable-row" : "", entity === "works" ? "work-progress-row" : "", entity === "tasks" ? `task-row ${String(item.status || "pendiente")}` : "", entity === "workers" && item.active === false ? "row-inactive" : ""].filter(Boolean).join(" ");
+      return <tr key={item._id} className={rowClass} style={entity === "works" ? { "--work-progress": `${Math.max(0, Math.min(100, displayedProgress(item) ?? 0))}%` } as CSSProperties : undefined} onClick={rowAction || undefined} onKeyDown={rowAction ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rowAction(); } } : undefined} tabIndex={rowAction ? 0 : undefined} title={rowAction ? rowTitle : undefined}>
         {columns.map(column => <td key={column} data-label={config.columnTitles?.[column] || columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
           const pending = pendingStatus?.id === item._id ? pendingStatus.status : "";
           return <div className="status-cell" onClick={event => event.stopPropagation()}>
@@ -583,7 +588,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
             </span>}
           </div>;
         })() : display(column, item[column], item)}</td>)}
-        <td className="row-actions" onClick={event => event.stopPropagation()}>
+        <td className="row-actions" onKeyDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
+          {entity === "works" && <button className="row-action-wide" onClick={() => setWorkStatusFor(item)}><Percent size={15} /> Estado de obra</button>}
           {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
@@ -637,7 +643,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
         {/* En una obra manda el nombre: el título dice de qué obra se trata, no "editar registro". */}
         <p className="eyebrow">{entity === "works" && editing ? `OBRA ${String(editing.code || "")}` : editing ? "EDITAR REGISTRO" : "NUEVO REGISTRO"}</p>
         <h2 id="entity-modal-title">{entity === "works" && editing ? String(editing.name || "Obra") : editing ? `Editar ${config.singular}` : newLabel}</h2>
-        <small>{entity === "works" && editing ? `Presupuesto ${money(Number(editing.budgetCents || 0))}` : entity === "works" ? "Información general, planificación y control de la obra" : `Completá los datos del ${config.singular}`}</small>
+        <small>{entity === "works" && editing ? "Fechas previstas y reales de la obra" : entity === "works" ? "Información general, planificación y control de la obra" : `Completá los datos del ${config.singular}`}</small>
       </div></div>
       {entity === "works" && editing && <div className="modal-head-actions">
         <Link className="secondary-btn" href={`/app/works/${editing._id}#personal`}><Users size={16} /> Personal asignado</Link>
@@ -665,6 +671,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
 
     {transferOpen && <CashTransferModal onClose={() => setTransferOpen(false)} onDone={message => { setTransferOpen(false); setNotice(message); void load(); }} />}
     {ratesOpen && <WorkTypesModal canEdit={canEdit} onClose={() => setRatesOpen(false)} onSaved={() => { setRatesOpen(false); setNotice("Tarifas guardadas. Valen para los partes que se carguen de ahora en adelante."); loadWorkTypes(); }} />}
+    {workStatusFor && <WorkStatusModal work={workStatusFor} canEdit={canEdit} onClose={() => setWorkStatusFor(null)} onSaved={() => { setWorkStatusFor(null); void load(); }} />}
     {statusFor && <WorkerStatusModal worker={statusFor} onClose={() => setStatusFor(null)} onDone={message => { setStatusFor(null); setNotice(message); void load(); }} />}
 
     {receiptFor && <ReceiptModal receipt={receiptFor.receipt} initialClientId={receiptFor.clientId} initialInvoiceId={receiptFor.invoiceId}

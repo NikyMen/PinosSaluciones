@@ -199,7 +199,7 @@ export function displayedProgress(work: ProgressSource): number | null {
 
 export const progressModeHints: Record<ProgressMode, string> = {
   inspecciones: "Según las inspecciones cerradas",
-  manual: "Avance cargado a mano antes de las inspecciones",
+  manual: "Avance cargado manualmente, sin base de inspecciones",
   sin_base: "Sin base de avance: cargá las cantidades previstas",
 };
 

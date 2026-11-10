@@ -126,6 +126,8 @@ Colección `works` · entidad `works`
 | `status` | texto | — | valores: `planificada` · `en_curso` · `pausada` · `terminada` · `cerrada` · `cancelada` · por defecto `"planificada"` |
 | `startDate` | fecha | — | — |
 | `endDate` | fecha | — | — |
+| `actualStartDate` | fecha | — | — |
+| `actualEndDate` | fecha | — | — |
 | `budgetCents` | número | — | mínimo 0 · por defecto `0` |
 | `budgetNetCents` | número | — | — |
 | `progress` | número | — | mínimo 0 · máximo 100 · por defecto `0` |

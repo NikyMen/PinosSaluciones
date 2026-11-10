@@ -172,12 +172,12 @@ const WorkSchema = new Schema({
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, managerId: { type: Schema.Types.ObjectId, ref: "User" },
   // planificada = Pendiente de inicio, en_curso = Activa, terminada = Finalizada; cerrada es con todo conciliado.
   status: { type: String, enum: ["planificada", "en_curso", "pausada", "terminada", "cerrada", "cancelada"], default: "planificada" },
-  startDate: Date, endDate: Date, budgetCents: money,
+  startDate: Date, endDate: Date, actualStartDate: Date, actualEndDate: Date, budgetCents: money,
   // El presupuesto sin IVA: los certificados son un porcentaje de esto, y la factura le suma el IVA.
   budgetNetCents: Number,
-  // El avance fisico ya no se escribe a mano: lo recalcula el cierre de cada
-  // inspeccion. Se guarda para que listados y tablero no tengan que calcularlo.
-  // "manual" es el avance que venia cargado antes de las inspecciones;
+  // Con base de avance lo recalculan las inspecciones; sin base se puede cargar
+  // desde Estado de obra. Se guarda para reutilizarlo en listados y tablero.
+  // "manual" es el avance cargado sin base de inspecciones;
   // "sin_base" es una obra sin cantidades previstas (no se inventa un porcentaje).
   progress: { type: Number, min: 0, max: 100, default: 0 },
   progressMode: { type: String, enum: ["inspecciones", "manual", "sin_base"], default: "sin_base" },

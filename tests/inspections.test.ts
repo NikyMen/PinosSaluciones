@@ -169,14 +169,14 @@ describe("cierre de la inspección", () => {
 });
 
 describe("validaciones de la API", () => {
-  it("el formulario de obra ya no escribe el avance ni los avances manuales", () => {
+  it("Estado de obra acepta porcentaje, conserva el historial y el listado muestra avance", () => {
     const parsed = schemas.works.partial().safeParse({ progress: 90, advances: [{ percentage: 90 }], name: "Obra" });
     expect(parsed.success).toBe(true);
-    expect(parsed.data).not.toHaveProperty("progress");
+    expect(parsed.data).toHaveProperty("progress", 90);
     expect(parsed.data).not.toHaveProperty("advances");
-    // El avance físico ya no se muestra en Obras: ni en la tabla ni en el formulario.
+    // Se edita desde Estado de obra y se ve en el listado, sin editar el historial.
     expect(entityConfig.works.fields.find(field => field.key === "progress")).toBeUndefined();
-    expect(entityConfig.works.columns).not.toContain("progress");
+    expect(entityConfig.works.columns).toContain("progress");
   });
   it("el alta de inspección pide día y rubro válidos", () => {
     expect(inspectionCreatePayload.safeParse({ date: "2026-09-18", rubro: "pintura" }).success).toBe(true);

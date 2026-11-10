@@ -37,7 +37,7 @@ async function uploadFiles(files: File[]) {
 }
 type WorkExpense = { _id: string; number?: string; description: string; category: string; amountCents: number; issueDate: string; status: string };
 
-type Work = { _id: string; name: string; code: string; progress: number; budgetCents?: number; budgetNetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
+type Work = { _id: string; name: string; code: string; progress: number; startDate?: string; endDate?: string; actualStartDate?: string; actualEndDate?: string; budgetCents?: number; budgetNetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
 
 export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false }: { id: string; canEdit: boolean; canCreateWorker: boolean; canSeeStock?: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
@@ -168,7 +168,7 @@ export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false }
   return <>
     <Link href="/app/works" className="back-link"><ArrowLeft/> Volver a obras</Link>
     <div className="page-heading work-heading">
-      <div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>Presupuesto {money(work.budgetCents || 0)}</p></div>
+      <div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>Previsto: {date(work.startDate)} ? {date(work.endDate)} ? Real: {date(work.actualStartDate)} ? {date(work.actualEndDate)}</p></div>
       <div className="work-heading-actions">
         {canEdit && <Link className="primary-btn" href={`/app/works/${id}/inspections/new`}><ClipboardCheck size={17} /> Nueva inspección</Link>}
         <a className="secondary-btn" href="#personal" onClick={event => { event.preventDefault(); document.getElementById("personal")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Users size={17} /> Personal asignado</a>

@@ -201,6 +201,8 @@ Anexo de Tesorería v5.1, validado con Administración. Las decisiones están en
 
 ## Facturación parcial
 
+En Obras, el listado y el formulario de edición muestran las fechas de inicio y fin previstas y reales, sin presupuesto. **Estado de obra** permite cambiar el estado y, sin base de inspecciones, cargar el porcentaje de avance; con base, el avance sigue saliendo de las inspecciones. La fila se pinta proporcionalmente en rojo (50 % = media fila). Se conservan los presupuestos internos para certificar y facturar. Ver `docs/requerimientos/obras.md` y `deploy/obras.md`.
+
 Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisiones/2026-10-certificado-sobre-neto.md`.
 
 - La cotización guarda su neto (`netCents`: el subtotal 3 de la cascada, o importe / 1,21 si se cargó a mano) y la obra su presupuesto neto (`budgetNetCents`). El certificado es un porcentaje de ese neto: lo calcula el servidor, que no deja pasar del 100 %.
