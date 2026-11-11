@@ -151,7 +151,6 @@ export function StockMovementModal({ item, initialKind = "ingreso", onClose, onS
         <div><span>Total</span><strong>{qty(totalOf(levels) + Number(item.transitQty || 0))} {item.unit}</strong><small>Costo promedio {money(item.avgCostCents)}</small></div>
         {Number(item.reservedQty || 0) > 0 && <div><span>Reservado</span><strong>{qty(Number(item.reservedQty))} {item.unit}</strong><small>Disponible {qty(Math.max(0, totalOf(levels) - Number(item.reservedQty)))}</small></div>}
         {Number(item.unusableQty || 0) > 0 && <div><span>No utilizable</span><strong className="below">{qty(Number(item.unusableQty))} {item.unit}</strong><small>Dañado o en revisión</small></div>}
-        <div><span>Valorización</span><strong>{money(item.valueCents)}</strong></div>
       </div>
       <p className="stock-owners-line"><b>Propietario:</b> {(Object.entries(byOwner) as Array<[OwnerKey, number]>).filter(([, value]) => value > 0).map(([key, value]) => `${ownerLabels[key]} ${qty(value)}`).join(" · ") || "—"}</p>
 

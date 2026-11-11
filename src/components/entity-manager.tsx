@@ -262,8 +262,6 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     if (key.startsWith("qty_")) { const amount = levelsOf(item)[key.slice(4) as WarehouseKey] ?? 0; return amount ? qty(amount) : "—"; }
     if (key === "quantity" && entity === "stock") return qty(Number(value || 0));
     if (entity === "stock" && (key === "transitQty" || key === "reservedQty")) return Number(value || 0) ? <span className={key === "reservedQty" ? "cell-stack" : ""}>{qty(Number(value))}{key === "reservedQty" && <small>Disponible {qty(Math.max(0, levelsOf(item).central + levelsOf(item).salon - Number(value)))}</small>}</span> : "—";
-    // Lo que vale lo que hay: en la pestaña de un depósito, solo lo de ese depósito (al costo promedio).
-    if (entity === "stock" && key === "valueCents" && warehouseView) return money(Math.round((levelsOf(item)[warehouseView] ?? 0) * Number(item.avgCostCents || 0)));
     // De qué empresa es lo que hay (CUIT propietario): todas las ubicaciones o, en la pestaña de un depósito, solo ese.
     if (entity === "stock" && key === "owners") { const owners = ownersOf(item); const totals = warehouseView ? { ...owners[warehouseView] } : ownerTotals(owners); const entries = (Object.entries(totals) as Array<[OwnerKey, number]>).filter(([, amount]) => amount > 0); return entries.length ? <span className="owner-split">{entries.map(([owner, amount]) => <span key={owner} className={`owner-chip ${owner}`} title={ownerLabels[owner]}>{owner === "sin_asignar" ? "s/a" : companyOf(owner).short.replace("Constructora Pino", "CP").replace("TV Pino", "TVP")} {qty(amount)}</span>)}</span> : "—"; }
     if (key.endsWith("Cents")) return money(Number(value || 0));

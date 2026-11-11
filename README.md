@@ -215,7 +215,7 @@ Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisio
 
 - Stock y logística › Caja › Entrada: empresa que compró (**TV Pino / Galpón** o **Constructora Pino / Salón de Ventas**), fecha, observaciones y los materiales. Se escanean o se cargan **ítem por ítem** (producto, cantidad, unidad, costo y rubro): si el producto ya está en Stock se suma a lo que hay; si no, se da de alta al confirmar. Proveedor y comprobante son opcionales. Todo entra junto con un comprobante `CJ-n` y una orden de compra recibida.
 
-- En Stock y logística › Stock, las pestañas Galpón y Salón de Ventas muestran solo los materiales con existencia (o un mínimo cargado) en ese depósito, y el propietario y la valorización de lo que hay ahí. "Ambos depósitos" muestra todo y los totales.
+- En Stock y logística › Stock, las pestañas Galpón y Salón de Ventas muestran solo los materiales con existencia (o un mínimo cargado) en ese depósito, y el propietario de lo que hay ahí. La valorización no se muestra en las listas ni en la ficha del material (el sistema la sigue calculando). "Ambos depósitos" muestra todo y los totales.
 
 ## Salidas a obra
 
