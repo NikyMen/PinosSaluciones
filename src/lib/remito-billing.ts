@@ -23,9 +23,15 @@ export function pendingQtyOf(line: RemitoLineLike, remitoStatus: unknown) {
   return Math.max(0, round(Number(line.quantity || 0) - invoicedQtyOf(line, remitoStatus)));
 }
 
-/** El neto de una cantidad de un renglón: el total del renglón si es todo, si no cantidad × precio. */
+/**
+ * El neto de una cantidad de un renglón: el total del renglón si es todo, si no
+ * cantidad × precio. Un renglón con descuento (su total es menos que cantidad ×
+ * precio) reparte su total en proporción a la cantidad, así el descuento acompaña.
+ */
 export function lineNetCents(line: RemitoLineLike, quantity: number) {
-  if (Math.abs(quantity - Number(line.quantity || 0)) < 1e-9) return Number(line.totalCents ?? Math.round(Number(line.quantity || 0) * Number(line.unitPriceCents || 0)));
+  const full = Math.round(Number(line.quantity || 0) * Number(line.unitPriceCents || 0));
+  if (Math.abs(quantity - Number(line.quantity || 0)) < 1e-9) return Number(line.totalCents ?? full);
+  if (typeof line.totalCents === "number" && line.totalCents !== full && Number(line.quantity) > 0) return Math.round(line.totalCents * quantity / Number(line.quantity));
   return Math.round(quantity * Number(line.unitPriceCents || 0));
 }
 

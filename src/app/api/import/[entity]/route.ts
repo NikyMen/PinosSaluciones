@@ -23,6 +23,55 @@ function normalizeHeader(value:string){return fixMojibake(value).normalize("NFD"
 // Acepta como encabezado la clave del campo o su etiqueta (la que usa la exportación).
 function headerMap(entity:Entity){const map=new Map<string,string>();for(const field of entityConfig[entity].fields){map.set(normalizeHeader(field.key),field.key);map.set(normalizeHeader(field.label),field.key)}for(const[key,label]of Object.entries(columnLabels))if(!map.has(normalizeHeader(label)))map.set(normalizeHeader(label),key);if(entity==="workers")for(const alias of["legajo","nlegajo","nrolegajo","numerodelegajo","nodelegajo"])map.set(alias,"fileNumber");return map}
 
+/** Las columnas que se pueden importar: las del formulario, sin lo que calcula el sistema ni los archivos. */
+function importableFields(entity:Entity){return entityConfig[entity].fields.filter(field=>!field.readOnly&&field.type!=="file"&&field.type!=="hidden")}
+
+const isObjectId=(value:unknown)=>/^[a-f\d]{24}$/i.test(String(value??""));
+
+/**
+ * La planilla trae lo que lee una persona: el cliente por su nombre (o CUIT o
+ * código), la empresa y el estado por su etiqueta ("Emitida") y la fecha en
+ * dd/mm/aaaa. Se pasa a lo que guarda el sistema; lo que no se encuentra queda
+ * como error de esa fila.
+ */
+async function resolveRow(entity:Entity,row:Record<string,unknown>,lookup:(relation:Entity)=>Promise<Map<string,string>>){
+  for(const field of importableFields(entity)){
+    const value=row[field.key];
+    if(value===undefined){if(field.defaultValue!==undefined&&field.type!=="date")row[field.key]=field.defaultValue;continue}
+    if(field.type==="relation"&&field.relation&&!isObjectId(value)){
+      const found=(await lookup(field.relation)).get(normalizeHeader(String(value)));
+      if(!found)throw new Error(`${field.label}: no se encontró "${String(value)}"`);
+      row[field.key]=found;
+    }else if(field.type==="select"&&field.options){
+      const wanted=normalizeHeader(String(value));
+      const option=field.options.find(option=>normalizeHeader(option)===wanted||normalizeHeader(field.optionLabels?.[option]||"")===wanted)
+        ||Object.entries(field.optionLabels||{}).find(([,label])=>normalizeHeader(label)===wanted)?.[0];
+      if(option)row[field.key]=option;
+    }else if(field.type==="date"||field.type==="month"){
+      if(value instanceof Date)row[field.key]=value.toISOString().slice(0,field.type==="month"?7:10);
+      else{const match=/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(String(value).trim());if(match)row[field.key]=`${match[3]}-${match[2].padStart(2,"0")}-${match[1].padStart(2,"0")}`}
+    }
+  }
+}
+
+/** Nombre, título, número, código y CUIT de cada registro de un módulo, para encontrarlo por lo que escribió la persona. */
+async function relationIndex(relation:Entity){
+  const docs=await modelByEntity[relation].find().select("name title number code cuit").limit(20000).lean() as Array<Record<string,unknown>>;
+  const map=new Map<string,string>();
+  for(const doc of docs)for(const key of["code","cuit","number","title","name"]){const value=doc[key];if(value!==undefined&&value!==null&&String(value).trim())map.set(normalizeHeader(String(value)),String(doc._id))}
+  return map;
+}
+
+/** La plantilla de un módulo: un CSV con los encabezados que entiende la importación, listo para abrir en Excel. */
+export async function GET(_request:Request,context:RouteContext<"/api/import/[entity]">){
+  try{
+    const session=await requireSession();const{entity}=await context.params;
+    if(!entities.includes(entity as Entity)||!canWrite(session,entity as Entity))throw new Error("FORBIDDEN");
+    const header=importableFields(entity as Entity).map(field=>/[";\r\n]/.test(field.label)?`"${field.label.replaceAll('"','""')}"`:field.label).join(";");
+    return new Response(`﻿sep=;\r\n${header}\r\n`,{headers:{"content-type":"text/csv; charset=utf-8","content-disposition":`attachment; filename="plantilla-${entity}.csv"`}});
+  }catch(error){return apiError(error)}
+}
+
 // "Por hora" / "Por jornada" → hora / jornada.
 function rateModeOf(value:unknown){const n=normalizeHeader(String(value??""));return n.includes("hora")?"hora":n.includes("jorn")?"jornada":undefined}
 
@@ -69,6 +118,8 @@ export async function POST(request:Request,context:RouteContext<"/api/import/[en
     if(extension==="csv")matrix=parseCsv(decodeText(await file.arrayBuffer()));
     else if(extension==="xlsx")matrix=await readSheet(Buffer.from(await file.arrayBuffer()));
     else return Response.json({error:"Formato permitido: .xlsx o .csv"},{status:400});
+    // La primera fila "sep=;" que ponen la exportación y la plantilla (le dice a Excel el separador) no es el encabezado.
+    if(/^sep=/i.test(String(matrix[0]?.[0]??"").trim()))matrix=matrix.slice(1);
     if(matrix.length<2)return Response.json({error:"El archivo no contiene datos"},{status:400});
     const known=headerMap(entity as Entity);const headers=matrix[0].map(x=>known.get(normalizeHeader(String(x).trim())));
     if(!headers.some(Boolean))return Response.json({error:"No se reconocieron las columnas del archivo. Usá los mismos encabezados que la exportación a Excel."},{status:400});
@@ -78,8 +129,11 @@ export async function POST(request:Request,context:RouteContext<"/api/import/[en
     await connectDB();const model=modelByEntity[entity as Entity];const errors:Array<{row:number;error:string}>=[];let imported=0;let updated=0;
     const workTypes=entity==="workers"?new Map((await WorkType.find().select("name").lean() as Array<{name:string}>).map(type=>[normalizeHeader(type.name),type.name])):new Map<string,string>();
     const workers=entity==="workers"?await Worker.find().select("fileNumber dni name firstName lastName").lean() as WorkerMatch[]:[];
+    const indexes=new Map<Entity,Promise<Map<string,string>>>();
+    const lookup=(relation:Entity)=>{if(!indexes.has(relation))indexes.set(relation,relationIndex(relation));return indexes.get(relation)!};
     for(let index=0;index<rows.length;index++){
       const row={...rows[index]};for(const key of Object.keys(row))if(key.endsWith("Cents")){const value=typeof row[key]==="string"?String(row[key]).replace(/[$\s]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",","."):row[key];row[key]=Math.round(Number(value||0)*100)}
+      if(entity!=="workers"){try{await resolveRow(entity as Entity,row,lookup)}catch(error){errors.push({row:index+2,error:error instanceof Error?error.message:"Fila inválida"});continue}}
       if(entity==="workers"){
         prepareWorkerRow(row,workTypes);
         // Alguien que ya está en el legajo se actualiza con lo que trae la planilla, sin borrar lo que no trae.

@@ -148,7 +148,7 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
     if (paymentTerms === "plazo" && !(Number(termDays) > 0)) return setError("Poné a cuántos días es el plazo");
     if (paymentTerms === "contado" && !cashMethod) return setError("Es de contado: elegí si se paga en efectivo o por transferencia");
     if (Object.values(taxRates).some(value => value > 100)) return setError("Un porcentaje no puede pasar el 100 %");
-    if (deliverTo === "obra" && !workId) return setError("Elegí a qué obra se entrega");
+    if (!workId) return setError("Elegí la obra: la orden de compra no sale sin obra asignada");
     setBusy(true); setError("");
     const response = await fetch("/api/purchases/orders", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -205,8 +205,8 @@ function SupplierOrder({ lines, works, onClosed }: { lines: CartLine[]; works: O
         <DateInput name={`date-${supplierId}`} required recent onValueChange={setOrderDate} /></label>
       <label><span>Entregar en<em className="field-hint">Dónde recibe la mercadería</em></span>
         <SearchSelect name={`deliver-${supplierId}`} options={DELIVERY_OPTIONS} value={deliverTo} onChange={setDeliverTo} /></label>
-      <label><span>Obra{deliverTo === "obra" && " *"}<em className="field-hint">{deliverTo === "obra" ? "Obligatoria: a qué obra se entrega" : "Opcional: a qué obra va el material"}</em></span>
-        <SearchSelect name={`work-${supplierId}`} options={works} value={workId} onChange={setWorkId} placeholder={deliverTo === "obra" ? "Elegí la obra" : "Sin obra (para depósito)"} required={deliverTo === "obra"} /></label>
+      <label><span>Obra *<em className="field-hint">{deliverTo === "obra" ? "A qué obra se entrega" : "A qué obra va el material"}</em></span>
+        <SearchSelect name={`work-${supplierId}`} options={works} value={workId} onChange={setWorkId} placeholder="Elegí la obra" required /></label>
       <label><span>Entrega esperada<em className="field-hint">Opcional</em></span>
         <DateInput name={`expected-${supplierId}`} quickRanges={[2, 7]} hideToday onValueChange={setExpectedDate} /></label>
       <label><span>Condición de compra *</span>

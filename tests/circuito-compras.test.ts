@@ -10,7 +10,7 @@ import type { Role } from "../src/lib/constants";
 const session: { userId: string; name: string; email: string; role: Role; permissions: UserPermissions } = { userId: new Types.ObjectId().toHexString(), name: "Compras", email: "compras@test.local", role: "compras", permissions: defaultPermissionsForRole("compras") };
 vi.mock("@/lib/auth", () => ({ requireSession: async () => session, getSession: async () => session, isOwnerEmail: () => false }));
 
-const { Account, CashAccount, Notification, Payment, Purchase, PurchaseReceipt, StockItem, Supplier, User } = await import("../src/lib/models");
+const { Account, CashAccount, Client, Notification, Payment, Purchase, PurchaseReceipt, StockItem, Supplier, User, Work } = await import("../src/lib/models");
 const recordsRoute = await import("../src/app/api/records/[entity]/route");
 const recordRoute = await import("../src/app/api/records/[entity]/[id]/route");
 const emitRoute = await import("../src/app/api/purchases/[id]/emit/route");
@@ -24,6 +24,7 @@ const notificationsRoute = await import("../src/app/api/notifications/route");
 let server: MongoMemoryServer;
 let uri = "";
 let supplierId = "";
+let workId = "";
 let materiales = "";
 let banco = "";
 const approverId = new Types.ObjectId();
@@ -47,7 +48,7 @@ async function emitAndApprove(id: string) {
 
 async function newRequest(amountCents: number, extra: Record<string, unknown> = {}) {
   as("compras", "Compras");
-  const created = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId, description: "Membrana y selladores", amountCents, paymentTerms: "contado", cashMethod: "transferencia", requestedDate: "2026-10-08", ...extra }), params({ entity: "purchases" })));
+  const created = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId, workId, description: "Membrana y selladores", amountCents, paymentTerms: "contado", cashMethod: "transferencia", requestedDate: "2026-10-08", ...extra }), params({ entity: "purchases" })));
   expect(created.status).toBe(201);
   return created.body as { _id: string; number: string; status: string } & Record<string, unknown>;
 }
@@ -61,6 +62,9 @@ beforeAll(async () => {
   const { ensureAccountCatalog } = await import("../src/lib/account-service");
   await ensureAccountCatalog();
   supplierId = String((await Supplier.create({ name: "Protex" }))._id);
+  // Toda orden de compra sale con proveedor y obra.
+  const clientId = (await Client.create({ name: "Consorcio Belgrano" }))._id;
+  workId = String((await Work.create({ name: "Edificio Belgrano", code: "OB-1", clientId, status: "en_curso" }))._id);
   materiales = String((await Account.findOne({ name: "CC - Materiales" }).lean<{ _id: unknown }>())!._id);
   banco = String((await CashAccount.create({ company: "tvp", name: "Banco TVP", nameKey: "banco tvp", type: "cuenta_corriente" }))._id);
   // El Socio: administración, con el permiso de autorizar compras.
@@ -78,9 +82,15 @@ describe("solicitud de compra", () => {
     expect(request).toMatchObject({ number: "SC-1", status: "borrador" });
     // En borrador se cambia.
     expect((await call(await recordRoute.PATCH(json("PATCH", { description: "Membrana" }), params({ entity: "purchases", id: request._id })))).status).toBe(200);
-    // Sin proveedor no se emite.
-    const noSupplier = await newRequest(1_000_00, { supplierId: "" });
-    expect((await action(emitRoute, noSupplier._id)).status).toBe(400);
+    // Sin proveedor ni obra no se emite: la orden de compra no sale sin ellos.
+    const noSupplier = await newRequest(1_000_00, { supplierId: "", workId: "" });
+    const withoutSupplier = await action(emitRoute, noSupplier._id);
+    expect(withoutSupplier.status).toBe(400);
+    expect(withoutSupplier.body.error).toContain("proveedor");
+    expect((await call(await recordRoute.PATCH(json("PATCH", { supplierId }), params({ entity: "purchases", id: noSupplier._id })))).status).toBe(200);
+    const withoutWork = await action(emitRoute, noSupplier._id);
+    expect(withoutWork.status).toBe(400);
+    expect(withoutWork.body.error).toContain("obra");
 
     let emitted = await action(emitRoute, request._id);
     expect(emitted.status).toBe(200);
@@ -191,7 +201,7 @@ describe("remitos del proveedor", () => {
   it("la recepción parcial suma al stock, el remito final cierra la orden y después no entra más", async () => {
     as("compras", "Compras");
     const created = await Purchase.create({
-      number: "SC-90", company: "constructora", supplierId, description: "Pegamento", amountCents: 121_000_00, cashMethod: "efectivo", stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
+      number: "SC-90", company: "constructora", supplierId, workId, description: "Pegamento", amountCents: 121_000_00, cashMethod: "efectivo", stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
       items: [{ code: "PEG-20", name: "Pegatex porcelanato", presentation: "Bolsa 20 KG", quantity: 10, listPriceCents: 10_000_00, discountPct: 0, unitCents: 10_000_00, totalCents: 100_000_00 }],
     });
     const emitted = await emitAndApprove(String(created._id));
@@ -343,7 +353,7 @@ describe("remitos en la factura y cotización de venta en la OC", () => {
 
     // Dos OC con remitos: la factura sólo puede elegir los de la suya.
     const withItems = async (number: string) => {
-      const draft = await Purchase.create({ number, company: "tvp", supplierId, description: "Membrana", amountCents: 121_000_00, cashMethod: "efectivo", stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
+      const draft = await Purchase.create({ number, company: "tvp", supplierId, workId, description: "Membrana", amountCents: 121_000_00, cashMethod: "efectivo", stage: "solicitud", status: "borrador", requestedDate: new Date(), deliverTo: "central",
         items: [{ code: `MEM-${number}`, name: "Membrana 4 mm", quantity: 10, listPriceCents: 10_000_00, discountPct: 0, unitCents: 10_000_00, totalCents: 100_000_00 }] });
       as("compras", "Compras");
       const order = String((await emitAndApprove(String(draft._id))).body.orderId);
@@ -432,9 +442,9 @@ describe("solicitudes para stock", () => {
     expect(await PurchaseReceipt.countDocuments()).toBe(receipts);
   });
 
-  it("carga por ítems sin proveedor y sólo ingresa al depósito elegido después de aprobar, incluso por debajo del límite", async () => {
+  it("carga por ítems con proveedor y obra y sólo ingresa al depósito elegido después de aprobar, incluso por debajo del límite", async () => {
     const item = await StockItem.create({ name: "Sellador para aprobar", sku: "APR-1", category: "materiales", unit: "balde" });
-    const request = await newRequest(1, { supplierId: "", stockOnApproval: true, deliverTo: "salon", items: [
+    const request = await newRequest(1, { stockOnApproval: true, deliverTo: "salon", items: [
       { stockItemId: String(item._id), name: item.name, quantity: 2, unitCents: 10000, vatPct: 0, totalCents: 999999 },
       { name: "Material nuevo por aprobar", unit: "kg", category: "consumibles", quantity: 3, unitCents: 5000, vatPct: 21 },
       { name: "Material nuevo por aprobar", unit: "kg", category: "consumibles", quantity: 1, unitCents: 5000, vatPct: 0 },
@@ -462,7 +472,7 @@ describe("solicitudes para stock", () => {
   });
 
   it("rechazar una carga a stock no crea materiales ni movimientos", async () => {
-    const request = await newRequest(10000, { supplierId: "", stockOnApproval: true, deliverTo: "central", items: [{ name: "Material rechazado", unit: "unidad", quantity: 1, unitCents: 10000, vatPct: 0 }] });
+    const request = await newRequest(10000, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Material rechazado", unit: "unidad", quantity: 1, unitCents: 10000, vatPct: 0 }] });
     await action(emitRoute, request._id);
     as("gerencia", "Gerencia");
     expect((await action(decisionRoute, request._id, { approve: false, reason: "No corresponde" })).body.status).toBe("rechazada");
@@ -470,7 +480,7 @@ describe("solicitudes para stock", () => {
   });
 
   it("recalcula los ítems editados e ingresa al Galpón una sola vez ante dos aprobaciones simultáneas", async () => {
-    const request = await newRequest(1, { supplierId: "", stockOnApproval: true, deliverTo: "central", items: [{ name: "Compra editada al Galpón", unit: "rollo", quantity: 1, unitCents: 10000, vatPct: 21 }] });
+    const request = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Compra editada al Galpón", unit: "rollo", quantity: 1, unitCents: 10000, vatPct: 21 }] });
     const edited = await call(await recordRoute.PATCH(json("PATCH", { items: [{ name: "Compra editada al Galpón", unit: "rollo", quantity: 4, unitCents: 2500, vatPct: 0 }] }), params({ entity: "purchases", id: request._id })));
     expect(edited.body).toMatchObject({ amountCents: 10000, vatCents: 0, subtotalCents: 10000 });
     await action(emitRoute, request._id);

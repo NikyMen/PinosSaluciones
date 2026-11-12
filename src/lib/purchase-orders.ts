@@ -33,9 +33,10 @@ export async function createPurchaseOrder({ company = "tvp", supplierId, lines, 
 }) {
   const supplier = await Supplier.findById(supplierId).lean() as ({ _id: Types.ObjectId; name: string; discountPct?: number } & Record<string, unknown>) | null;
   if (!supplier) throw new PurchaseOrderError("Proveedor no encontrado");
-  const work = workId ? await Work.findById(workId).select("code name quoteId").lean() as ({ code?: string; name?: string; quoteId?: Types.ObjectId } & Record<string, unknown>) | null : null;
-  if (workId && !work) throw new PurchaseOrderError("La obra elegida no existe");
-  if (deliverTo === "obra" && !work) throw new PurchaseOrderError("Para entregar en la obra, elegí cuál");
+  // Toda orden de compra lleva su obra, también la que entrega en el Galpón o el Salón.
+  if (!workId) throw new PurchaseOrderError("Elegí la obra: la orden de compra no sale sin obra asignada");
+  const work = await Work.findById(workId).select("code name quoteId").lean() as ({ code?: string; name?: string; quoteId?: Types.ObjectId } & Record<string, unknown>) | null;
+  if (!work) throw new PurchaseOrderError("La obra elegida no existe");
   // La cotización de la obra va en la orden, como el "presupuesto asignado" de las órdenes de antes.
   const quote = work?.quoteId ? await Quote.findById(work.quoteId).select("number").lean() as { number?: string } | null : null;
 

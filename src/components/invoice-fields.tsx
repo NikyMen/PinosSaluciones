@@ -31,7 +31,10 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
 }) {
   const source = editing || draft;
   const [byTotal, setByTotal] = useState(() => Boolean(editing && !Number(editing.netCents) && Number(editing.amountCents)));
-  const [net, setNet] = useState(() => Number(source.netCents || 0) / 100);
+  // El subtotal (antes del descuento) y el descuento o bonificación en pesos: el neto gravado es la resta, y es lo que va a ARCA.
+  const [gross, setGross] = useState(() => (Number(source.netCents || 0) + Number(source.discountCents || 0)) / 100);
+  const [discount, setDiscount] = useState(() => Number(source.discountCents || 0) / 100);
+  const net = Math.max(0, Math.round((gross - discount) * 100) / 100);
   const [vatPct, setVatPct] = useState(() => source.vatPct === undefined || source.vatPct === null || source.vatPct === "" ? 21 : Number(source.vatPct));
   // Qué comprobante es. La X no pasa por ARCA: no discrimina IVA y su número lo pone el sistema.
   const [voucherType, setVoucherType] = useState(() => String(source.voucherType || "factura_a"));
@@ -78,7 +81,7 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
       const line = remito.lines.find(candidate => candidate.line === index);
       return line ? { quantity: line.quantity, invoicedQty: line.invoicedQty, unitPriceCents: line.unitPriceCents, totalCents: line.totalCents } : { quantity: 0 };
     }) }));
-    setNet(invoiceLinesNetCents(remitos, lines.filter(entry => entry.quantity > 0)) / 100);
+    setGross(invoiceLinesNetCents(remitos, lines.filter(entry => entry.quantity > 0)) / 100);
     setNetKey(key => key + 1);
   }
 
@@ -224,9 +227,11 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
     <fieldset><legend><b>Importes</b><small>{isX ? "La X no discrimina IVA: el total es el importe" : byTotal ? "Esta factura se cargó solo con el total" : "El IVA y el total salen del neto"}</small></legend><div className="form-grid">
       {byTotal ? <>
         <label><span>Total *</span><MoneyInput name="amountCents" defaultValue={Number(source.amountCents || 0) / 100} required /></label>
-        <label className="readonly-field"><span>Neto e IVA</span><output><button type="button" className="link-btn" onClick={() => { setByTotal(false); setNet(Math.round(Number(source.amountCents || 0) / (1 + vatPct / 100)) / 100); }}>Cargar el neto y el IVA</button></output></label>
+        <label className="readonly-field"><span>Neto e IVA</span><output><button type="button" className="link-btn" onClick={() => { setByTotal(false); setDiscount(0); setGross(Math.round(Number(source.amountCents || 0) / (1 + vatPct / 100)) / 100); }}>Cargar el neto y el IVA</button></output></label>
       </> : <>
-        <label><span>{isX ? "Importe *" : "Neto gravado *"}</span><MoneyInput key={`net-${byTotal}-${netKey}`} name="netCents" defaultValue={net} required onValueChange={setNet} /></label>
+        <label><span>{isX ? "Subtotal *" : "Subtotal sin IVA *"}<em className="field-hint">Antes del descuento</em></span><MoneyInput key={`net-${byTotal}-${netKey}`} name="grossNetCents" defaultValue={gross} required onValueChange={setGross} /></label>
+        <label><span>Descuento / bonificación<em className="field-hint">En pesos, sobre el subtotal</em></span><MoneyInput key={`discount-${byTotal}`} name="discountCents" defaultValue={discount} onValueChange={setDiscount} /></label>
+        <label className="readonly-field"><span>{isX ? "Importe" : "Neto gravado"}</span><output>{money(Math.round(net * 100))}{discount > gross && <small className="warning-line">El descuento pasa el subtotal</small>}</output><input type="hidden" name="netCents" value={net || ""} /></label>
         {isX ? <input type="hidden" name="vatPct" value="0" /> : <>
         <label><span>IVA</span><select name="vatPct" value={String(vatPct)} onChange={event => setVatPct(Number(event.target.value))}>
           {VAT_RATES.map(rate => <option key={rate} value={rate}>{rate ? `${String(rate).replace(".", ",")} %` : "Sin IVA"}</option>)}

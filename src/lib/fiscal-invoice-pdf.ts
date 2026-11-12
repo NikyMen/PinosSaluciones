@@ -18,6 +18,8 @@ export type FiscalInvoicePdfData = {
   associated?: string;
   issueDate: string; dueDate?: string; description: string;
   netCents: number; vatPct: number; vatCents: number; amountCents: number;
+  /** El descuento o la bonificación en pesos, sin IVA: el neto ya viene con él restado. */
+  discountCents?: number;
   cae: string; caeDueDate: string; environment?: string;
   /** Con remitos es venta de productos; si no, servicios (lleva el período facturado). */
   products: boolean;
@@ -33,6 +35,7 @@ export function fiscalInvoicePdfData(invoice: Record<string, unknown>, client?: 
     number: String(invoice.number || ""), issueDate: String(invoice.issueDate || ""), dueDate: invoice.dueDate ? String(invoice.dueDate) : undefined,
     description: String(invoice.description || "Servicios"),
     netCents: Number(invoice.netCents || 0), vatPct: Number(invoice.vatPct ?? 21), vatCents: Number(invoice.vatCents || 0), amountCents: Number(invoice.amountCents || 0),
+    discountCents: Number(invoice.discountCents || 0) || undefined,
     cae: String(invoice.cae || ""), caeDueDate: String(invoice.caeDueDate || ""), environment: String(invoice.arcaEnvironment || ""),
     products: Array.isArray(invoice.remitoIds) && invoice.remitoIds.length > 0,
     client: { name: String(client?.name || "Cliente"), cuit: String(client?.cuit || ""), address: String(client?.address || ""), vatCondition: client?.vatCondition ? String(client.vatCondition) : undefined },
@@ -103,7 +106,10 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
   doc.setFillColor(204, 204, 204); doc.rect(M, 99, W, 7, "FD"); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
   columns.forEach(([title, x, width]) => doc.text(title, x + width / 2, 103.6, { align: "center" }));
   doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-  const price = isA ? data.netCents : data.amountCents;
+  // Con descuento, el renglón va por el subtotal y abajo la bonificación en negativo (en la B, con su IVA).
+  const discount = Number(data.discountCents || 0);
+  const discountShown = isA ? discount : Math.round(discount * (1 + (Number(data.vatPct) || 0) / 100));
+  const price = (isA ? data.netCents : data.amountCents) + discountShown;
   const lines = doc.splitTextToSize(plain(data.description), isA ? 68 : 94).slice(0, 14);
   doc.text("001", M + 7, 112, { align: "center" });
   doc.text(lines, M + 15, 112);
@@ -114,6 +120,11 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
   } else {
     doc.text("1,00", M + 124, 112, { align: "right" }); doc.text("unidades", M + 134, 112, { align: "center" });
     doc.text(pesos(price), M + 164, 112, { align: "right" }); doc.text(pesos(price), M + 188, 112, { align: "right" });
+  }
+  if (discountShown > 0) {
+    const discountY = 112 + lines.length * 3.6 + 3;
+    doc.text("Bonificación / descuento", M + 15, discountY);
+    doc.text(`-${pesos(discountShown)}`, M + (isA ? 164 : 188), discountY, { align: "right" });
   }
 
   // Totales.

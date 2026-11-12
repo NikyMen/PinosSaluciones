@@ -517,7 +517,8 @@ const SalesRemitoSchema = new Schema({
     _id: false,
     stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true },
     name: String, unit: String, quantity: Number,
-    unitPriceCents: { type: Number, min: 0, default: 0 }, totalCents: { type: Number, min: 0, default: 0 },
+    // `discountCents`: el descuento o la bonificación en pesos del renglón; totalCents ya viene con él restado.
+    unitPriceCents: { type: Number, min: 0, default: 0 }, discountCents: { type: Number, min: 0 }, totalCents: { type: Number, min: 0, default: 0 },
     unitCostCents: Number, ownerParts: { type: [OwnerPartSchema], default: undefined },
     // Lo ya facturado de este renglón: un remito se puede facturar en partes.
     invoicedQty: Number,
@@ -655,7 +656,9 @@ const PurchaseLineSchema = new Schema({
   code: String, name: { type: String, required: true }, presentation: String, minSale: String,
   quantity: { type: Number, required: true, min: 0 },
   // Sin IVA: precio de lista, descuento del proveedor y lo que queda por unidad.
-  listPriceCents: money, discountPct: { type: Number, default: 0 }, unitCents: money, totalCents: money,
+  listPriceCents: money, discountPct: { type: Number, default: 0 }, unitCents: money,
+  // El descuento o la bonificación en pesos del renglón: totalCents = cantidad × unitCents − discountCents.
+  discountCents: { type: Number, min: 0, default: 0 }, totalCents: money,
   // La alícuota de IVA del renglón (0, 21, 10,5 o 27). Sin ella vale la de la solicitud.
   vatPct: Number,
   // Lo que ya llegó de este renglón con los remitos del proveedor.
@@ -763,7 +766,8 @@ const ExpenseSchema = new Schema({
   // Qué empresa compró: el comprobante del proveedor viene a su nombre.
   company: { type: String, enum: ["tvp", "constructora"] },
   voucherType: { type: String, enum: PURCHASE_VOUCHER_TYPES },
-  netCents: Number, vatPct: Number, vatCents: Number,
+  // `discountCents`: el descuento o la bonificación en pesos del comprobante. El neto ya viene con él restado.
+  netCents: Number, discountCents: Number, vatPct: Number, vatCents: Number,
   // Las percepciones y el impuesto interno del comprobante, con su porcentaje sobre el neto (src/lib/purchase-taxes.ts).
   // Con el neto cargado, el total es neto + IVA + percepciones + impuesto interno.
   perceptionVatPct: Number, perceptionVatCents: Number, perceptionIibbPct: Number, perceptionIibbCents: Number,
@@ -804,7 +808,8 @@ const InvoiceSchema = new Schema({
   description: String, issueDate: { type: Date, required: true }, dueDate: Date,
   // El período ("2026-10") al que va la factura, también en el libro IVA: el mes de la factura salvo que se diga otro.
   period: { type: String, match: PERIOD_PATTERN },
-  netCents: Number, vatPct: Number, vatCents: Number,
+  // `discountCents`: el descuento o la bonificación en pesos. El neto gravado ya viene con él restado (es lo que va a ARCA).
+  netCents: Number, discountCents: Number, vatPct: Number, vatCents: Number,
   amountCents: money, collectedCents: money,
   // "sustituida": una X que se reemplazó por un comprobante fiscal. Deja de contar; lo cobrado pasa al nuevo.
   status: { type: String, enum: INVOICE_STATUSES, default: "pendiente" }, attachment: String,

@@ -7,7 +7,7 @@ import { HttpError } from "./api";
 import { companyOf } from "./companies";
 import { VOID_INVOICE_STATUSES } from "./invoice-labels";
 import type { OwnerPart } from "./stock-owners";
-import { invoicedQtyOf, pendingQtyOf, remitoBillingStatus, type RemitoInvoiceLine, type RemitoLineLike } from "./remito-billing";
+import { invoicedQtyOf, lineNetCents, pendingQtyOf, remitoBillingStatus, type RemitoInvoiceLine, type RemitoLineLike } from "./remito-billing";
 import type { Session } from "./auth";
 
 /*
@@ -29,7 +29,7 @@ export const salesRemitoSchema = z.object({
   quoteId: z.union([id, z.literal("")]).optional().transform(value => value || undefined),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Poné la fecha").transform(value => new Date(`${value}T00:00:00.000Z`)),
   note: z.string().trim().max(1000).optional().default(""),
-  lines: z.array(z.object({ itemId: id, quantity: z.coerce.number().positive("Cada cantidad tiene que ser mayor a cero"), unitPriceCents: z.coerce.number().int().min(0).default(0) })).min(1, "Agregá al menos un material").max(100),
+  lines: z.array(z.object({ itemId: id, quantity: z.coerce.number().positive("Cada cantidad tiene que ser mayor a cero"), unitPriceCents: z.coerce.number().int().min(0).default(0), discountCents: z.coerce.number().int().min(0).default(0) })).min(1, "Agregá al menos un material").max(100),
 });
 export type SalesRemitoInput = z.infer<typeof salesRemitoSchema>;
 
@@ -45,10 +45,10 @@ const round = (value: number) => Math.round(value * 1000) / 1000;
 export async function createSalesRemito(input: SalesRemitoInput, session: Session) {
   const client = await Client.findById(input.clientId).select("name").lean<{ name?: string }>();
   if (!client) throw new HttpError("Elegí el cliente");
-  const merged = new Map<string, { itemId: string; quantity: number; unitPriceCents: number }>();
+  const merged = new Map<string, { itemId: string; quantity: number; unitPriceCents: number; discountCents: number }>();
   for (const line of input.lines) {
     const current = merged.get(line.itemId);
-    if (current) current.quantity = round(current.quantity + line.quantity); else merged.set(line.itemId, { ...line });
+    if (current) { current.quantity = round(current.quantity + line.quantity); current.discountCents += line.discountCents; } else merged.set(line.itemId, { ...line });
   }
   const lines = [...merged.values()];
   const docs = await StockItem.find({ _id: { $in: lines.map(line => line.itemId) } }) as unknown as ItemDoc[];
@@ -59,6 +59,7 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
     if (!item) throw new StockError("Uno de los materiales ya no está en el stock");
     const salon = levelsOf(item as unknown as Record<string, unknown>).salon;
     if (line.quantity > salon + 1e-9) short.push(`${item.name}: en el Salón hay ${salon} ${item.unit}`);
+    if (line.discountCents > Math.round(line.quantity * line.unitPriceCents)) throw new HttpError(`El descuento de ${item.name} pasa el importe del renglón`);
   }
   if (short.length) throw new StockError(`No alcanza el stock del Salón de Ventas (si está en el Galpón, primero hay que transferirlo). ${short.join(" · ")}`);
 
@@ -71,7 +72,7 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
     const before = item.toObject();
     const result = await applyStockMovement(item, { kind: "venta", quantity: line.quantity, clientId: input.clientId, remito: number, salesRemitoId: String(remito._id), destinationLabel: client.name, owner: input.company, note: input.note, date: input.date }, session);
     const movement = result.movements[0] as { ownerParts?: OwnerPart[]; unitCostCents?: number };
-    remitoLines.push({ stockItemId: item._id, name: item.name, unit: item.unit, quantity: line.quantity, unitPriceCents: line.unitPriceCents, totalCents: Math.round(line.quantity * line.unitPriceCents), unitCostCents: movement.unitCostCents, ownerParts: movement.ownerParts });
+    remitoLines.push({ stockItemId: item._id, name: item.name, unit: item.unit, quantity: line.quantity, unitPriceCents: line.unitPriceCents, discountCents: line.discountCents || undefined, totalCents: Math.max(0, Math.round(line.quantity * line.unitPriceCents) - line.discountCents), unitCostCents: movement.unitCostCents, ownerParts: movement.ownerParts });
     changed.push({ item, before, after: result.item });
   }
   remito.set("lines", remitoLines);
@@ -82,7 +83,7 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
 
 /** El cliente devuelve material de un remito: vuelve al Salón, con su mismo dueño, y queda un remito de entrada. */
 export async function returnSalesRemito(remitoId: string, input: z.infer<typeof returnSchema>, session: Session) {
-  const original = await SalesRemito.findById(remitoId).lean<Lean & { number: string; kind: string; status: string; company: string; clientId: Types.ObjectId; lines: Array<{ stockItemId: Types.ObjectId; name: string; unit: string; quantity: number; unitPriceCents: number; ownerParts?: OwnerPart[] }> }>();
+  const original = await SalesRemito.findById(remitoId).lean<Lean & { number: string; kind: string; status: string; company: string; clientId: Types.ObjectId; lines: Array<{ stockItemId: Types.ObjectId; name: string; unit: string; quantity: number; unitPriceCents: number; totalCents?: number; ownerParts?: OwnerPart[] }> }>();
   if (!original || original.kind !== "salida") throw new HttpError("Remito no encontrado");
   if (original.status === "anulado") throw new HttpError("El remito está anulado");
   // Lo que ya se devolvió de este remito no se devuelve dos veces.
@@ -108,7 +109,7 @@ export async function returnSalesRemito(remitoId: string, input: z.infer<typeof 
     const ratio = line.quantity / sold.quantity;
     const ownerParts = (sold.ownerParts || []).map(part => ({ owner: part.owner, quantity: round(part.quantity * ratio) })).filter(part => part.quantity > 0);
     await applyStockMovement(item, { kind: "devolucion", quantity: line.quantity, clientId: String(original.clientId), remito: number, salesRemitoId: String(back._id), destinationLabel: client?.name, ownerParts, note: input.note || `Devolución del remito ${original.number}`, date: input.date }, session);
-    lines.push({ stockItemId: item._id, name: sold.name, unit: sold.unit, quantity: line.quantity, unitPriceCents: sold.unitPriceCents, totalCents: Math.round(line.quantity * sold.unitPriceCents), ownerParts });
+    lines.push({ stockItemId: item._id, name: sold.name, unit: sold.unit, quantity: line.quantity, unitPriceCents: sold.unitPriceCents, totalCents: lineNetCents(sold, line.quantity), ownerParts });
   }
   back.set("lines", lines);
   back.totalCents = lines.reduce((total, line) => total + Number(line.totalCents || 0), 0);

@@ -14,6 +14,14 @@ const recordRoute = await import("../src/app/api/records/[entity]/[id]/route");
 const ordersRoute = await import("../src/app/api/payment-orders/route");
 const orderRoute = await import("../src/app/api/payment-orders/[id]/route");
 const emitRoute = await import("../src/app/api/purchases/[id]/emit/route");
+const decisionRoute = await import("../src/app/api/purchases/[id]/decision/route");
+/** Toda compra espera aprobación explícita: Gerencia la aprueba después de emitirla. */
+async function emitAndApprove(id: string) {
+  const emitted = await call(await emitRoute.POST(json("POST", {}), params({ id })));
+  expect(emitted.body).toMatchObject({ status: "pendiente_autorizacion" });
+  as("gerencia", "Gerencia");
+  return call(await decisionRoute.POST(json("POST", { approve: true }), params({ id })));
+}
 const purchasePaymentRoute = await import("../src/app/api/purchases/[id]/payment-order/route");
 
 let server: MongoMemoryServer;
@@ -220,8 +228,8 @@ describe("el circuito de la hoja de Tesorería", () => {
   it("solicitud → OC al autorizar → remito → factura → OP de la factura, sin ninguna OP antes", async () => {
     as("compras", "Compras");
     const supplier = String((await Supplier.create({ name: "Corralón del Centro" }))._id);
-    const request = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId: supplier, description: "Cemento", amountCents: 60_000_00, paymentTerms: "cuenta_corriente", requestedDate: "2026-10-08" }), params({ entity: "purchases" })));
-    const emitted = await call(await emitRoute.POST(json("POST", {}), params({ id: request.body._id })));
+    const request = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId: supplier, workId, description: "Cemento", amountCents: 60_000_00, paymentTerms: "cuenta_corriente", requestedDate: "2026-10-08" }), params({ entity: "purchases" })));
+    const emitted = await emitAndApprove(request.body._id);
     expect(emitted.body).toMatchObject({ status: "autorizada" });
     const orderId = String(emitted.body.orderId);
     expect(await Purchase.findById(orderId).lean()).toMatchObject({ stage: "orden", status: "emitida", paymentStatus: "pendiente" });
@@ -241,9 +249,9 @@ describe("compra de contado y su factura", () => {
   it("lo pagado contra la OC cubre la factura cuando llega: no aparece otra vez para pagar ni se cuenta dos veces", async () => {
     as("compras", "Compras");
     const supplier = String((await Supplier.create({ name: "Gomería del Norte" }))._id);
-    const request = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId: supplier, description: "Media sombra", amountCents: 120_000_00, paymentTerms: "contado", cashMethod: "efectivo", requestedDate: "2026-10-08" }), params({ entity: "purchases" })));
+    const request = await call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId: supplier, workId, description: "Media sombra", amountCents: 120_000_00, paymentTerms: "contado", cashMethod: "efectivo", requestedDate: "2026-10-08" }), params({ entity: "purchases" })));
     expect(request.status).toBe(201);
-    expect((await call(await emitRoute.POST(json("POST", {}), params({ id: request.body._id })))).status).toBe(200);
+    expect((await emitAndApprove(request.body._id)).status).toBe(200);
 
     as("administracion", "Tesorería");
     const advance = await call(await purchasePaymentRoute.POST(json("POST", { amountCents: 120_000_00, date: "2026-10-08", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true }), params({ id: request.body._id })));

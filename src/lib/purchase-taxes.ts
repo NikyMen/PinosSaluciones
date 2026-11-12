@@ -44,6 +44,15 @@ const share = (cents: number, percent: number) => Math.round(cents * percent / 1
 /** Cómo se lee un porcentaje: "10,5 %". */
 export const pctLabel = (value: number) => `${String(Math.round(value * 100) / 100).replace(".", ",")} %`;
 
+/**
+ * El neto de un renglón: cantidad por costo unitario, menos el descuento o la
+ * bonificación en pesos que tenga (nunca queda negativo).
+ */
+export function purchaseLineNetCents(line: { quantity?: number; unitCents?: number; discountCents?: number }) {
+  const gross = Math.round(Number(line.quantity || 0) * Number(line.unitCents || 0));
+  return Math.max(0, gross - Math.max(0, Math.round(Number(line.discountCents || 0))));
+}
+
 /** La alícuota de un renglón: la suya o, si no tiene, la de la solicitud. */
 export function lineVatPct(line: { vatPct?: number | null }, requestVatPct?: number) {
   if (isPurchaseVatRate(line.vatPct)) return Number(line.vatPct);

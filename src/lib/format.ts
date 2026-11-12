@@ -1,5 +1,10 @@
+/**
+ * Todo importe va con sus centavos, en compras y en ventas: mostrarlo redondeado
+ * escondía diferencias de centavos (una OP de $461.650 que no cerraba contra
+ * medios por $461.649,96 y en pantalla se veían iguales).
+ */
 export function money(cents = 0) {
-  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(cents / 100);
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((Number(cents) || 0) / 100);
 }
 
 export function compactMoney(cents = 0) {
@@ -81,6 +86,21 @@ export function isoPlusDays(days: number) {
 }
 
 /* ── Importes con separador de miles mientras se tipea ─────────────────────── */
+
+/**
+ * El punto que se acaba de tipear (el del teclado numérico) es la coma decimal:
+ * compara con lo que había antes y, si lo único nuevo es un ".", lo cambia por ",".
+ * Los puntos de los miles los pone la máscara, así que no se confunden.
+ */
+export function decimalPointToComma(previous: string, next: string) {
+  if (next.length !== previous.length + 1) return next;
+  let index = 0;
+  while (index < previous.length && previous[index] === next[index]) index++;
+  if (next[index] !== "." || next.slice(index + 1) !== previous.slice(index)) return next;
+  // Ya hay una coma: el segundo separador decimal no hace nada.
+  if (previous.includes(",")) return previous;
+  return `${next.slice(0, index).replace(/\./g, "")},${next.slice(index + 1).replace(/\./g, "")}`;
+}
 
 /** "1234567,5" → "1.234.567,5". Conserva la coma abierta para poder seguir tipeando. */
 export function maskAmount(value: string) {

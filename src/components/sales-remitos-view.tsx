@@ -134,7 +134,7 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
   const [quoteId, setQuoteId] = useState("");
   const [day, setDay] = useState(todayIso());
   const [note, setNote] = useState("");
-  const [lines, setLines] = useState<Array<{ item: PickedItem; available: number; quantity: string; price: number }>>([]);
+  const [lines, setLines] = useState<Array<{ item: PickedItem; available: number; quantity: string; price: number; discount: number }>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -146,16 +146,20 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
   const clientQuotes = quotes.filter(quote => quote.clientId === clientId && ["aprobada", "convertida"].includes(quote.status));
 
   const amount = (value: string) => Number(value.replace(",", ".")) || 0;
-  const total = lines.reduce((sum, line) => sum + Math.round(amount(line.quantity) * line.price * 100), 0);
+  // El neto de cada renglón: cantidad por precio, menos el descuento o bonificación en pesos.
+  const lineCents = (line: { quantity: string; price: number; discount: number }) => Math.max(0, Math.round(amount(line.quantity) * line.price * 100) - Math.round(line.discount * 100));
+  const total = lines.reduce((sum, line) => sum + lineCents(line), 0);
 
   async function submit() {
     if (!clientId) return setError("Elegí el cliente");
     if (lines.some(line => amount(line.quantity) <= 0)) return setError("Poné la cantidad de cada material");
     const over = lines.find(line => amount(line.quantity) > line.available);
     if (over) return setError(`De ${over.item.name} hay ${qty(over.available)} en el Salón`);
+    const overDiscount = lines.find(line => Math.round(line.discount * 100) > Math.round(amount(line.quantity) * line.price * 100));
+    if (overDiscount) return setError(`El descuento de ${overDiscount.item.name} pasa el importe del renglón`);
     setBusy(true); setError("");
     const response = await fetch("/api/remitos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-      company, clientId, quoteId, date: day, note, lines: lines.map(line => ({ itemId: line.item._id, quantity: amount(line.quantity), unitPriceCents: Math.round(line.price * 100) })),
+      company, clientId, quoteId, date: day, note, lines: lines.map(line => ({ itemId: line.item._id, quantity: amount(line.quantity), unitPriceCents: Math.round(line.price * 100), discountCents: Math.round(line.discount * 100) })),
     }) });
     const result = await response.json();
     setBusy(false);
@@ -182,16 +186,17 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
           <label><span>Fecha *</span><DateInput name="date" defaultValue={day} required recent onValueChange={setDay} /></label>
           <label><span>Observaciones</span><input value={note} onChange={event => setNote(event.target.value)} placeholder="Quién retira, entrega…" /></label>
         </div>
-        {lines.length > 0 && <table className="picked-lines"><thead><tr><th>Material</th><th>En el Salón</th><th>Cantidad</th><th>Precio unitario (neto)</th><th>Subtotal</th><th /></tr></thead><tbody>
+        {lines.length > 0 && <table className="picked-lines"><thead><tr><th>Material</th><th>En el Salón</th><th>Cantidad</th><th>Precio unitario (neto)</th><th>Descuento ($)</th><th>Subtotal</th><th /></tr></thead><tbody>
           {lines.map((line, index) => <tr key={line.item._id} className={amount(line.quantity) > line.available ? "row-alert" : ""}>
             <td>{line.item.name}</td><td>{qty(line.available)} {line.item.unit}</td>
             <td><input inputMode="decimal" value={line.quantity} onChange={event => setLines(current => current.map((row, position) => position === index ? { ...row, quantity: event.target.value.replace(/[^\d,.]/g, "") } : row))} /></td>
             <td><MoneyInput name={`price-${index}`} defaultValue={line.price} onValueChange={value => setLines(current => current.map((row, position) => position === index ? { ...row, price: value } : row))} /></td>
-            <td>{money(Math.round(amount(line.quantity) * line.price * 100))}</td>
+            <td><MoneyInput name={`discount-${index}`} defaultValue={line.discount} onValueChange={value => setLines(current => current.map((row, position) => position === index ? { ...row, discount: value } : row))} /></td>
+            <td>{money(lineCents(line))}</td>
             <td><button type="button" className="icon-btn" onClick={() => setLines(current => current.filter((_, position) => position !== index))} aria-label="Sacar"><X size={15} /></button></td>
           </tr>)}
         </tbody></table>}
-        <StockPicker warehouse="salon" exclude={lines.map(line => line.item._id)} onPick={(item, available) => setLines(current => [...current, { item, available, quantity: "", price: Number(item.lastPriceCents || 0) / 100 }])} />
+        <StockPicker warehouse="salon" exclude={lines.map(line => line.item._id)} onPick={(item, available) => setLines(current => [...current, { item, available, quantity: "", price: Number(item.lastPriceCents || 0) / 100, discount: 0 }])} />
         <p className="invoice-note">Si el material está en el Galpón, primero se transfiere al Salón (Stock y logística &gt; Transferencias).</p>
       </div>
       {error && <p className="form-error modal-error">{error}</p>}

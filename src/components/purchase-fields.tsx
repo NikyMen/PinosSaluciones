@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { Field } from "@/lib/entity-config";
 import { date, money } from "@/lib/format";
 import { FormField, type FieldProps } from "@/components/record-form";
-import { PURCHASE_PERCEPTIONS, pctLabel, purchaseTotals, storedPurchaseTaxes, voucherTaxFields } from "@/lib/purchase-taxes";
+import { PURCHASE_PERCEPTIONS, pctLabel, purchaseLineNetCents, purchaseTotals, storedPurchaseTaxes, voucherTaxFields } from "@/lib/purchase-taxes";
 import { baseInvoiceType, isCreditNote } from "@/lib/invoice-labels";
 import { MoneyInput } from "@/components/fields";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
@@ -64,10 +64,10 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
   const { values, number } = useFormValues(wrap);
   const [stockMode, setStockMode] = useState(editing ? Boolean(editing.stockOnApproval) : true);
   const [catalog, setCatalog] = useState<Item[]>([]);
-  type Line = { key: number; stockItemId?: string; code: string; name: string; unit: string; category: string; quantity: number; unitCents: number; vatPct: number; presentation?: string; minSale?: string };
+  type Line = { key: number; stockItemId?: string; code: string; name: string; unit: string; category: string; quantity: number; unitCents: number; discountCents: number; vatPct: number; presentation?: string; minSale?: string };
   const initial = Array.isArray(editing?.items) ? editing.items as Partial<Line>[] : [];
   const nextKey = useRef(initial.length + 1);
-  const blank = (key: number): Line => ({ key, code: "", name: "", unit: "unidad", category: "materiales", quantity: 1, unitCents: 0, vatPct: 21 });
+  const blank = (key: number): Line => ({ key, code: "", name: "", unit: "unidad", category: "materiales", quantity: 1, unitCents: 0, discountCents: 0, vatPct: 21 });
   const [lines, setLines] = useState<Line[]>(() => initial.length ? initial.map((line, key) => ({ ...blank(key), ...line, key })) : [blank(0)]);
   useEffect(() => { let active = true; fetchAllRecords("stock").then(items => { if (active) setCatalog(items as Item[]); }).catch(() => {}); return () => { active = false; }; }, []);
   const patchLine = (key: number, patch: Partial<Line>) => setLines(current => current.map(line => line.key === key ? { ...line, ...patch } : line));
@@ -76,7 +76,7 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
   const terms = values.paymentTerms || String(editing?.paymentTerms || "contado");
   const shown = fields.filter(field => !field.readOnly && !(field.key === "termDays" && terms !== "plazo") && !(field.key === "cashMethod" && terms !== "contado"));
   const rates = ratesOf(number);
-  const totals = purchaseTotals(itemMode ? lines.map(line => ({ totalCents: Math.round(line.quantity * line.unitCents), vatPct: line.vatPct })) : [{ totalCents: Math.round(number("subtotalCents") * 100) }], { ...rates, vatPct: values.vatPct === undefined ? stored?.vatPct : number("vatPct") });
+  const totals = purchaseTotals(itemMode ? lines.map(line => ({ totalCents: purchaseLineNetCents(line), vatPct: line.vatPct })) : [{ totalCents: Math.round(number("subtotalCents") * 100) }], { ...rates, vatPct: values.vatPct === undefined ? stored?.vatPct : number("vatPct") });
 
   const props = (field: Field) => {
     const base = fieldProps(field);
@@ -90,7 +90,8 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
 
   const renderField = (field: Field) => <FormField key={field.key} {...props(field)} />;
   // La forma de pago va a la vista en las dos modalidades: también se paga lo que entra directo a stock.
-  const basic = ["company", "deliverTo", "requestedDate", "paymentTerms", "cashMethod", "termDays"];
+  // El proveedor y la obra también: la orden de compra no sale sin ellos.
+  const basic = ["company", "supplierId", "workId", "deliverTo", "requestedDate", "paymentTerms", "cashMethod", "termDays"];
   const visible = shown.filter(field => !itemMode || !["description", "subtotalCents", "vatPct"].includes(field.key));
 
   return <div className="form-grid" ref={wrap}>
@@ -116,12 +117,13 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
         <label><span>Cantidad *</span><input type="number" min="0.001" step="0.001" required value={line.quantity || ""} onChange={event => patchLine(line.key, { quantity: Number(event.target.value) })} /></label>
         <label><span>Unidad</span><select value={line.unit} disabled={Boolean(line.stockItemId)} onChange={event => patchLine(line.key, { unit: event.target.value })}>{["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "rollo"].map(unit => <option key={unit}>{unit}</option>)}</select></label>
         <label><span>Costo unitario sin IVA</span><MoneyInput name={`item-cost-${line.key}`} defaultValue={line.unitCents / 100} key={`${line.key}-${line.stockItemId || "nuevo"}`} onValueChange={value => patchLine(line.key, { unitCents: Math.round(value * 100) })} /></label>
+        <label><span>Descuento / bonificación<em className="field-hint">En pesos, sobre el renglón</em></span><MoneyInput name={`item-discount-${line.key}`} defaultValue={(line.discountCents || 0) / 100} onValueChange={value => patchLine(line.key, { discountCents: Math.round(value * 100) })} /></label>
         <label><span>IVA</span><select value={line.vatPct} onChange={event => patchLine(line.key, { vatPct: Number(event.target.value) })}>{PURCHASE_VAT_RATES.map(rate => <option value={rate} key={rate}>{pctLabel(rate)}</option>)}</select></label>
         {!line.stockItemId && <label><span>Rubro</span><select value={line.category} onChange={event => patchLine(line.key, { category: event.target.value })}>{["materiales", "herramientas", "seguridad", "consumibles", "otros"].map(category => <option key={category}>{category}</option>)}</select></label>}
-        <div><span>Neto: {money(Math.round(line.quantity * line.unitCents))}</span> <button type="button" className="secondary-btn" disabled={lines.length === 1} onClick={() => setLines(current => current.filter(row => row.key !== line.key))}>Quitar ítem</button></div>
+        <div><span>Neto: {money(purchaseLineNetCents(line))}</span>{(line.discountCents || 0) > Math.round(line.quantity * line.unitCents) && <small className="warning-line">El descuento pasa el importe del renglón</small>} <button type="button" className="secondary-btn" disabled={lines.length === 1} onClick={() => setLines(current => current.filter(row => row.key !== line.key))}>Quitar ítem</button></div>
       </fieldset>)}<button type="button" className="secondary-btn" disabled={lines.length >= 200} onClick={() => setLines(current => [...current, blank(nextKey.current++)])}>Agregar ítem</button></div>
     </>}
-    {itemMode ? <details className="wide"><summary>Proveedor, observaciones y otros datos</summary><div className="form-grid">{visible.filter(field => !basic.includes(field.key)).map(field => renderField(stockMode && field.key === "supplierId" ? { ...field, label: "Proveedor (opcional)", hint: undefined } : field))}</div></details>
+    {itemMode ? <details className="wide"><summary>Observaciones y otros datos</summary><div className="form-grid">{visible.filter(field => !basic.includes(field.key)).map(renderField)}</div></details>
       : visible.filter(field => !basic.includes(field.key)).map(renderField)}
     <TaxPreview netCents={totals.subtotalCents} vatRows={totals.vatByRate} rates={rates} amounts={totals} totalLabel="Total de la solicitud" />
   </div>;
@@ -164,7 +166,14 @@ function useOrderInvoices(purchaseId: string) {
 export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]; fieldProps: (field: Field) => FieldProps; editing: Item | null }) {
   const wrap = useRef<HTMLDivElement>(null);
   const { values, number } = useFormValues(wrap);
-  const net = Math.round(number("netCents") * 100);
+  // Se carga el subtotal (antes del descuento) y el descuento o bonificación en pesos: el neto es la resta.
+  const netField = fields.find(field => field.key === "netCents");
+  const discountField = fields.find(field => field.key === "discountCents");
+  const storedNet = netField ? Number(fieldProps(netField).value || 0) : 0;
+  const storedDiscount = discountField ? Number(fieldProps(discountField).value || 0) : 0;
+  const grossCents = values.grossNetCents === undefined ? storedNet + storedDiscount : Math.round(number("grossNetCents") * 100);
+  const discountCents = values.discountCents === undefined ? storedDiscount : Math.round(number("discountCents") * 100);
+  const net = Math.max(0, grossCents - discountCents);
   const voucherType = values.voucherType || "";
   const withVat = Boolean(voucherType) && baseInvoiceType(voucherType) === "factura_a";
   const rates = ratesOf(number);
@@ -195,7 +204,12 @@ export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]
         : "";
 
   return <div className="form-grid" ref={wrap}>
-    {fields.filter(field => field !== receiptsField).map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}
+    {fields.filter(field => field !== receiptsField).map((field, index) => field === netField
+      ? <label key={field.key}><span>Subtotal sin IVA<em className="field-hint">Antes del descuento. Si lo cargás, el IVA, las percepciones y el total salen solos</em></span>
+        <MoneyInput name="grossNetCents" defaultValue={(storedNet + storedDiscount) / 100} />
+        <input type="hidden" name="netCents" value={grossCents > 0 ? net / 100 : ""} />
+        {grossCents > 0 && <small className={discountCents > grossCents ? "warning-line" : "muted-line"}>{discountCents > grossCents ? "El descuento pasa el subtotal" : `Neto después del descuento: ${money(net)}`}</small>}</label>
+      : <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}
     {receiptsField && <input type="hidden" name="purchaseReceiptIds" value={order ? selected.join(",") : ""} />}
     {order && <fieldset className="receipt-picker">
       <span>Remitos de la orden {order.number} que factura</span>

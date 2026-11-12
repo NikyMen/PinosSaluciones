@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CalendarDays, Check, ChevronDown, FileUp, Paperclip, Phone, Plus, Search, Trash2, X } from "lucide-react";
-import { amountToInput, displayDateToIso, isoPlusDays, isoToDisplayDate, maskAmount, maskDate, parseAmount, todayIso } from "@/lib/format";
+import { amountToInput, decimalPointToComma, displayDateToIso, isoPlusDays, isoToDisplayDate, maskAmount, maskDate, parseAmount, todayIso } from "@/lib/format";
 import { UPLOAD_ACCEPT, UPLOAD_FORMATS_TEXT } from "@/lib/upload-types";
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ export function MoneyInput({ name, defaultValue = 0, required, autoFocus, disabl
     <input
       inputMode="decimal" autoComplete="off" autoFocus={autoFocus} disabled={disabled} placeholder={placeholder}
       value={text}
-      onChange={event => { const next = maskAmount(event.target.value); setText(next); onValueChange?.(parseAmount(next)); }}
+      onChange={event => { const next = maskAmount(decimalPointToComma(text, event.target.value)); setText(next); onValueChange?.(parseAmount(next)); }}
       onBlur={() => setText(current => (current ? amountToInput(parseAmount(current)) : ""))}
       aria-label="Importe en pesos"
     />

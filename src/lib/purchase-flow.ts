@@ -16,7 +16,7 @@ import type { CompanyKey } from "./companies";
 import type { WarehouseKey } from "./warehouses";
 import type { Session } from "./auth";
 import { purchaseApprovalState, purchaseTermsText, requestStatusLabels } from "./purchase-flow-labels";
-import { PURCHASE_TAX_PCT_KEYS, purchaseTaxFields, storedPurchaseTaxes, type TaxedLine } from "./purchase-taxes";
+import { PURCHASE_TAX_PCT_KEYS, purchaseLineNetCents, purchaseTaxFields, storedPurchaseTaxes, type TaxedLine } from "./purchase-taxes";
 
 /*
  * El circuito de compras (requerimiento integral v4, punto 2, con lo que
@@ -36,7 +36,7 @@ import { PURCHASE_TAX_PCT_KEYS, purchaseTaxFields, storedPurchaseTaxes, type Tax
  */
 
 type Lean = Record<string, unknown> & { _id: Types.ObjectId };
-type PurchaseLine = { stockItemId?: Types.ObjectId; code?: string; name: string; unit?: string; category?: string; presentation?: string; minSale?: string; quantity: number; unitCents: number; receivedQty?: number };
+type PurchaseLine = { stockItemId?: Types.ObjectId; code?: string; name: string; unit?: string; category?: string; presentation?: string; minSale?: string; quantity: number; unitCents: number; discountCents?: number; receivedQty?: number };
 type PurchaseDoc = Lean & {
   number: string; stage: string; status: string; company?: CompanyKey; supplierId?: Types.ObjectId; amountCents?: number;
   requestId?: Types.ObjectId; orderId?: Types.ObjectId; items?: PurchaseLine[]; paymentTerms?: string; termDays?: number;
@@ -81,7 +81,9 @@ export async function emitRequest(id: string, session: Session) {
   const request = await load(id);
   if (request.stage !== "solicitud") throw new HttpError("Sólo se emite una solicitud de compra");
   if (request.status !== "borrador") throw new HttpError(`La solicitud ${request.number} ya está ${requestStatusLabels[request.status]?.toLowerCase() || request.status}`, 409);
-  if (!request.supplierId && !request.stockOnApproval) throw new HttpError("Elegí el proveedor antes de emitirla: Tesorería le va a pagar a él");
+  // Toda orden de compra sale con su proveedor y su obra, también la que va a stock (pedido de Administración, nov. 2026).
+  if (!request.supplierId) throw new HttpError("Elegí el proveedor antes de emitirla: la orden de compra no sale sin proveedor");
+  if (!request.workId) throw new HttpError("Elegí la obra antes de emitirla: la orden de compra no sale sin obra asignada");
   if (request.stockOnApproval && (!request.items?.length || !["central", "salon"].includes(String(request.deliverTo)))) throw new HttpError("Cargá los materiales y elegí Galpón o Salón de Ventas");
   await checkStockReferences(request);
   if (!(Number(request.amountCents) > 0)) throw new HttpError("Poné el neto de la solicitud antes de emitirla: el total sale de ahí y de los impuestos");
@@ -386,6 +388,9 @@ export const purchaseReceiptSchema = z.object({
 export type PurchaseReceiptInput = z.infer<typeof purchaseReceiptSchema>;
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
+/** El costo por unidad de un renglón de la OC: el unitario o, si tiene descuento, su neto repartido en la cantidad. */
+const lineUnitCostCents = (line: PurchaseLine) => Number(line.discountCents || 0) > 0 && Number(line.quantity) > 0
+  ? Math.round(purchaseLineNetCents(line) / Number(line.quantity)) : Number(line.unitCents || 0);
 
 /**
  * El remito del proveedor de una OC: suma al stock lo que llegó de cada renglón
@@ -431,11 +436,12 @@ export async function registerPurchaseReceipt(id: string, input: PurchaseReceipt
     const line = items[entry.line];
     const { item } = await stockItemForPurchaseLine(line, order);
     await applyStockMovement(item, {
-      kind: "ingreso", warehouse, quantity: entry.quantity, unitCostCents: Number(line.unitCents || 0), owner: (order.company || "tvp") as CompanyKey,
+      // Con descuento en el renglón, el costo que entra a stock es el neto del renglón por unidad.
+      kind: "ingreso", warehouse, quantity: entry.quantity, unitCostCents: lineUnitCostCents(line), owner: (order.company || "tvp") as CompanyKey,
       supplierId: order.supplierId ? String(order.supplierId) : undefined, reference: input.supplierRemito || order.number,
       note: `Remito ${input.supplierRemito || number} de la orden ${order.number}`, purchaseId: String(order._id),
     }, session);
-    lines.push({ line: entry.line, name: line.name, unit: String(item.unit || ""), quantity: entry.quantity, unitCents: line.unitCents, stockItemId: item._id });
+    lines.push({ line: entry.line, name: line.name, unit: String(item.unit || ""), quantity: entry.quantity, unitCents: lineUnitCostCents(line), stockItemId: item._id });
   }
   const receipt = await PurchaseReceipt.create({
     number, purchaseId: order._id, company: order.company, supplierId: order.supplierId, supplierRemito: input.supplierRemito,
@@ -484,7 +490,10 @@ export function checkPurchaseChanges(before: Record<string, unknown>, changes: R
 export function preparePurchaseAmounts(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
   if ("paymentTerms" in data && data.paymentTerms !== "contado") data.cashMethod = null;
   if (before._id && !(before.stage === "solicitud" && before.status === "borrador")) return;
-  if (Array.isArray(data.items)) data.items = data.items.map(line => ({ ...line, totalCents: Math.round(Number(line.quantity) * Number(line.unitCents)), receivedQty: 0 }));
+  if (Array.isArray(data.items)) {
+    for (const line of data.items) if (Number(line.discountCents || 0) > Math.round(Number(line.quantity) * Number(line.unitCents))) throw new HttpError(`El descuento de ${String(line.name || "un renglón")} pasa el importe del renglón`);
+    data.items = data.items.map(line => ({ ...line, discountCents: Math.max(0, Math.round(Number(line.discountCents || 0))), totalCents: purchaseLineNetCents(line), receivedQty: 0 }));
+  }
   const touched = ["items", "subtotalCents", "amountCents", ...PURCHASE_TAX_PCT_KEYS].some(key => key in data && data[key] !== undefined);
   if (!touched) return;
   const merged = { ...before, ...data };

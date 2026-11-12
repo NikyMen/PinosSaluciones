@@ -290,7 +290,7 @@ describe("listas de precios (base)", () => {
     const old = await PriceListItem.find({ supplierId: sika._id, current: true }).lean() as Array<{ _id: Types.ObjectId; code: string }>;
     const idOf = (code: string) => String(old.find(row => row.code === code)!._id);
 
-    const order = (body: unknown) => ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestedDate: "2026-09-20", cashMethod: "transferencia", ...body as object }) }));
+    const order = (body: unknown) => ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestedDate: "2026-09-20", cashMethod: "transferencia", workId: String(work._id), ...body as object }) }));
     // El mismo producto dos veces se junta en un renglón.
     const first = await call(await order({ supplierId: sikaId, workId: String(work._id), expectedDate: "2026-09-30", notes: "Entregar de 8 a 12",
       items: [{ itemId: idOf("SK1"), quantity: 2 }, { itemId: idOf("SK2"), quantity: 1.5 }, { itemId: idOf("SK1"), quantity: 1 }] }));
@@ -391,7 +391,9 @@ describe("empresa que compra", () => {
     const supplier = await Supplier.create({ name: "Proveedor empresas" });
     await importList(String(supplier._id), "2026-09-01", [item("EMP1", "MEMBRANA EMP", "Balde", 1_000)]);
     const line = await PriceListItem.findOne({ supplierId: supplier._id, current: true }).lean() as { _id: Types.ObjectId };
-    const response = await call(await ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company: "constructora", requestedDate: "2026-09-30", cashMethod: "transferencia", supplierId: String(supplier._id), items: [{ itemId: String(line._id), quantity: 1 }] }) })));
+    const client = await Client.create({ name: "Cliente empresas" });
+    const work = await Work.create({ code: "OB-EMP", name: "Obra empresas", clientId: client._id, status: "en_curso" });
+    const response = await call(await ordersRoute.POST(new Request("http://test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ company: "constructora", requestedDate: "2026-09-30", cashMethod: "transferencia", supplierId: String(supplier._id), workId: String(work._id), items: [{ itemId: String(line._id), quantity: 1 }] }) })));
     expect(response.status).toBe(201);
     expect(response.body.purchase.company).toBe("constructora");
     expect(response.body.pdf.company).toBe("constructora");

@@ -18,6 +18,8 @@ import { companyOf, type CompanyKey } from "./companies";
 export type PurchaseOrderLine = {
   code?: string; name: string; presentation?: string; quantity: number;
   listPriceCents: number; discountPct: number; unitCents: number; totalCents: number;
+  /** El descuento o la bonificación en pesos del renglón (sale en BONIF.). */
+  discountCents?: number;
   /** La alícuota de IVA del renglón. */ vatPct?: number;
   /** Para el detalle de una orden cargada a mano: se parte en varias líneas en vez de cortarse. */
   wrap?: boolean;
@@ -197,7 +199,7 @@ export function buildPurchaseOrderPdf(doc: jsPDF, data: PurchaseOrderPdfData, me
     doc.setFont("helvetica", "normal");
     doc.text(plain(qty(item.quantity)), col.qty, y, { align: "right" });
     doc.text(plain(money(item.listPriceCents)), col.list, y, { align: "right" });
-    doc.text(item.discountPct ? plain(`${qty(item.discountPct)}%`) : "-", col.discount, y, { align: "right" });
+    doc.text(item.discountCents ? plain(`-${money(item.discountCents)}`) : item.discountPct ? plain(`${qty(item.discountPct)}%`) : "-", col.discount, y, { align: "right" });
     doc.text(item.vatPct !== undefined ? plain(pctLabel(item.vatPct).replace(" ", "")) : "-", col.vat, y, { align: "right" });
     doc.text(plain(money(item.unitCents)), col.unit, y, { align: "right" });
     doc.setFont("helvetica", "bold");
@@ -325,7 +327,7 @@ export function purchaseOrderPdfData(purchase: Record<string, unknown>, supplier
     quoteNumber: quoteNumber || String(purchase.quoteNumber || "") || undefined,
     items: items.map(item => ({
       code: item.code || "", name: item.name, presentation: item.presentation || "", quantity: Number(item.quantity || 0), wrap: item.wrap,
-      listPriceCents: Number(item.listPriceCents || 0), discountPct: Number(item.discountPct || 0), unitCents: Number(item.unitCents || 0), totalCents: Number(item.totalCents || 0),
+      listPriceCents: Number(item.listPriceCents || 0), discountPct: Number(item.discountPct || 0), discountCents: Number(item.discountCents || 0) || undefined, unitCents: Number(item.unitCents || 0), totalCents: Number(item.totalCents || 0),
       vatPct: lineVatPct(item, vatPct),
     })),
     subtotalCents,
