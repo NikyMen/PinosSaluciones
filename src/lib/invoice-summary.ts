@@ -1,10 +1,10 @@
 import { Expense, Invoice } from "./models";
-import { VOID_INVOICE_STATUSES } from "./invoice-labels";
+import { CREDIT_NOTE_TYPES, VOID_INVOICE_STATUSES } from "./invoice-labels";
 
 type InvoiceEntity = "expenses" | "invoices";
 
 const invoiceFilter = (entity: InvoiceEntity) => ({
-  ...(entity === "expenses" ? { voucherType: { $exists: true, $nin: [null, ""] } } : {}),
+  ...(entity === "expenses" ? { voucherType: { $exists: true, $nin: [null, "", ...CREDIT_NOTE_TYPES] } } : {}),
   status: { $nin: entity === "expenses" ? ["anulado", "anulada", "sustituida"] : VOID_INVOICE_STATUSES },
 });
 

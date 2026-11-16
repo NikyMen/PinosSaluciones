@@ -40,7 +40,7 @@ type Common = { note?: string; date?: Date };
 export type MovementInput =
   | Common & { kind: "ingreso"; warehouse?: WarehouseKey; quantity: number; unitCostCents: number; owner?: CompanyKey; supplierId?: string; reference?: string; purchaseId?: string; ticket?: string }
   // Desde la caja, varios materiales comparten el remito de cada depósito: llega ya numerado en `remitos`.
-  | Common & { kind: "egreso"; workId: string; parts: Array<{ warehouse: WarehouseKey; quantity: number }>; reference?: string; ticket?: string; remitos?: Partial<Record<WarehouseKey, string>> }
+  | Common & { kind: "egreso"; workId: string; parts: Array<{ warehouse: WarehouseKey; quantity: number }>; reference?: string; ticket?: string; remitos?: Partial<Record<WarehouseKey, string>>; salesRemitoId?: string }
   | Common & { kind: "transferencia"; from: WarehouseKey; to: WarehouseKey; quantity: number; remito?: string; transferId?: string; owner?: OwnerKey }
   | Common & { kind: "recepcion"; from: WarehouseKey; to: WarehouseKey; sentQty: number; receivedQty: number; damagedQty?: number; ownerParts?: OwnerPart[]; remito?: string; transferId?: string }
   | Common & { kind: "venta"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; workId?: string; owner?: OwnerKey }
@@ -128,7 +128,7 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
       });
       created.push({
         kind: "egreso", quantity: part.quantity, warehouse: part.warehouse, workId: work._id, remito, destinationLabel, quoteNumber: quote?.number, ownerParts,
-        unitCostCents: item.avgCostCents, totalCents, expenseId: expense._id, reference: input.reference || remito, note: input.note || destinationLabel, ticket: input.ticket, ...who,
+        unitCostCents: item.avgCostCents, totalCents, expenseId: expense._id, salesRemitoId: input.salesRemitoId, reference: input.reference || remito, note: input.note || destinationLabel, ticket: input.ticket, ...who,
       });
     }
     consumed = { workId: work._id, quoteId: work.quoteId, quantity: round(parts.reduce((total, part) => total + part.quantity, 0)) };

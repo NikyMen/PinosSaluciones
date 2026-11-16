@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const { remito, changed } = await createSalesRemito(parsed.data, session);
     const ip = request.headers.get("x-forwarded-for") || undefined;
     await audit(session, "create", "sales_remitos", remito._id, null, remito, ip);
-    for (const entry of changed) await audit(session, "stock_venta", "stock", entry.item._id, entry.before, entry.after, ip);
+    for (const entry of changed) await audit(session, remito.workId ? "stock_egreso" : "stock_venta", "stock", entry.item._id, entry.before, entry.after, ip);
     return Response.json(remito, { status: 201 });
   } catch (error) {
     if (error instanceof StockError) return Response.json({ error: error.message }, { status: 409 });

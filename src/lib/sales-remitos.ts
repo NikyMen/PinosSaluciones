@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { z } from "zod";
-import { Client, Invoice, SalesRemito, StockItem, Work } from "./models";
+import { Client, Expense, Invoice, SalesRemito, StockItem, Work } from "./models";
 import { applyStockMovement, nextRemitoNumber, StockError } from "./stock-service";
 import { levelsOf } from "./stock-levels";
 import { HttpError } from "./api";
@@ -76,7 +76,10 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
   for (const line of lines) {
     const item = byId.get(line.itemId)!;
     const before = item.toObject();
-    const result = await applyStockMovement(item, { kind: "venta", quantity: line.quantity, clientId, remito: number, salesRemitoId: String(remito._id), destinationLabel, workId: input.workId, owner: input.company, note: input.note, date: input.date }, session);
+    // A una obra es consumo, no venta: sale del Salón como salida a obra (cuenta en la obra y en su cotización).
+    const result = work
+      ? await applyStockMovement(item, { kind: "egreso", workId: String(work._id), parts: [{ warehouse: "salon", quantity: line.quantity }], remitos: { salon: number }, salesRemitoId: String(remito._id), reference: number, note: input.note || `Recibió ${input.receiverName}`, date: input.date }, session)
+      : await applyStockMovement(item, { kind: "venta", quantity: line.quantity, clientId, remito: number, salesRemitoId: String(remito._id), destinationLabel, owner: input.company, note: input.note, date: input.date }, session);
     const movement = result.movements[0] as { ownerParts?: OwnerPart[]; unitCostCents?: number };
     remitoLines.push({ stockItemId: item._id, name: item.name, unit: item.unit, quantity: line.quantity, unitPriceCents: line.unitPriceCents, discountCents: line.discountCents || undefined, totalCents: Math.max(0, Math.round(line.quantity * line.unitPriceCents) - line.discountCents), unitCostCents: movement.unitCostCents, ownerParts: movement.ownerParts });
     changed.push({ item, before, after: result.item });
@@ -137,6 +140,8 @@ export async function cancelSalesRemito(remitoId: string, reason: string, sessio
     if (!item) continue;
     await applyStockMovement(item, { kind: "devolucion", quantity: line.quantity, clientId: String(remito.clientId), remito: remito.number, salesRemitoId: String(remito._id), ownerParts: line.ownerParts, note: `Remito ${remito.number} anulado: ${reason}` }, session);
   }
+  // La entrega a obra había cargado el costo del material en la obra: se anula con el remito.
+  if (remito.workId) await Expense.updateMany({ workId: remito.workId, number: remito.number, category: "materiales", voucherType: { $in: [null, ""] }, status: "pendiente" }, { $set: { status: "anulado" } });
   return SalesRemito.findById(remitoId).lean();
 }
 
