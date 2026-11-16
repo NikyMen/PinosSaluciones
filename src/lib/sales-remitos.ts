@@ -275,9 +275,10 @@ export async function releaseRemitos(invoice: { _id?: unknown; remitoLines?: unk
 /** Los remitos con sus clientes, para la pantalla. */
 export async function listSalesRemitos(filter: { status?: string; clientId?: string; kind?: string } = {}) {
   const query: Record<string, unknown> = {};
-  if (filter.status) query.status = filter.status;
+  if (filter.status) query.status = filter.status === "por_facturar" ? { $in: ["pendiente", "parcial"] } : filter.status;
+  if (filter.status === "por_facturar") query.kind = "salida";
   if (filter.clientId) query.clientId = filter.clientId;
-  if (filter.kind) query.kind = filter.kind;
+  if (filter.kind && filter.status !== "por_facturar") query.kind = filter.kind;
   const remitos = await SalesRemito.find(query).sort({ createdAt: -1 }).limit(300).lean<Lean[]>();
   const [clients, invoices] = await Promise.all([
     Client.find({ _id: { $in: remitos.map(remito => remito.clientId) } }).select("name cuit address").lean<Lean[]>(),

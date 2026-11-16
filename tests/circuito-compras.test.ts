@@ -377,6 +377,40 @@ describe("remitos en la factura y cotización de venta en la OC", () => {
   });
 });
 
+describe("facturas de compra con remitos sin OC", () => {
+  it("factura varios remitos del proveedor y vincula la OC después", async () => {
+    const receiptsRoute = await import("../src/app/api/purchase-receipts/route");
+    const linksRoute = await import("../src/app/api/expenses/[id]/links/route");
+    const request = await newRequest(1_000_00);
+    const orderId = String((await emitAndApprove(request._id)).body.orderId);
+    const payload = { supplierId, workId, date: "2026-09-05", lines: [{ name: "Sellador", quantity: 2.5, unit: "litro" }] };
+    const invalid = await call(await receiptsRoute.POST(json("POST", { ...payload, workId: undefined, supplierRemito: "S-1" })));
+    expect(invalid.status).toBe(400);
+    const receipts = [];
+    for (const number of ["S-1", "S-2"]) {
+      const receipt = await call(await receiptsRoute.POST(json("POST", { ...payload, supplierRemito: number })));
+      expect(receipt.status).toBe(201);
+      expect(receipt.body).toMatchObject({ supplierId, workId });
+      receipts.push(receipt.body._id);
+    }
+    as("gerencia", "Gerencia");
+    const expense = (data: Record<string, unknown>) => recordsRoute.POST(json("POST", {
+      withRemito: true, supplierId, voucherType: "factura_a", number: "0007-00000010", description: "Selladores",
+      category: "materiales", issueDate: "2026-11-06", netCents: 10, amountCents: 0, ...data,
+    }), params({ entity: "expenses" }));
+    const missing = await call(await expense({}));
+    expect(missing).toMatchObject({ status: 400, body: { error: "Elegí al menos un remito de compra" } });
+    const receiptPrices = receipts.map(receiptId => ({ receiptId, line: 0, unitCents: 220_00 }));
+    const created = await call(await expense({ purchaseReceiptIds: receipts, receiptPrices, discountCents: 100_00, vatPct: 21 }));
+    expect(created).toMatchObject({ status: 201, body: { netCents: 1000_00, amountCents: 1210_00, workId } });
+    const duplicate = await call(await expense({ purchaseReceiptIds: receipts, receiptPrices }));
+    expect(duplicate.status).toBe(409);
+    const linked = await call(await linksRoute.PATCH(json("PATCH", { kind: "purchase", id: orderId }), params({ id: created.body._id })));
+    expect(linked).toMatchObject({ status: 200, body: { order: { _id: orderId } } });
+    expect(linked.body.receipts).toHaveLength(2);
+  });
+});
+
 describe("migración de las compras de antes", () => {
   it("renumera las solicitudes, pasa los estados y ata las OP a su OC", async () => {
     const db = mongoose.connection;

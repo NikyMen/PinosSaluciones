@@ -223,7 +223,7 @@ async function orderFor(request: PurchaseDoc, session: Session) {
   const orderId = new Types.ObjectId();
   const claimed = await Purchase.updateOne({ _id: request._id, orderId: { $exists: false } }, { $set: { orderId } });
   if (!claimed.modifiedCount) return Purchase.findById((await Purchase.findById(request._id).select("orderId").lean<{ orderId: unknown }>())?.orderId).lean<PurchaseDoc>();
-  const copy = ["company", "supplierId", "workId", "quoteId", "quoteNumber", "neededBy", "priority", "description", "amountCents", "subtotalCents", "vatCents", "notes",
+  const copy = ["company", "supplierId", "workId", "quoteId", "workCategoryId", "quoteNumber", "neededBy", "priority", "description", "amountCents", "subtotalCents", "vatCents", "notes",
     "approval",
     "vatPct", "perceptionVatPct", "perceptionVatCents", "perceptionIibbPct", "perceptionIibbCents", "perceptionIibbProvPct", "perceptionIibbProvCents", "internalTaxPct", "internalTaxCents", "cashMethod",
     "priceListId", "priceListDate", "deliverTo", "paymentTerms", "termDays", "requiresAdvance", "stockOnApproval", "requestedDate", "expectedDate"];
@@ -445,7 +445,7 @@ export async function registerPurchaseReceipt(id: string, input: PurchaseReceipt
   }
   const receipt = await PurchaseReceipt.create({
     number, purchaseId: order._id, company: order.company, supplierId: order.supplierId, supplierRemito: input.supplierRemito,
-    date: input.date ? new Date(`${input.date}T00:00:00.000Z`) : new Date(), warehouse, lines, status: input.status, final: close,
+    date: input.date ? new Date(`${input.date}T00:00:00.000Z`) : new Date(), workId: order.workId, quoteId: order.quoteId, warehouse, lines, status: input.status, final: close,
     attachment: input.attachment, notes: input.notes, userId: session.userId, userName: session.name,
   });
   await Purchase.updateOne({ _id: order._id }, { $push: { history: history(`Remito ${input.supplierRemito || number}${close ? " (final: orden cerrada)" : ""}`, session, input.status === "observada" ? input.notes : undefined) } });

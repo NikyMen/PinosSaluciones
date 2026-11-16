@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-11-10 · 28 colecciones.
+Generado el 2026-11-16 · 29 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -45,6 +45,7 @@ Colección `quotes` · entidad `quotes`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `workCategoryId` | referencia | — | apunta a **WorkCategory** |
 | `number` | texto | sí | único |
 | `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
 | `clientId` | referencia | sí | apunta a **Client** |
@@ -118,6 +119,7 @@ Colección `works` · entidad `works`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `workCategoryId` | referencia | — | apunta a **WorkCategory** |
 | `code` | texto | sí | único |
 | `name` | texto | sí | — |
 | `clientId` | referencia | sí | apunta a **Client** |
@@ -330,6 +332,7 @@ Colección `purchases` · entidad `purchases`
 | `workId` | referencia | — | apunta a **Work** |
 | `quoteId` | referencia | — | apunta a **Quote** |
 | `neededBy` | fecha | — | — |
+| `workCategoryId` | referencia | — | apunta a **WorkCategory** |
 | `priority` | texto | — | valores: `alta` · `media` · `baja` · por defecto `"media"` |
 | `description` | texto | sí | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
@@ -398,6 +401,7 @@ Colección `purchases` · entidad `purchases`
 | `items.listPriceCents` | número | — | mínimo 0 · por defecto `0` |
 | `items.discountPct` | número | — | por defecto `0` |
 | `items.unitCents` | número | — | mínimo 0 · por defecto `0` |
+| `items.discountCents` | número | — | mínimo 0 · por defecto `0` |
 | `items.totalCents` | número | — | mínimo 0 · por defecto `0` |
 | `items.vatPct` | número | — | — |
 | `items.receivedQty` | número | — | mínimo 0 · por defecto `0` |
@@ -444,6 +448,7 @@ Colección `expenses` · entidad `expenses`
 | `company` | texto | — | valores: `tvp` · `constructora` |
 | `voucherType` | texto | — | valores: `factura_a` · `nota_debito_a` · `nota_credito_a` · `factura_c` · `nota_debito_c` · `nota_credito_c` · `factura_x` |
 | `netCents` | número | — | — |
+| `discountCents` | número | — | — |
 | `vatPct` | número | — | — |
 | `vatCents` | número | — | — |
 | `perceptionVatPct` | número | — | — |
@@ -456,6 +461,15 @@ Colección `expenses` · entidad `expenses`
 | `internalTaxCents` | número | — | — |
 | `purchaseId` | referencia | — | apunta a **Purchase** |
 | `receiptRef` | texto | — | — |
+| `quoteId` | referencia | — | apunta a **Quote** |
+| `withRemito` | sí/no | — | — |
+| `workCategoryId` | referencia | — | apunta a **WorkCategory** |
+| `billedPurchaseReceipts` | lista | — | — |
+| `orderPrices` | lista | — | — |
+| `receiptPrices` | lista de objetos | — | — |
+| `receiptPrices.receiptId` | referencia | — | apunta a **PurchaseReceipt** |
+| `receiptPrices.line` | número | — | — |
+| `receiptPrices.unitCents` | número | — | — |
 | `purchaseReceiptIds` | lista | — | — |
 | `accountId` | referencia | — | apunta a **Account** |
 | `description` | texto | sí | — |
@@ -502,6 +516,7 @@ Colección `invoices` · entidad `invoices`
 | `dueDate` | fecha | — | — |
 | `period` | texto | — | — |
 | `netCents` | número | — | — |
+| `discountCents` | número | — | — |
 | `vatPct` | número | — | — |
 | `vatCents` | número | — | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
@@ -511,6 +526,7 @@ Colección `invoices` · entidad `invoices`
 | `replacesId` | referencia | — | apunta a **Invoice** |
 | `replacedById` | referencia | — | apunta a **Invoice** |
 | `remitoIds` | lista | — | — |
+| `withRemito` | sí/no | — | — |
 | `remitoLines` | lista de objetos | — | — |
 | `remitoLines.remitoId` | referencia | sí | apunta a **SalesRemito** |
 | `remitoLines.line` | número | sí | — |
@@ -537,8 +553,10 @@ Colección `collections` · entidad `collections`
 | `allocations` | lista de objetos | — | — |
 | `allocations.invoiceId` | referencia | sí | apunta a **Invoice** |
 | `allocations.amountCents` | número | sí | mínimo 0 |
+| `company` | texto | — | valores: `tvp` · `constructora` |
 | `date` | fecha | sí | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
+| `onAccountCents` | número | — | mínimo 0 · por defecto `0` |
 | `userName` | texto | — | — |
 | `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `echeq` · `tarjeta` · `otro` · `retencion` |
 | `cashAccountId` | referencia | — | apunta a **CashAccount** |
@@ -593,6 +611,7 @@ Colección `payments` · entidad `payments`
 | `dueDate` | fecha | — | — |
 | `amountCents` | número | — | mínimo 0 · por defecto `0` |
 | `retentionsCents` | número | — | mínimo 0 · por defecto `0` |
+| `onAccountCents` | número | — | mínimo 0 · por defecto `0` |
 | `method` | texto | sí | valores: `transferencia` · `efectivo` · `cheque` · `echeq` · `cheque_tercero` · `tarjeta` · `otro` |
 | `checkId` | referencia | — | apunta a **Check** |
 | `lines` | lista de objetos | — | — |
@@ -1087,6 +1106,7 @@ Remitos de venta al cliente desde el Salón (y devoluciones). Descuentan el stoc
 | `lines.unit` | texto | — | — |
 | `lines.quantity` | número | — | — |
 | `lines.unitPriceCents` | número | — | mínimo 0 · por defecto `0` |
+| `lines.discountCents` | número | — | mínimo 0 |
 | `lines.totalCents` | número | — | mínimo 0 · por defecto `0` |
 | `lines.unitCostCents` | número | — | — |
 | `lines.ownerParts` | lista de objetos | — | — |
@@ -1122,12 +1142,14 @@ Reservas de stock de una cotización aprobada. Las consumen las salidas a su obr
 
 ### PurchaseReceipt
 
-Remitos del proveedor contra una orden de compra (RE-n). Suman al stock lo recibido de cada renglón; el final cierra la orden. Colección `purchasereceipts`.
+Remitos del proveedor (RE-n). Con OC, suman al stock lo recibido y el final cierra la orden. Sin OC, registran la entrega con proveedor y cotización u obra. Colección `purchasereceipts`.
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
 | `number` | texto | sí | único |
-| `purchaseId` | referencia | sí | apunta a **Purchase** |
+| `purchaseId` | referencia | — | apunta a **Purchase** |
+| `workId` | referencia | — | apunta a **Work** |
+| `quoteId` | referencia | — | apunta a **Quote** |
 | `company` | texto | — | valores: `tvp` · `constructora` |
 | `supplierId` | referencia | — | apunta a **Supplier** |
 | `supplierRemito` | texto | — | — |
@@ -1156,5 +1178,17 @@ Remitos del proveedor contra una orden de compra (RE-n). Suman al stock lo recib
 | `files.replacedByName` | texto | — | — |
 | `userId` | referencia | — | apunta a **User** |
 | `userName` | texto | — | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### WorkCategory
+
+Rubros de obra administrables. Se asignan en la cotización y se copian a la obra, la compra y la factura. Colección `workcategories`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `key` | texto | sí | único |
+| `name` | texto | sí | — |
+| `allowed` | sí/no | — | por defecto `true` |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |

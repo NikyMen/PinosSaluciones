@@ -208,6 +208,7 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
       {group.keys.map((key, index) => renderField(key, groupIndex === 0 && index === 0))}
     </div></fieldset>)}
 
+    {typeof source.withRemito === "boolean" && <input type="hidden" name="withRemito" value={String(source.withRemito)} />}
     {/* Los campos ocultos del formulario genérico: a qué X sustituye y qué remitos factura. */}
     {["replacesId", "remitoIds", "certificateId"].map(key => { const target = field(key); return target ? <FormField key={key} {...fieldProps(target)} /> : null; })}
     {remitoDetail.length > 0 && <fieldset><legend><b>Remitos que factura</b><small>Todo lo pendiente o una parte: lo que no se facture queda pendiente en el remito</small></legend>

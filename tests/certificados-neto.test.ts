@@ -36,7 +36,9 @@ afterAll(async () => {
 describe("el certificado se calcula sobre el neto", () => {
   it("la cotización a mano guarda su neto y la obra lo hereda", async () => {
     const client = await Client.create({ name: "Consorcio Neto" });
-    const created = await call(await recordsRoute.POST(json("POST", { clientId: String(client._id), title: "Pintura", amountCents: 1_210_000_00, status: "aprobada" }), params({ entity: "quotes" })));
+    const { listWorkCategories } = await import("../src/lib/work-categories");
+    const workCategoryId = String((await listWorkCategories())[0]._id);
+    const created = await call(await recordsRoute.POST(json("POST", { clientId: String(client._id), title: "Pintura", amountCents: 1_210_000_00, status: "aprobada", workCategoryId }), params({ entity: "quotes" })));
     expect(created.status).toBe(201);
     expect(created.body.netCents).toBe(1_000_000_00);
 
@@ -46,7 +48,7 @@ describe("el certificado se calcula sobre el neto", () => {
 
     const work = await call(await convertRoute.POST(json("POST", { code: "OB-N1", name: "Pintura" }), params({ id: created.body._id })));
     expect(work.status).toBe(201);
-    expect(work.body).toMatchObject({ budgetCents: 2_420_000_00, budgetNetCents: 2_000_000_00 });
+    expect(work.body).toMatchObject({ budgetCents: 2_420_000_00, budgetNetCents: 2_000_000_00, workCategoryId });
   });
 
   it("con cascada el neto es el subtotal 3, no el precio con IVA", () => {

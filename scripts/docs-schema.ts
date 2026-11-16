@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import type { Schema } from "mongoose";
 import { entityLabels, entities } from "../src/lib/constants";
-import { modelByEntity, User, AuditLog, Counter, WorkInspection, PriceList, PriceListItem, VoucherBook, StockTransfer, SalesRemito, StockReservation, PurchaseReceipt } from "../src/lib/models";
+import { modelByEntity, User, AuditLog, Counter, WorkInspection, PriceList, PriceListItem, VoucherBook, StockTransfer, SalesRemito, StockReservation, PurchaseReceipt, WorkCategory } from "../src/lib/models";
 
 const OUT = "docs/modelo-datos/esquema-actual.md";
 
@@ -74,7 +74,8 @@ const extras = [
   ["StockTransfer", StockTransfer, "Transferencias entre depósitos: salen con remito, quedan en tránsito y el destino confirma lo recibido (con las diferencias)."],
   ["SalesRemito", SalesRemito, "Remitos de venta al cliente desde el Salón (y devoluciones). Descuentan el stock; la factura los referencia."],
   ["StockReservation", StockReservation, "Reservas de stock de una cotización aprobada. Las consumen las salidas a su obra; se liberan si la cotización se cae."],
-  ["PurchaseReceipt", PurchaseReceipt, "Remitos del proveedor contra una orden de compra (RE-n). Suman al stock lo recibido de cada renglón; el final cierra la orden."],
+  ["PurchaseReceipt", PurchaseReceipt, "Remitos del proveedor (RE-n). Con OC, suman al stock lo recibido y el final cierra la orden. Sin OC, registran la entrega con proveedor y cotización u obra."],
+  ["WorkCategory", WorkCategory, "Rubros de obra administrables. Se asignan en la cotización y se copian a la obra, la compra y la factura."],
 ] as const;
 
 const parts: string[] = [

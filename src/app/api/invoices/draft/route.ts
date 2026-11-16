@@ -81,7 +81,7 @@ export async function GET(request: Request) {
           company: first.company, number: numbers[first.company]?.[firstType] || "", clientId: String(first.clientId),
           quoteId: first.quoteId ? String(first.quoteId) : "",
           // El precio del remito es el neto: la A le suma el IVA; la X no lo discrimina.
-          netCents: same.reduce((total, remito) => total + remitoPendingCents(remito), 0),
+          withRemito: true, netCents: same.reduce((total, remito) => total + remitoPendingCents(remito), 0),
           remitoIds: same.map(remito => String(remito._id)), remitoDetail,
           remitoLines: remitoDetail.flatMap(remito => remito.lines.map(line => ({ remitoId: remito.remitoId, line: line.line, quantity: line.pendingQty }))),
           issueDate: todayIso(),

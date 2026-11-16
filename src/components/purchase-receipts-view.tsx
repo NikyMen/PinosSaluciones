@@ -9,6 +9,7 @@ import { date, qty } from "@/lib/format";
 import { companyOf } from "@/lib/companies";
 import { warehouseLabel } from "@/lib/warehouses";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
+import { StandaloneReceiptForm } from "@/components/standalone-receipt-form";
 
 type Receipt = {
   _id: string; number: string; supplierRemito?: string; date: string; warehouse?: string; status: string; final?: boolean; notes?: string; attachment?: string; userName?: string;
@@ -26,8 +27,13 @@ export function PurchaseReceiptsView({ canReceive }: { canReceive: boolean }) {
   const [rows, setRows] = useState<Receipt[] | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState("");
+  useEffect(() => {
+    const initial = new URLSearchParams(window.location.search).get("buscar");
+    if (initial) { const timer = window.setTimeout(() => setSearch(initial), 0); return () => window.clearTimeout(timer); }
+  }, []);
   const [error, setError] = useState("");
   const [orderFor, setOrderFor] = useState<string | null>(null);
+  const [standalone, setStandalone] = useState(false);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/purchase-receipts?search=${encodeURIComponent(search)}`);
@@ -49,10 +55,11 @@ export function PurchaseReceiptsView({ canReceive }: { canReceive: boolean }) {
     <div className="page-heading"><div>
       <p className="eyebrow">COMPRAS</p>
       <h1>Remitos de compra</h1>
-      <p>Lo que entregó cada proveedor, contra su orden de compra. Al cargarlo suma al stock; puede ser parcial y el remito final cierra la orden.</p>
+      <p>Lo que entregó cada proveedor para una cotización u obra. Si tiene una orden, la recepción actualiza el stock y el remito final cierra la orden.</p>
     </div></div>
     <div className="toolbar">
       <div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Remito, orden de compra…" aria-label="Buscar remitos" /></div>
+      {canReceive && <button className="secondary-btn" onClick={() => setStandalone(true)}><PackagePlus size={17} /> Remito sin OC</button>}
       {canReceive && <div className="receipt-order-pick">
         <SearchSelect name="order" options={options} value="" onChange={value => value && setOrderFor(value)} placeholder={orders.length ? "Cargar remito de la orden…" : "No hay órdenes por recibir"} />
         <PackagePlus size={17} />
@@ -62,17 +69,18 @@ export function PurchaseReceiptsView({ canReceive }: { canReceive: boolean }) {
     <section className="table-panel">
       {rows === null ? <div className="loading-state">Cargando…</div> : !rows.length ? <div className="empty-state"><p>Todavía no se cargaron remitos de compra.</p></div>
         : <div className="table-scroll"><table><thead><tr><th>Remito</th><th>Fecha</th><th>Orden</th><th>Proveedor</th><th>Llegó</th><th>Estado</th><th /></tr></thead><tbody>
-          {rows.map(row => <tr key={row._id} className="clickable-row" onClick={() => row.order && setOrderFor(row.order._id)} title="Abrir la orden de compra">
+          {rows.map(row => <tr key={row._id} className="clickable-row" onClick={() => row.order && setOrderFor(row.order._id)} title={row.order ? "Abrir la orden de compra" : undefined}>
             <td data-label="Remito"><b>{row.supplierRemito || row.number}</b><small className="tracking-sub">{row.number} · {row.userName || ""}</small></td>
             <td data-label="Fecha">{date(row.date)}</td>
             <td data-label="Orden">{row.order ? <><b>{row.order.number}</b> <span className={`company-badge ${companyOf(row.company).key}`}>{companyOf(row.company).short}</span></> : "—"}</td>
             <td data-label="Proveedor">{row.supplierName || "—"}</td>
-            <td data-label="Llegó"><ul className="transfer-lines">{row.lines.map((line, index) => <li key={index}>{qty(line.quantity)} {line.unit || ""} · {line.name}</li>)}</ul><small className="tracking-sub">{warehouseLabel(row.warehouse || "central")}</small></td>
+            <td data-label="Llegó"><ul className="transfer-lines">{row.lines.map((line, index) => <li key={index}>{qty(line.quantity)} {line.unit || ""} · {line.name}</li>)}</ul><small className="tracking-sub">{row.order && warehouseLabel(row.warehouse || "central")}</small></td>
             <td data-label="Estado"><span className={`badge ${row.status === "observada" ? "remito-pendiente" : "remito-facturado"}`}>{row.status === "observada" ? "Observada" : "Conforme"}</span>{row.final && <small className="tracking-sub">Final</small>}{row.status === "observada" && row.notes && <small className="tracking-sub">{row.notes}</small>}</td>
             <td className="row-actions" onClick={event => event.stopPropagation()}>{row.attachment && <a className="row-action-wide" href={row.attachment} target="_blank" rel="noreferrer"><Paperclip size={14} /> Remito</a>}</td>
           </tr>)}
         </tbody></table></div>}
     </section>
+    {standalone && <StandaloneReceiptForm onClose={() => setStandalone(false)} onSaved={() => { setStandalone(false); void load(); }} />}
     {orderFor && <PurchaseDetailModal purchaseId={orderFor} onClose={() => setOrderFor(null)} onChanged={() => { void load(); }} />}
   </>;
 }

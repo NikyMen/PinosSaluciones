@@ -110,7 +110,13 @@ const CascadeSchema = new Schema({
   chequePct: { type: Number, default: 0 },
 }, { _id: false });
 
+const WorkCategorySchema = new Schema({
+  key: { type: String, required: true, unique: true },
+  name: { type: String, required: true }, allowed: { type: Boolean, default: true },
+}, options);
+
 const QuoteSchema = new Schema({
+  workCategoryId: { type: Schema.Types.ObjectId, ref: "WorkCategory" },
   number: { type: String, required: true, unique: true, trim: true },
   // Con qué empresa se va a facturar, si ya se sabe. La factura la toma de acá.
   company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
@@ -167,6 +173,7 @@ const ProgressLineSchema = new Schema({
 });
 
 const WorkSchema = new Schema({
+  workCategoryId: { type: Schema.Types.ObjectId, ref: "WorkCategory" },
   code: { type: String, required: true, unique: true },
   name: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, managerId: { type: Schema.Types.ObjectId, ref: "User" },
@@ -679,6 +686,7 @@ const PurchaseSchema = new Schema({
   company: { type: String, enum: ["tvp", "constructora"], default: "tvp" }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, workId: { type: Schema.Types.ObjectId, ref: "Work" },
   // De dónde sale la necesidad: la cotización (con su obra) o un pedido. Con eso la ruta se recorre de punta a punta.
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, neededBy: Date,
+  workCategoryId: { type: Schema.Types.ObjectId, ref: "WorkCategory" },
   priority: { type: String, enum: ["alta", "media", "baja"], default: "media" },
   description: { type: String, required: true }, amountCents: money,
   // La solicitud (SC-n) y la orden de compra (OC-n) son documentos distintos: la OC nace cuando
@@ -732,7 +740,8 @@ const PurchaseSchema = new Schema({
  */
 const PurchaseReceiptSchema = new Schema({
   number: { type: String, required: true, unique: true },
-  purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase", required: true, index: true },
+  purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase", index: true },
+  workId: { type: Schema.Types.ObjectId, ref: "Work" }, quoteId: { type: Schema.Types.ObjectId, ref: "Quote" },
   company: { type: String, enum: ["tvp", "constructora"] }, supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
   supplierRemito: String, date: { type: Date, required: true }, warehouse: { type: String, enum: WAREHOUSE_KEYS },
   lines: [{ _id: false, line: Number, name: String, unit: String, quantity: Number, unitCents: Number, stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" } }],
@@ -773,8 +782,14 @@ const ExpenseSchema = new Schema({
   perceptionVatPct: Number, perceptionVatCents: Number, perceptionIibbPct: Number, perceptionIibbCents: Number,
   perceptionIibbProvPct: Number, perceptionIibbProvCents: Number, internalTaxPct: Number, internalTaxCents: Number,
   // La orden de compra de donde sale y el remito o la conformidad de lo recibido: los remitos de
-  // compra que factura (elegidos de los de su OC) y, como texto, su número o una conformidad.
+  // compra que factura (de su OC o sin OC del mismo proveedor) y, como texto, su número o una conformidad.
   purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase" }, receiptRef: String,
+  quoteId: { type: Schema.Types.ObjectId, ref: "Quote" },
+  withRemito: Boolean,
+  workCategoryId: { type: Schema.Types.ObjectId, ref: "WorkCategory" },
+  billedPurchaseReceipts: { type: [Schema.Types.ObjectId], default: undefined },
+  orderPrices: { type: [Number], default: undefined },
+  receiptPrices: { type: [{ _id: false, receiptId: { type: Schema.Types.ObjectId, ref: "PurchaseReceipt" }, line: Number, unitCents: Number }], default: undefined },
   purchaseReceiptIds: { type: [{ type: Schema.Types.ObjectId, ref: "PurchaseReceipt" }], default: undefined },
   accountId: { type: Schema.Types.ObjectId, ref: "Account" },
   description: { type: String, required: true },
@@ -790,6 +805,8 @@ const ExpenseSchema = new Schema({
   associatedExpenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
   files: { type: [FileRefSchema], default: undefined },
 }, options);
+
+ExpenseSchema.index({ billedPurchaseReceipts: 1 }, { unique: true, partialFilterExpression: { billedPurchaseReceipts: { $type: "objectId" } } });
 
 // Las facturas A y B se emiten en ARCA desde acá (con CAE) o, las de Tango, se cargan
 // a mano para seguir cada cotización hasta su cobro. `number` es el comprobante completo (punto de venta y número).
@@ -816,6 +833,7 @@ const InvoiceSchema = new Schema({
   replacesId: { type: Schema.Types.ObjectId, ref: "Invoice" }, replacedById: { type: Schema.Types.ObjectId, ref: "Invoice" },
   // Los remitos de venta que factura. La factura no vuelve a mover stock: eso ya lo hizo el remito.
   remitoIds: { type: [{ type: Schema.Types.ObjectId, ref: "SalesRemito" }], default: undefined },
+  withRemito: Boolean,
   // Qué cantidades de qué renglones de esos remitos factura (`line` es el índice del renglón).
   remitoLines: { type: [{ _id: false, remitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito", required: true }, line: { type: Number, required: true }, quantity: { type: Number, required: true } }], default: undefined },
   // Una factura que pasa de lo disponible de su cotización, certificado o remitos sólo se guarda si Gerencia la autoriza con motivo.
@@ -1092,6 +1110,7 @@ const NotificationSettingsSchema = new Schema({ _id: String, hours: { type: Map,
 
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
 export const Client = mongoose.models.Client || mongoose.model("Client", ClientSchema);
+export const WorkCategory = mongoose.models.WorkCategory || mongoose.model("WorkCategory", WorkCategorySchema);
 export const Quote = mongoose.models.Quote || mongoose.model("Quote", QuoteSchema);
 export const Work = mongoose.models.Work || mongoose.model("Work", WorkSchema);
 export const StockItem = mongoose.models.StockItem || mongoose.model("StockItem", StockItemSchema);

@@ -39,6 +39,8 @@ Plan para ejecutar las etapas que faltan del relevamiento con Cristian, Jorge, F
 
 ## Etapa 3: remitos y vínculos entre documentos (prioridad P1)
 
+Implementada el 16/11. Ver [Remitos y vínculos entre documentos](decisiones/2026-11-remitos-y-vinculos.md).
+
 **Regla de Fer:** la **factura es el centro**. Desde la factura se ve todo: OC, cotización, OP y remitos. Desde la OP solo se ve la factura. Los documentos se tienen que poder asociar en cualquier orden.
 
 ### 3.1 Factura "con remito" y "sin remito" (R1, V1)

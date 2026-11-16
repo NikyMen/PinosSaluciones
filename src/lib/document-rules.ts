@@ -15,6 +15,7 @@ import { checkExpenseLimit, checkPurchaseChanges, preparePaymentOrder, preparePu
 import type { Entity } from "./constants";
 import type { Session } from "./auth";
 import { prepareWorkChanges } from "./work-status";
+import { checkQuoteCategory, projectCategory } from "./work-categories";
 
 /*
  * Las reglas de los comprobantes y de la imputación al plan de cuentas que
@@ -34,7 +35,8 @@ function ledgerDirection(entity: Entity, record: Record<string, unknown>): "ingr
 const ledgerRequired = new Set<Entity>(["cash", "payments", "collections"]);
 
 export async function beforeCreate(entity: Entity, data: Record<string, unknown>, session?: Session) {
-  if (entity === "works") prepareWorkChanges(data);
+  if (entity === "works") { prepareWorkChanges(data); Object.assign(data, await projectCategory(data)); }
+  if (entity === "quotes") await checkQuoteCategory(data.workCategoryId);
   delete data.accountChangeReason;
   if (entity === "accounts") data.direction = accountDirection(data.code);
 
@@ -49,7 +51,7 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
   if (entity === "purchases" && session) await prepareNewRequest(data, session);
   // El total de la solicitud sale del neto y los impuestos.
   if (entity === "purchases") preparePurchaseAmounts(data);
-  if (entity === "purchases") await preparePurchaseQuote(data);
+  if (entity === "purchases") { await preparePurchaseQuote(data); Object.assign(data, await projectCategory(data)); }
   if (entity === "expenses") await prepareExpense(data);
   if (entity === "expenses" && session) await checkExpenseLimit(data, {}, session.role);
   prepareNetAmounts(entity, data);
@@ -68,7 +70,8 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
 
 /** En un cambio: valida la cuenta nueva y, si cambió, guarda quién, cuándo, de cuál a cuál y por qué. */
 export async function beforeUpdate(entity: Entity, before: Record<string, unknown>, changes: Record<string, unknown>, session: Session) {
-  if (entity === "works") prepareWorkChanges(changes, before);
+  if (entity === "works") { prepareWorkChanges(changes, before); if ("quoteId" in changes) Object.assign(changes, await projectCategory({ ...before, ...changes })); }
+  if (entity === "quotes") await checkQuoteCategory(changes.workCategoryId ?? before.workCategoryId, before.workCategoryId);
   const reason = changes.accountChangeReason;
   delete changes.accountChangeReason;
   if (entity === "accounts" && changes.code) changes.direction = accountDirection(changes.code);
@@ -87,7 +90,10 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
   // Una solicitud emitida queda en sólo lectura; una orden, salvo la entrega y las notas.
   if (entity === "purchases") checkPurchaseChanges(before, changes);
   if (entity === "purchases") preparePurchaseAmounts(changes, before);
-  if (entity === "purchases") await preparePurchaseQuote(changes, before);
+  if (entity === "purchases") {
+    await preparePurchaseQuote(changes, before);
+    if ("workId" in changes || "quoteId" in changes) Object.assign(changes, await projectCategory({ ...before, ...changes }));
+  }
   if (entity === "payments") await preparePaymentOrder(changes, before);
   if (entity === "payments") {
     // Una OP de varias facturas se cambia desde su pantalla: acá sólo el estado, la caja, la cuenta y los datos sueltos.
@@ -139,22 +145,52 @@ function prepareNetAmounts(entity: Entity, data: Record<string, unknown>, before
  */
 async function prepareExpense(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
   const merged = { ...before, ...data };
-  if (data.purchaseId) {
-    const purchase = await Purchase.findById(data.purchaseId).select("company supplierId workId amountCents subtotalCents items vatPct perceptionVatPct perceptionIibbPct perceptionIibbProvPct internalTaxPct").lean<Record<string, unknown> & { company?: string; supplierId?: unknown; workId?: unknown }>();
+  if (before._id && !before.purchaseId && before.withRemito !== undefined && data.purchaseId) throw new HttpError("Usá Asociar a OC / cotización desde la factura");
+  if (before.purchaseId && before.withRemito !== undefined && "purchaseId" in data && comparable(data.purchaseId) !== comparable(before.purchaseId)) {
+    throw new HttpError("La orden de compra de esta factura ya está vinculada");
+  }
+  const modern = merged.withRemito !== undefined;
+  if (before._id && before.withRemito !== undefined && "withRemito" in data && data.withRemito !== before.withRemito) throw new HttpError("El modo de remito se fija al crear la factura");
+  if (modern && !merged.voucherType) throw new HttpError("Elegí el tipo de factura de compra");
+  if (data.purchaseId || (modern && before.purchaseId && ["company", "supplierId", "workId", "quoteId", "orderPrices", "discountCents", "netCents"].some(key => key in data))) {
+    const purchase = await Purchase.findById(merged.purchaseId).select("stage status company supplierId workId quoteId workCategoryId amountCents subtotalCents items vatPct perceptionVatPct perceptionIibbPct perceptionIibbProvPct internalTaxPct").lean<Record<string, unknown> & { company?: string; supplierId?: unknown; workId?: unknown }>();
     if (!purchase) throw new HttpError("La orden de compra elegida no existe");
     // Lo que no vino (una carga por la API): la alícuota y los porcentajes de la OC.
     if (!before._id) {
       const taxes = storedPurchaseTaxes(purchase);
       for (const key of PURCHASE_TAX_PCT_KEYS) if (data[key] === undefined && (key !== "vatPct" || purchase.vatPct !== undefined)) data[key] = taxes[key];
     }
-    if (!merged.company && purchase.company) data.company = purchase.company;
-    if (!merged.supplierId && purchase.supplierId) data.supplierId = purchase.supplierId;
-    // Un GGI o un bien de uso no hereda la obra de la OC.
-    if (!merged.workId && purchase.workId && !await worklessAccount(merged.accountId)) data.workId = purchase.workId;
+    if (modern) {
+      if (purchase.stage === "solicitud" || ["anulada", "cancelada"].includes(String(purchase.status))) throw new HttpError("Elegí una orden de compra vigente");
+      for (const key of ["company", "supplierId", "workId", "quoteId"]) {
+        if (data[key] && comparable(data[key]) !== comparable(purchase[key])) throw new HttpError("La empresa, el proveedor, la cotización y la obra tienen que coincidir con la orden de compra");
+        if (purchase[key]) data[key] = purchase[key];
+      }
+      if (purchase.workCategoryId) data.workCategoryId = purchase.workCategoryId;
+      if (merged.withRemito === false && (!before._id || Array.isArray(before.orderPrices) || "orderPrices" in data)
+        && (!before._id || "orderPrices" in data || "discountCents" in data || "netCents" in data)) {
+        const lines = (purchase.items || []) as Array<{ quantity: number }>;
+        const prices = (merged.orderPrices || []) as number[];
+        if (lines.length !== prices.length) throw new HttpError("Cargá los precios de los renglones de la orden de compra");
+        if (lines.length) {
+          const subtotal = lines.reduce((sum, line, index) => sum + Math.round(line.quantity * prices[index]), 0);
+          const discount = Number(merged.discountCents || 0);
+          if (discount > subtotal) throw new HttpError("El descuento pasa el subtotal");
+          data.netCents = subtotal - discount;
+          if (data.netCents === 0) data.amountCents = 0;
+        }
+      }
+    } else {
+      if (!merged.company && purchase.company) data.company = purchase.company;
+      if (!merged.supplierId && purchase.supplierId) data.supplierId = purchase.supplierId;
+      // Un GGI o un bien de uso de una factura anterior no hereda la obra de la OC.
+      if (!merged.workId && purchase.workId && !await worklessAccount(merged.accountId)) data.workId = purchase.workId;
+    }
   }
-  if ("accountId" in data || "workId" in data) await checkWorkForAccount(merged.accountId, data.workId ?? before.workId);
   await checkPurchaseNote(data, before);
   await checkExpenseReceipts(data, before);
+  if (!data.workCategoryId && ("workId" in data || "quoteId" in data)) Object.assign(data, await projectCategory({ ...before, ...data }));
+  if ((!modern || (!merged.purchaseId && !merged.withRemito)) && ("accountId" in data || "workId" in data)) await checkWorkForAccount(merged.accountId, data.workId ?? before.workId);
   const company = data.company ?? before.company;
   if (merged.voucherType) {
     if (!company) data.company = "tvp";
@@ -218,13 +254,61 @@ export async function checkExpenseDelete(expenseId: unknown) {
   if (payment) throw new HttpError(`La factura tiene la orden de pago ${String(payment.number || "")}: para borrarla, primero anulá la OP.`, 409);
 }
 
-/**
- * Los remitos que factura una factura de compra son de su OC. Si no se
- * escribió el remito o la conformidad, queda el número de los elegidos. Sin
- * OC no lleva remitos; si cambia la OC, los de la anterior se sueltan.
- */
+type ReceiptForExpense = {
+  _id: unknown; number?: string; supplierRemito?: string; purchaseId?: unknown; supplierId?: unknown; workId?: unknown; quoteId?: unknown;
+  lines?: Array<{ name?: string; quantity: number; unitCents?: number }>;
+};
+type ReceiptPrice = { receiptId: string; line: number; unitCents: number };
+
+/** Valida los remitos y calcula el neto con las cantidades registradas en Compras. */
 async function checkExpenseReceipts(data: Record<string, unknown>, before: Record<string, unknown>) {
-  const purchaseId = data.purchaseId !== undefined ? data.purchaseId : before.purchaseId;
+  const merged = { ...before, ...data };
+  const { purchaseId, supplierId, status, withRemito } = merged;
+  if (withRemito !== undefined) {
+    const ids = [...new Set((Array.isArray(merged.purchaseReceiptIds) ? merged.purchaseReceiptIds : []).map(String))];
+    if (withRemito && !ids.length) throw new HttpError("Elegí al menos un remito de compra");
+    if (!withRemito && ids.length) throw new HttpError("Elegí Factura con remito para facturar remitos de compra");
+    if (!ids.length) return;
+    if (before._id && !["purchaseReceiptIds", "purchaseId", "supplierId", "receiptPrices", "discountCents", "netCents", "status", "withRemito"].some(key => key in data)) return;
+    if (!supplierId) throw new HttpError("Elegí el proveedor de los remitos");
+    const receipts = await PurchaseReceipt.find({ _id: { $in: ids } }).lean<ReceiptForExpense[]>();
+    if (receipts.length !== ids.length || receipts.some(receipt => receipt.purchaseId
+      ? comparable(receipt.purchaseId) !== comparable(purchaseId)
+      : comparable(receipt.supplierId) !== comparable(supplierId))) {
+      throw new HttpError("Los remitos tienen que ser de la orden elegida o remitos sin OC del mismo proveedor");
+    }
+    if (status !== "anulado" && await Expense.exists({
+      _id: { $ne: before._id ?? null }, status: { $ne: "anulado" }, purchaseReceiptIds: { $in: ids },
+    })) throw new HttpError("Uno de los remitos ya se incluyó en otra factura", 409);
+    const prices = (merged.receiptPrices || []) as ReceiptPrice[];
+    const byLine = new Map(prices.map(price => [`${price.receiptId}:${price.line}`, price.unitCents]));
+    let subtotal = 0;
+    let count = 0;
+    for (const receipt of receipts) {
+      for (const [index, line] of (receipt.lines || []).entries()) {
+        const price = byLine.get(`${String(receipt._id)}:${index}`);
+        if (price === undefined) throw new HttpError("Cargá el precio de cada renglón de los remitos elegidos");
+        subtotal += Math.round(line.quantity * price);
+        count++;
+      }
+    }
+    if (count !== byLine.size || count !== prices.length) throw new HttpError("Hay precios que no corresponden a los renglones de los remitos elegidos");
+    const discount = Number(merged.discountCents || 0);
+    if (subtotal < discount) throw new HttpError("El descuento pasa el subtotal");
+    if (count) {
+      data.netCents = subtotal - discount;
+      if (data.netCents === 0) data.amountCents = 0;
+    }
+    data.purchaseReceiptIds = ids;
+    data.billedPurchaseReceipts = status === "anulado" ? [] : ids;
+    data.receiptRef = receipts.map(receipt => receipt.supplierRemito || receipt.number).join(", ");
+    const receivedWorks = [...new Set(receipts.map(receipt => receipt.workId).filter(Boolean).map(String))];
+    const receivedQuotes = [...new Set(receipts.map(receipt => receipt.quoteId).filter(Boolean).map(String))];
+    if (!merged.workId && receivedWorks.length === 1) data.workId = receivedWorks[0];
+    if (!merged.quoteId && receivedQuotes.length === 1) data.quoteId = receivedQuotes[0];
+    return;
+  }
+  // Las facturas anteriores conservan su circuito de remitos de la OC.
   if (!("purchaseReceiptIds" in data)) {
     if ("purchaseId" in data && String(data.purchaseId ?? "") !== String(before.purchaseId ?? "") && Array.isArray(before.purchaseReceiptIds) && before.purchaseReceiptIds.length) data.purchaseReceiptIds = [];
     return;

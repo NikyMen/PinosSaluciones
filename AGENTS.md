@@ -26,6 +26,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Formularios de Tesorería y Compras: factura de compra con número 4 + 8 (la letra la da el comprobante) y percepciones por importe (sólo el IVA en %); al cargar facturas no se elige el estado. La OP está en el menú Compras, toma el tipo de gasto y la obra de la factura, no tiene "Pago" y no ofrece e-Cheq (el cheque sale sólo de cuentas de cheques diferidos). La solicitud de compra permite cargar precios con IVA incluido. Ver `docs/decisiones/2026-11-tesoreria-formularios.md`.
 
+- Remitos y vínculos: Compras y Ventas tienen altas de factura con y sin remito. El remito de compra sin OC pide proveedor, cotización u obra y materiales. La factura de compra calcula el neto a partir de los remitos pendientes y los precios, puede asociar la OC o cotización después y reúne todos los comprobantes en Vinculado. La cotización requiere un rubro editable desde Configuración. Ver `docs/decisiones/2026-11-remitos-y-vinculos.md`.
+
 - Importación: botón Plantilla (`GET /api/import/[entity]`); las relaciones se resuelven por nombre, CUIT o código y las fechas en dd/mm/aaaa. Así se cargan las cotizaciones.
 
 Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en VPS", "Actualizar producción" y "Backups". En resumen:

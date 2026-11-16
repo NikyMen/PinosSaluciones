@@ -8,6 +8,7 @@ import { PURCHASE_PERCEPTIONS, pctLabel, purchaseLineNetCents, purchaseTotals, s
 import { baseInvoiceType, isCreditNote, isNote } from "@/lib/invoice-labels";
 import { MoneyInput } from "@/components/fields";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
+import { ProjectCategoryField } from "@/components/work-category-settings";
 import { todayIso } from "@/lib/format";
 import { PURCHASE_VAT_RATES } from "@/lib/purchase-taxes";
 
@@ -60,7 +61,9 @@ function TaxPreview({ netCents, vatRows, rates, amounts, totalLabel, byAmount = 
  * sólo a plazo y el medio de pago sólo de contado. Una solicitud de antes,
  * que tenía sólo el total con IVA, se abre con el neto que sale de ese total.
  */
-export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[]; fieldProps: (field: Field) => FieldProps; editing: Item | null }) {
+export function PurchaseFields({ fields, fieldProps, editing, works, quotes }: {
+  fields: Field[]; fieldProps: (field: Field) => FieldProps; editing: Item | null; works: Item[]; quotes: Item[];
+}) {
   const wrap = useRef<HTMLDivElement>(null);
   const stored = editing ? storedPurchaseTaxes(editing) : null;
   const { values, number } = useFormValues(wrap);
@@ -97,7 +100,11 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
   const renderField = (field: Field) => <FormField key={field.key} {...props(field)} />;
   // La forma de pago va a la vista en las dos modalidades: también se paga lo que entra directo a stock.
   // El proveedor y la obra también: la orden de compra no sale sin ellos.
-  const basic = ["company", "supplierId", "workId", "deliverTo", "requestedDate", "paymentTerms", "cashMethod", "termDays"];
+  const basic = ["company", "supplierId", "quoteId", "workId", "deliverTo", "requestedDate", "paymentTerms", "cashMethod", "termDays"];
+  const relation = (key: string) => fieldProps(fields.find(field => field.key === key)!).relationValue;
+  const work = works.find(item => item._id === relation("workId"));
+  const quote = quotes.find(item => item._id === (relation("quoteId") || work?.quoteId));
+  const workCategoryId = quote?.workCategoryId || work?.workCategoryId || editing?.workCategoryId;
   const visible = shown.filter(field => !itemMode || !["description", "subtotalCents", "vatPct"].includes(field.key));
 
   return <div className="form-grid" ref={wrap}>
@@ -106,6 +113,7 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
     </select></label>
     <input type="hidden" name="stockOnApproval" value={String(stockMode)} />
     {visible.filter(field => basic.includes(field.key)).map(field => renderField(stockMode && field.key === "deliverTo" ? { ...field, label: "Depósito de destino", options: ["central", "salon"], required: true } : field))}
+    {workCategoryId ? <ProjectCategoryField readOnly value={workCategoryId} /> : null}
     {stockMode && <p className="invoice-note wide">La solicitud queda pendiente de aprobación, cualquiera sea el importe. Al aprobarla se genera la orden de compra y los ítems ingresan al depósito elegido.</p>}
     {itemMode && <>
       <input type="hidden" name="items" value={JSON.stringify(lines)} />
@@ -137,8 +145,9 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
   </div>;
 }
 
-type Receipt = { _id: string; number?: string; supplierRemito?: string; date?: string; final?: boolean; lines?: Array<{ quantity?: number; unitCents?: number }> };
-type OrderInvoices = { orderId: string; number: string; hasItems: boolean; receipts: Receipt[]; expenses: Item[] };
+type BillableLine = { name?: string; unit?: string; quantity?: number; unitCents?: number; discountCents?: number };
+type Receipt = { _id: string; number?: string; supplierRemito?: string; date?: string; final?: boolean; lines?: BillableLine[] };
+type OrderInvoices = { orderId: string; number: string; hasItems: boolean; receipts: Receipt[]; expenses: Item[]; items: BillableLine[] };
 
 /** Lo recibido en un remito, a precio de la OC (sin IVA). */
 const receivedCents = (receipt: Receipt) => (receipt.lines || []).reduce((total, line) => total + Math.round(Number(line.quantity || 0) * Number(line.unitCents || 0)), 0);
@@ -155,7 +164,7 @@ function useOrderInvoices(purchaseId: string) {
       .then(response => response.ok ? response.json() : null)
       .then((detail: { order?: Item | null; receipts?: Receipt[]; expenses?: Item[] } | null) => setData(detail?.order ? {
         orderId: String(detail.order._id), number: String(detail.order.number || ""), hasItems: Array.isArray(detail.order.items) && detail.order.items.length > 0,
-        receipts: detail.receipts || [], expenses: detail.expenses || [],
+        receipts: detail.receipts || [], expenses: detail.expenses || [], items: (detail.order.items || []) as BillableLine[],
       } : null))
       .catch(() => { if (!controller.signal.aborted) setData(null); });
     return () => controller.abort();
@@ -171,7 +180,9 @@ function useOrderInvoices(purchaseId: string) {
  * factura nueva arranca con los que todavía no están en otra) y avisa si el
  * neto pasa lo recibido.
  */
-export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]; fieldProps: (field: Field) => FieldProps; editing: Item | null }) {
+export function ExpenseFields({ fields, fieldProps, editing, draft, orders }: {
+  fields: Field[]; fieldProps: (field: Field) => FieldProps; editing: Item | null; draft: Record<string, unknown>; orders: Item[];
+}) {
   const wrap = useRef<HTMLDivElement>(null);
   const { values, number } = useFormValues(wrap);
   // Se carga el subtotal (antes del descuento) y el descuento o bonificación en pesos: el neto es la resta.
@@ -179,35 +190,72 @@ export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]
   const discountField = fields.find(field => field.key === "discountCents");
   const storedNet = netField ? Number(fieldProps(netField).value || 0) : 0;
   const storedDiscount = discountField ? Number(fieldProps(discountField).value || 0) : 0;
-  const grossCents = values.grossNetCents === undefined ? storedNet + storedDiscount : Math.round(number("grossNetCents") * 100);
+  const manualGross = values.grossNetCents === undefined ? storedNet + storedDiscount : Math.round(number("grossNetCents") * 100);
   const discountCents = values.discountCents === undefined ? storedDiscount : Math.round(number("discountCents") * 100);
-  const net = Math.max(0, grossCents - discountCents);
-  const voucherType = values.voucherType ?? String(editing?.voucherType || "");
+  const voucherType = values.voucherType ?? String((editing || draft).voucherType || "");
+  const mode = (editing || draft).withRemito;
+  const modern = typeof mode === "boolean";
   const withVat = Boolean(voucherType) && baseInvoiceType(voucherType) === "factura_a";
   // Las percepciones y el impuesto interno se cargan por importe, como figuran en la factura (en pesos en el formulario).
   const typed = (key: string) => values[key] === undefined ? Number(editing?.[key] || 0) : Math.round(number(key) * 100);
-  const amounts = voucherTaxFields(net, { vatPct: values.vatPct === undefined || values.vatPct === "" ? undefined : number("vatPct") }, withVat,
-    Object.fromEntries(VOUCHER_TAX_CENTS_KEYS.map(key => [key, typed(key)])));
-  const rates: Rates = { perceptionVatPct: amounts.perceptionVatPct, perceptionIibbPct: amounts.perceptionIibbPct, perceptionIibbProvPct: amounts.perceptionIibbProvPct, internalTaxPct: amounts.internalTaxPct };
   // La letra sale del tipo de comprobante: el número es 4 dígitos, guion y 8 (Tesorería, 10/11/2026).
   const letter = voucherType ? voucherType.slice(-1).toUpperCase() : "";
   const originalNumber = String(editing?.number || "");
 
   const receiptsField = fields.find(field => field.key === "purchaseReceiptIds");
   const initial = receiptsField ? fieldProps(receiptsField).value : undefined;
-  const purchaseId = values.purchaseId ?? String(fieldProps(fields.find(field => field.key === "purchaseId")!).value ?? "");
+  const purchaseField = fields.find(field => field.key === "purchaseId")!;
+  const supplierField = fields.find(field => field.key === "supplierId")!;
+  const purchaseId = fieldProps(purchaseField).relationValue;
+  const orderRecord = orders.find(item => item._id === purchaseId) || ((draft.purchaseId || editing?.purchaseId) === purchaseId ? (editing || draft) : undefined);
+  const supplierId = String((modern && purchaseId && orderRecord?.supplierId) || fieldProps(supplierField).relationValue || "");
   const order = useOrderInvoices(purchaseId);
+  const receiptQuery = mode === true && supplierId ? new URLSearchParams({ supplierId, purchaseId, expenseId: editing?._id || "" }).toString() : "";
+  const [pending, setPending] = useState<{ query: string; receipts: Receipt[]; error?: string } | null>(null);
+  useEffect(() => {
+    if (!receiptQuery) return;
+    const controller = new AbortController();
+    void fetch(`/api/purchase-receipts?${receiptQuery}`, { signal: controller.signal }).then(async response => {
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error);
+      setPending({ query: receiptQuery, receipts: body.items });
+    }).catch(error => {
+      if (!controller.signal.aborted) setPending({ query: receiptQuery, receipts: [], error: error.message || "No se pudieron leer los remitos" });
+    });
+    return () => controller.abort();
+  }, [receiptQuery]);
   const others = (order?.expenses || []).filter(expense => String(expense._id) !== String(editing?._id || "") && expense.status !== "anulado");
   // Lo elegido a mano; sin tocar, lo que ya tenía o, en una factura nueva, los remitos que no están en otra factura.
   const [picked, setPicked] = useState<{ orderId: string; ids: string[] } | null>(null);
   const billed = new Set(others.flatMap(expense => (expense.purchaseReceiptIds as string[] | undefined) || []).map(String));
   const defaults = Array.isArray(initial) && initial.length ? initial.map(String)
     : editing ? [] : (order?.receipts || []).filter(receipt => !billed.has(String(receipt._id))).map(receipt => String(receipt._id));
-  const selected = picked && picked.orderId === order?.orderId ? picked.ids : defaults;
-  const toggle = (id: string) => setPicked({ orderId: order?.orderId || "", ids: selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id] });
+  const pickerKey = modern ? receiptQuery : purchaseId;
+  const available = modern ? (pending?.query === receiptQuery ? pending.receipts : []) : order?.receipts || [];
+  const selected = picked?.orderId === pickerKey ? picked.ids : modern ? (Array.isArray(initial) ? initial.map(String) : []) : defaults;
+  const toggle = (id: string) => setPicked({ orderId: pickerKey, ids: selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id] });
+  const chosen = available.filter(receipt => selected.includes(String(receipt._id)));
+  const storedPrices = (editing?.receiptPrices || []) as Array<{ receiptId: string; line: number; unitCents: number }>;
+  const storedOrderPrices = (editing?.orderPrices || []) as number[];
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const orderLines = mode === false && purchaseId && (!editing || Array.isArray(editing.orderPrices)) ? order?.items || [] : [];
+  const rows = mode === true
+    ? chosen.flatMap(receipt => (receipt.lines || []).map((line, index) => ({
+      ...line, key: `${receipt._id}:${index}`, receiptId: receipt._id, line: index, ref: receipt.supplierRemito || receipt.number,
+      price: storedPrices.find(price => price.receiptId === receipt._id && price.line === index)?.unitCents ?? line.unitCents ?? 0,
+    })))
+    : orderLines.map((line, index) => ({
+      ...line, key: `${purchaseId}:${index}`, receiptId: "", line: index, ref: order?.number,
+      price: storedOrderPrices[index] ?? (line.quantity ? Math.round(purchaseLineNetCents({ quantity: line.quantity, unitCents: line.unitCents || 0, discountCents: line.discountCents }) / line.quantity) : 0),
+    }));
+  const priced = rows.map(row => ({ ...row, unitCents: prices[row.key] ?? row.price }));
+  const grossCents = rows.length ? priced.reduce((sum, row) => sum + Math.round(Number(row.quantity || 0) * row.unitCents), 0) : manualGross;
+  const net = Math.max(0, grossCents - discountCents);
+  const amounts = voucherTaxFields(net, { vatPct: values.vatPct === undefined || values.vatPct === "" ? undefined : number("vatPct") }, withVat,
+    Object.fromEntries(VOUCHER_TAX_CENTS_KEYS.map(key => [key, typed(key)])));
+  const rates: Rates = { perceptionVatPct: amounts.perceptionVatPct, perceptionIibbPct: amounts.perceptionIibbPct, perceptionIibbProvPct: amounts.perceptionIibbProvPct, internalTaxPct: amounts.internalTaxPct };
 
   // Lo recibido contra lo facturado: con remitos elegidos, contra ellos; si no, contra todo lo recibido en la OC.
-  const chosen = (order?.receipts || []).filter(receipt => selected.includes(String(receipt._id)));
   const received = (chosen.length ? chosen : order?.receipts || []).reduce((total, receipt) => total + receivedCents(receipt), 0);
   const invoiced = (chosen.length ? 0 : others.reduce((total, expense) => total + invoicedNetCents(expense), 0)) + (isCreditNote(voucherType) ? -net : net);
   const warning = !order || net <= 0 || isCreditNote(voucherType) ? ""
@@ -221,9 +269,20 @@ export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]
   const shown = fields.filter(field => field !== receiptsField && !(field.key === "status" && !editing) && !(field.key === "associatedExpenseId" && !isNote(voucherType)));
 
   return <div className="form-grid" ref={wrap}>
-    {shown.map((field, index) => field === netField
+    {modern && <input type="hidden" name="withRemito" value={String(mode)} />}
+    {(orderRecord?.workCategoryId || editing?.workCategoryId) ? <ProjectCategoryField readOnly value={orderRecord?.workCategoryId || editing?.workCategoryId} /> : null}
+    {shown.map((field, index) => modern && purchaseId && (["supplierId", "company", "workId", "quoteId"].includes(field.key) || (field.key === "purchaseId" && Boolean(editing?.purchaseId || draft.purchaseId)))
+      ? <label className="readonly-field" key={field.key}><span>{field.label}</span><output>{
+        field.relation ? fieldProps(field).relationOptions.find(option => option.value === String(orderRecord?.[field.key] ?? (field.key === "purchaseId" ? purchaseId : "")))?.label || "—"
+          : field.optionLabels?.[String(orderRecord?.[field.key])] || "—"
+      }</output></label>
+      : modern && field === purchaseField
+        ? <FormField key={field.key} {...fieldProps(field)} relationOptions={fieldProps(field).relationOptions.filter(option => orders.some(item => item._id === option.value && item.stage !== "solicitud" && !["anulada", "cancelada"].includes(String(item.status))))} onCreateRelation={undefined} />
+      : modern && field.key === "receiptRef" && mode === true
+        ? null
+      : field === netField
       ? <label key={field.key}><span>Subtotal sin IVA<em className="field-hint">Antes del descuento. Si lo cargás, el IVA, las percepciones y el total salen solos</em></span>
-        <MoneyInput name="grossNetCents" defaultValue={(storedNet + storedDiscount) / 100} />
+        {rows.length ? <output>{money(grossCents)}</output> : <MoneyInput name="grossNetCents" defaultValue={(storedNet + storedDiscount) / 100} />}
         <input type="hidden" name="netCents" value={grossCents > 0 ? net / 100 : ""} />
         {grossCents > 0 && <small className={discountCents > grossCents ? "warning-line" : "muted-line"}>{discountCents > grossCents ? "El descuento pasa el subtotal" : `Neto después del descuento: ${money(net)}`}</small>}</label>
       : field.key === "number" && letter
@@ -238,16 +297,28 @@ export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]
                 input.setCustomValidity(input.value === originalNumber || digits.length === 12 ? "" : "Tienen que ser 12 números: 4 antes del guion y 8 después");
               }} /></div></label>
         : <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}
-    {receiptsField && <input type="hidden" name="purchaseReceiptIds" value={order ? selected.join(",") : ""} />}
-    {order && <fieldset className="receipt-picker">
-      <span>Remitos de la orden {order.number} que factura</span>
-      {!order.receipts.length ? <small className="muted">Todavía no tiene remitos cargados.</small>
-        : order.receipts.map(receipt => <label key={receipt._id}>
+    {receiptQuery && pending?.query === receiptQuery && pending.error && <p className="form-error" role="alert">{pending.error}</p>}
+    {receiptsField && (mode === true && pending?.query === receiptQuery || !modern && order) && <input type="hidden" name="purchaseReceiptIds" value={selected.join(",")} />}
+    {(mode === true || !modern && order) && <fieldset className="receipt-picker">
+      <legend>Remitos que factura</legend>
+      {!supplierId && modern ? <small>Elegí el proveedor para ver sus remitos.</small>
+        : modern && pending?.query !== receiptQuery ? <small>Cargando…</small>
+        : !available.length ? <small>No hay remitos pendientes.</small>
+        : available.map(receipt => <label key={receipt._id}>
           <input type="checkbox" checked={selected.includes(String(receipt._id))} onChange={() => toggle(String(receipt._id))} />
           <b>{receipt.supplierRemito || receipt.number}</b>
-          <small>{[receipt.date && date(receipt.date), receipt.final && "final", order.hasItems && money(receivedCents(receipt)), billed.has(String(receipt._id)) && "ya está en otra factura"].filter(Boolean).join(" · ")}</small>
+          <small>{[receipt.date && date(receipt.date), receipt.final && "final", billed.has(String(receipt._id)) && "ya está en otra factura"].filter(Boolean).join(" · ")}</small>
         </label>)}
     </fieldset>}
+    {priced.length > 0 && <fieldset className="receipt-picker">
+      <legend>Precios sin IVA</legend>
+      {priced.map(row => <label className="receipt-price" key={row.key}>
+        <span>{row.name}<small className="tracking-sub">{row.quantity} {row.unit} · {row.ref}</small></span>
+        <MoneyInput name={`price-${row.key}`} defaultValue={row.unitCents / 100} onValueChange={value => setPrices(current => ({ ...current, [row.key]: Math.round(value * 100) }))} />
+      </label>)}
+    </fieldset>}
+    {mode === true && pending?.query === receiptQuery && <input type="hidden" name="receiptPrices" value={JSON.stringify(priced.map(({ receiptId, line, unitCents }) => ({ receiptId, line, unitCents })))} />}
+    {mode === false && purchaseId && (!editing || Array.isArray(editing.orderPrices)) && order && <input type="hidden" name="orderPrices" value={JSON.stringify(priced.map(row => row.unitCents))} />}
     {warning && <p className="notice warning invoice-warning" role="status">{warning}</p>}
     {net > 0 && <TaxPreview netCents={net} vatRows={withVat ? [{ pct: amounts.vatPct, vatCents: amounts.vatCents }] : []} rates={rates} amounts={amounts} byAmount totalLabel="Total del comprobante (se guarda este)" />}
   </div>;

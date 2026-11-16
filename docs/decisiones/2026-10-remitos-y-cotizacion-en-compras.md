@@ -1,5 +1,7 @@
 # Remitos en la factura de compra y cotización de venta en la OC
 
+La etapa de noviembre amplía el circuito a remitos sin OC y a la asociación posterior. Ver [Remitos y vínculos entre documentos](2026-11-remitos-y-vinculos.md).
+
 - **Fecha:** 2026-10-20
 - **Estado:** aceptada
 - **Afecta a:** [[../requerimientos/especificacion-v1-5]], [[../modelo-datos/esquema-actual]], [[2026-10-impuestos-solicitud-compra]]

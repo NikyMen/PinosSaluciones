@@ -139,8 +139,13 @@ describe("cotización aprobada: reserva, faltante y solicitud de compra", () => 
       .toEqual([["Látex interior 20 L", 5, 3, 2], ["Rodillo lana", 2, 0, 2]]);
     expect(await StockReservation.countDocuments({ quoteId: quote._id })).toBe(0);
 
+    // La cotización anterior pide rubro al aprobarla.
+    const quoteParams = params({ entity: "quotes", id: String(quote._id) });
+    expect((await call(await recordRoute.PATCH(json("PATCH", { status: "aprobada" }), quoteParams))).status).toBe(400);
+    const { listWorkCategories } = await import("../src/lib/work-categories");
+    const workCategoryId = String((await listWorkCategories())[0]._id);
     // Aprobada: reserva 3 y pide 2 de látex y los 2 rodillos.
-    await call(await recordRoute.PATCH(json("PATCH", { status: "aprobada" }), params({ entity: "quotes", id: String(quote._id) })));
+    expect((await call(await recordRoute.PATCH(json("PATCH", { status: "aprobada", workCategoryId }), quoteParams))).status).toBe(200);
     expect(await StockItem.findById(pintura).lean()).toMatchObject({ reservedQty: 3 });
     const request = await Purchase.findOne({ quoteId: quote._id }).lean<Record<string, unknown>>();
     expect(request).toMatchObject({ stage: "solicitud", company: "constructora", priority: "alta" });

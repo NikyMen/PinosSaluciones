@@ -1518,6 +1518,8 @@ tbody tr.price-best:hover { background: #e8f6ef; }
 .form-grid .receipt-picker input[type="checkbox"] { flex: none; width: 17px; height: 17px; padding: 0; accent-color: var(--brand-navy); }
 .receipt-picker label small { color: var(--muted); }
 .receipt-picker .muted { color: var(--muted); font-size: .72rem; }
+.form-grid .receipt-picker label.receipt-price { display: grid; grid-template-columns: minmax(0, 1fr) minmax(105px, 150px); }
+.form-grid .receipt-picker .form-grid label { display: flex; flex-direction: column; align-items: stretch; }
 .invoice-warning { grid-column: 1 / -1; margin: 0; }
 .form-grid > .wide { grid-column: 1 / -1; }
 .purchase-item-list { display: grid; gap: 12px; min-width: 0; }

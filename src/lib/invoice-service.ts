@@ -18,6 +18,10 @@ export { invoiceLabel, voucherLabels, VOUCHER_TYPES } from "./invoice-labels";
  */
 export async function prepareInvoice(data: Record<string, unknown>, before: Record<string, unknown> = {}) {
   const merged = { ...before, ...data };
+  if (before._id && "withRemito" in data && data.withRemito !== before.withRemito) throw new HttpError("El modo de remito se fija al crear la factura");
+  const remitos = Array.isArray(merged.remitoIds) && merged.remitoIds.length > 0;
+  if (merged.withRemito === true && !remitos) throw new HttpError("Elegí al menos un remito de venta");
+  if (merged.withRemito === false && remitos) throw new HttpError("Elegí Factura con remito para facturar remitos de venta");
   const net = Number(merged.netCents || 0);
   if (("netCents" in data || "vatPct" in data) && net > 0) {
     const pct = Number(merged.vatPct ?? 21);

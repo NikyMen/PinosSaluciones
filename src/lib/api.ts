@@ -10,6 +10,7 @@ export function apiError(error: unknown) {
   const message = error instanceof Error ? error.message : "Error interno";
   if (message === "UNAUTHORIZED") return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
   if (message === "FORBIDDEN") return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  if (message.includes("duplicate key") && message.includes("billedPurchaseReceipts")) return NextResponse.json({ error: "Uno de los remitos ya se incluyó en otra factura" }, { status: 409 });
   if (message.includes("duplicate key")) return NextResponse.json({ error: "Ya existe un registro con ese número o código" }, { status: 409 });
   if (/MONGODB_URI|ECONNREFUSED|MongooseServerSelectionError|ENOTFOUND|ETIMEDOUT|ECONNRESET/.test(message)) {
     console.error("MongoDB no disponible:", message.split("\n")[0]);

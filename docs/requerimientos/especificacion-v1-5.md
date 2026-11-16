@@ -72,7 +72,7 @@ exacto. Lo que no se encuentra cuenta como faltante entero.
 | Requisito | Estado | Cómo |
 |---|---|---|
 | Solicitud y OC atadas a cotización/obra, con fecha requerida y prioridad | ✅ | `Purchase.quoteId`, `quoteNumber` (en la ficha y el PDF de la OC), `neededBy`, `priority`, `requestLines` |
-| Factura de compra A/C/X atada a la OC y al remito o conformidad | ✅ | `Expense.purchaseId`, `purchaseReceiptIds` (los remitos de su OC), `receiptRef`; hereda empresa, proveedor y obra; avisa si se factura más de lo recibido. Ver [[../decisiones/2026-10-remitos-y-cotizacion-en-compras]] |
+| Factura de compra A/C/X atada a la OC y al remito o conformidad | ✅ | `Expense.purchaseId`, `withRemito`, `purchaseReceiptIds` y `receiptPrices`; factura remitos pendientes de la OC y remitos sin OC del mismo proveedor. Hereda empresa, proveedor y obra. Permite asociación posterior y muestra los vínculos. Ver [[../decisiones/2026-11-remitos-y-vinculos]] |
 | Orden de pago desde la factura; pago desde la OP | ✅ | `Payment.status`: emitida (no descuenta) → pagada. Número OP-n, vencimiento, varios medios por OP (anexo v5.1); sin retenciones: la empresa no es agente de retención |
 | Circuito del requerimiento v4: solicitud SC-n de sólo lectura, aprobación explícita en cada fila por cualquier monto, más de $500.000 sólo Gerencia, la OC nace al autorizarse (desde oct. 2026; antes, con la OP), pagos parciales, remitos de compra | ✅ | `src/lib/purchase-flow.ts`; ver [[respuesta-v4]] |
 | Impuestos de la solicitud: IVA por renglón (0 %, 21 %, 10,5 % o 27 %), percepciones de IVA, IIBB e IIBB provincial, impuesto interno; total calculado; medio de contado | ✅ | `src/lib/purchase-taxes.ts`; ver [[../decisiones/2026-10-impuestos-solicitud-compra]] |

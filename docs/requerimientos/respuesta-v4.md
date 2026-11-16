@@ -49,7 +49,7 @@ La etapa 3 está desarrollada, con el circuito del grupo:
 - Tesorería emite la orden de pago y con ella nace la OC (OC-n), atada a la solicitud.
   - La OP se paga en el momento, con su caja y su comprobante, o queda emitida con su vencimiento.
   - Una OC admite varias OP parciales y muestra total, pagado y saldo.
-- Compras recibe el aviso. Carga los remitos en Compras › Remitos de compra: pueden ser parciales, suman al stock y el final cierra la OC.
+- Compras recibe el aviso. Carga los remitos en Compras › Remitos de compra. Los de una OC pueden ser parciales, suman al stock y el final cierra la orden. También se pueden cargar remitos sin OC con proveedor y cotización u obra.
 - Las facturas de compras de menos de $500.000 las puede cargar Compras; las de compras mayores, Tesorería. Las OP las emite sólo Tesorería.
 - Una solicitud o una OC emitida sólo la anula Gerencia, con motivo. No se anula lo que ya tiene pagos o mercadería recibida.
 - Cada pago parcial es una OP propia; no hay OP "ejecutada parcialmente".

@@ -8,6 +8,7 @@ import { composeWorkerName, modelByEntity, WorkType, Worker } from "@/lib/models
 import { prepareNewWorker, prepareWorkerChanges } from "@/lib/worker-files";
 import { schemas } from "@/lib/schemas";
 import { beforeCreate } from "@/lib/document-rules";
+import { listWorkCategories } from "@/lib/work-categories";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
 
@@ -21,7 +22,7 @@ function fixMojibake(value:string){if(!/[ÃÂ]/.test(value))return value;try{ret
 function normalizeHeader(value:string){return fixMojibake(value).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"")}
 
 // Acepta como encabezado la clave del campo o su etiqueta (la que usa la exportación).
-function headerMap(entity:Entity){const map=new Map<string,string>();for(const field of entityConfig[entity].fields){map.set(normalizeHeader(field.key),field.key);map.set(normalizeHeader(field.label),field.key)}for(const[key,label]of Object.entries(columnLabels))if(!map.has(normalizeHeader(label)))map.set(normalizeHeader(label),key);if(entity==="workers")for(const alias of["legajo","nlegajo","nrolegajo","numerodelegajo","nodelegajo"])map.set(alias,"fileNumber");return map}
+function headerMap(entity:Entity){const map=new Map<string,string>();if(entity==="quotes"){map.set("rubrodeobra","workCategoryId");map.set("workcategoryid","workCategoryId")}for(const field of entityConfig[entity].fields){map.set(normalizeHeader(field.key),field.key);map.set(normalizeHeader(field.label),field.key)}for(const[key,label]of Object.entries(columnLabels))if(!map.has(normalizeHeader(label)))map.set(normalizeHeader(label),key);if(entity==="workers")for(const alias of["legajo","nlegajo","nrolegajo","numerodelegajo","nodelegajo"])map.set(alias,"fileNumber");return map}
 
 /** Las columnas que se pueden importar: las del formulario, sin lo que calcula el sistema ni los archivos. */
 function importableFields(entity:Entity){return entityConfig[entity].fields.filter(field=>!field.readOnly&&field.type!=="file"&&field.type!=="hidden")}
@@ -67,7 +68,7 @@ export async function GET(_request:Request,context:RouteContext<"/api/import/[en
   try{
     const session=await requireSession();const{entity}=await context.params;
     if(!entities.includes(entity as Entity)||!canWrite(session,entity as Entity))throw new Error("FORBIDDEN");
-    const header=importableFields(entity as Entity).map(field=>/[";\r\n]/.test(field.label)?`"${field.label.replaceAll('"','""')}"`:field.label).join(";");
+    const fields=importableFields(entity as Entity);const header=[...(entity==="quotes"?[{label:"Rubro de obra"}]:[]),...fields].map(field=>/[";\r\n]/.test(field.label)?`"${field.label.replaceAll('"','""')}"`:field.label).join(";");
     return new Response(`﻿sep=;\r\n${header}\r\n`,{headers:{"content-type":"text/csv; charset=utf-8","content-disposition":`attachment; filename="plantilla-${entity}.csv"`}});
   }catch(error){return apiError(error)}
 }
@@ -129,6 +130,7 @@ export async function POST(request:Request,context:RouteContext<"/api/import/[en
     await connectDB();const model=modelByEntity[entity as Entity];const errors:Array<{row:number;error:string}>=[];let imported=0;let updated=0;
     const workTypes=entity==="workers"?new Map((await WorkType.find().select("name").lean() as Array<{name:string}>).map(type=>[normalizeHeader(type.name),type.name])):new Map<string,string>();
     const workers=entity==="workers"?await Worker.find().select("fileNumber dni name firstName lastName").lean() as WorkerMatch[]:[];
+    const categories=entity==="quotes"?new Map((await listWorkCategories()).filter(item=>item.allowed).map(item=>[normalizeHeader(item.name),String(item._id)])):new Map<string,string>();
     const indexes=new Map<Entity,Promise<Map<string,string>>>();
     const lookup=(relation:Entity)=>{if(!indexes.has(relation))indexes.set(relation,relationIndex(relation));return indexes.get(relation)!};
     for(let index=0;index<rows.length;index++){
@@ -146,6 +148,7 @@ export async function POST(request:Request,context:RouteContext<"/api/import/[en
           continue;
         }
       }
+      if(entity==="quotes"&&row.workCategoryId&&!isObjectId(row.workCategoryId))row.workCategoryId=categories.get(normalizeHeader(String(row.workCategoryId)))??"";
       const parsed=schemas[entity as Entity].safeParse(row);if(!parsed.success){errors.push({row:index+2,error:parsed.error.issues.map(x=>`${x.path.join(".")}: ${x.message}`).join("; ")});continue}
       try{
         const data=parsed.data as Record<string,unknown>;

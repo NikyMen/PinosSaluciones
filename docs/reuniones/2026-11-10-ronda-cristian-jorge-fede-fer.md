@@ -27,7 +27,7 @@ Estado de cada pedido: ✅ ya está en el sistema · ◐ está a medias · 🆕 
 | J2 | Que la compra pueda ir al **Galpón** o al **Salón de Ventas** y después repartirse a la obra o a los utilitarios | ✅ (`stockOnApproval`) |
 | J3 | Que al lado del IVA se pueda indicar **"IVA ya incluido"**, porque el presupuesto del proveedor viene con precios finales y el sistema le sumó el IVA de nuevo | ✅ 16/11 |
 | J4 | **Adjuntar el PDF** del presupuesto del proveedor a la solicitud o la OC | ❓ revisar si ya se puede |
-| J5 | Jorge carga **todos los remitos** y no puede guardar ninguno sin asociarlo a una obra o cotización | ◐ |
+| J5 | Jorge carga **todos los remitos** y no puede guardar ninguno sin asociarlo a una obra o cotización | ✅ 16/11 |
 
 ## 3. Fede: obras
 
@@ -67,11 +67,11 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 
 | # | Pedido | Estado |
 |---|---|---|
-| R1 | Dos formas de cargar: **Factura con remito** (materiales y bienes de uso, obligada a elegir remitos que ya cargó Jorge) y **Factura sin remito** (servicios: luz, agua, higiene y seguridad, servicios contratados) | 🆕 |
-| R2 | En la factura con remito, que aparezcan **todos los remitos sin facturar**, incluso los de meses anteriores, para tildar varios. Después se listan sus artículos para ponerles precio | 🆕 |
-| R3 | Factura cargada desde una OC: la **obra, el proveedor y los artículos vienen bloqueados** y solo se editan los **precios** (por diferencias de IVA) | ◐ |
-| R4 | **Asociar después** una factura sin OC a una OC o cotización (el "camino inverso") | 🆕 |
-| R5 | Rubro o **categoría** de la obra (seis: en altura, albañilería, pintura interior, pintura exterior, impermeabilización, poliuretano…). Que sea **obligatorio para Cristian** en la cotización y llegue bloqueado a la compra. Hoy el desplegable está mal armado | ◐ |
+| R1 | Dos formas de cargar: **Factura con remito** (materiales y bienes de uso, obligada a elegir remitos que ya cargó Jorge) y **Factura sin remito** (servicios: luz, agua, higiene y seguridad, servicios contratados) | ✅ 16/11 |
+| R2 | En la factura con remito, que aparezcan **todos los remitos sin facturar**, incluso los de meses anteriores, para tildar varios. Después se listan sus artículos para ponerles precio | ✅ 16/11 |
+| R3 | Factura cargada desde una OC: la **obra, el proveedor y los artículos vienen bloqueados** y solo se editan los **precios** (por diferencias de IVA) | ✅ 16/11 |
+| R4 | **Asociar después** una factura sin OC a una OC o cotización (el "camino inverso") | ✅ 16/11 |
+| R5 | Rubro o **categoría** de la obra (seis: en altura, albañilería, pintura interior, pintura exterior, impermeabilización, poliuretano…). Que sea **obligatorio para Cristian** en la cotización y llegue bloqueado a la compra. Gerencia puede ajustar la lista en Configuración | ✅ 16/11 |
 | R6 | Número de comprobante: al elegir el tipo, la **letra se pone sola y no se puede editar** (A, C o X), y después van **12 dígitos obligatorios: 4 antes del guion y 8 después**. Si sobra o falta alguno, no deja guardar | ✅ 16/11 |
 | R7 | Tipos **Factura / Nota de crédito / Nota de débito**. "Factura que corrige" aparece **solo en las notas**, con dos opciones: **con referencia**, que obliga a elegir la factura (y descuenta total o parcial), o **sin referencia**, que queda como crédito a favor | ✅ 16/11 |
 | R8 | Poner la **fecha de emisión debajo del número** y la **fecha de vencimiento debajo del proveedor** | ✅ 16/11 |
@@ -99,7 +99,7 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 
 | # | Pedido | Estado |
 |---|---|---|
-| V1 | Igual que en compras: **Factura** (servicios y mano de obra) y **Factura con remito** (productos del salón). El remito de venta es el que **descuenta el stock**, y se puede hacer antes o después de la factura | ◐ |
+| V1 | Igual que en compras: **Factura** (servicios y mano de obra) y **Factura con remito** (productos del salón). El remito de venta es el que **descuenta el stock**, y se elige al cargar la factura con remito | ✅ 16/11 |
 | V2 | **Nota de crédito y nota de débito** con o sin referencia, como en compras | ◐ |
 | V3 | **Sacar "Estado"**: la factura está pendiente mientras no tenga recibo | ✅ 16/11 (al cargar; al editar queda para anular) |
 | V4 | **Recibo a cuenta** sin factura ni cotización, para anticipos (los arregla Seba). Después se le asocia la factura | ✅ 13/11 |

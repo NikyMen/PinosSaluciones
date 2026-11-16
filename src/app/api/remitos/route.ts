@@ -11,8 +11,8 @@ import { createSalesRemito, listSalesRemitos, salesRemitoSchema } from "@/lib/sa
 export async function GET(request: Request) {
   try {
     const session = await requireSession();
-    if (!canRead(session, "stock")) throw new Error("FORBIDDEN");
     const params = new URL(request.url).searchParams;
+    if (!canRead(session, "stock") && !(params.get("status") === "por_facturar" && canWrite(session, "invoices"))) throw new Error("FORBIDDEN");
     const clientId = params.get("clientId") || "";
     if (clientId && !isValidObjectId(clientId)) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB();
