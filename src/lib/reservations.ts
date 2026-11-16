@@ -1,16 +1,14 @@
 import type { Types } from "mongoose";
-import { nextRequestNumber, Purchase, Quote, StockItem, StockReservation, Work } from "./models";
+import { Quote, StockItem, StockReservation, Work } from "./models";
 import { levelsOf } from "./stock-levels";
 import { ownersOf, ownerTotals, type OwnerSplit } from "./stock-owners";
-import { notify } from "./notifications";
-import { DEFAULT_PURCHASE_VAT_PCT, purchaseTaxFields } from "./purchase-taxes";
+
 import type { Session } from "./auth";
 
 /*
  * Cotización, stock y abastecimiento (puntos 4 y 4.2 de la especificación):
  * - mientras se cotiza se consulta el stock y se informa lo que falta, sin reservar;
- * - al aprobar la cotización se reserva lo disponible y lo que falta genera un
- *   requerimiento de abastecimiento (una solicitud de compra) con aviso a Compras;
+ * - al aprobar la cotización se reserva lo disponible y se informa a Compras qué falta;
  * - si la cotización se cae, la reserva se libera; las salidas a su obra la consumen.
  * La prioridad entre reservas es por orden de aprobación (la regla fina está pendiente de definir).
  */
@@ -90,11 +88,10 @@ export async function quoteAvailability(quoteId: string): Promise<Availability[]
 
 /**
  * Al aprobar: reserva lo disponible, calcula el faltante (necesidad − reserva)
- * y, si falta algo, deja una solicitud de compra atada a la cotización y a la
- * obra con aviso a Compras. Si la cotización ya tiene reservas, no repite.
+ * y devuelve el faltante para el aviso a Compras. Si ya hay reservas, conserva las cantidades.
  */
 export async function reserveForQuote(quoteId: string, session: Session) {
-  if (await StockReservation.exists({ quoteId, status: "activa" })) return null;
+  if (await StockReservation.exists({ quoteId, status: "activa" })) return (await quoteAvailability(quoteId)).filter(row => row.shortageQty > 0);
   const quote = await Quote.findById(quoteId).lean<QuoteDoc>();
   if (!quote) return null;
   const availability = await quoteAvailability(quoteId);
@@ -114,29 +111,12 @@ export async function reserveForQuote(quoteId: string, session: Session) {
     lines.push({ stockItemId: row.stockItemId, name: row.name, unit: row.unit, neededQty: row.neededQty, reservedQty: reserved, shortageQty: round(row.neededQty - reserved), unitPriceCents: row.unitPriceCents });
   }
 
-  const short = lines.filter(line => line.shortageQty > 0);
-  let purchase: Lean | null = null;
-  if (short.length) {
-    purchase = (await Purchase.create({
-      number: await nextRequestNumber(), company: quote.company || "tvp", quoteId: quote._id, quoteNumber: quote.number, workId: work?._id,
-      description: `Faltante de materiales para ${quote.number} — ${quote.title}: ${short.map(line => `${line.shortageQty} ${line.unit} de ${line.name}`).join("; ")}`,
-      // El neto estimado con el precio de la cotización, al 21 %: Compras lo ajusta con el del proveedor.
-      ...purchaseTaxFields([{ totalCents: Math.round(short.reduce((total, line) => total + line.shortageQty * line.unitPriceCents, 0)) }], { vatPct: DEFAULT_PURCHASE_VAT_PCT }),
-      // Queda en borrador: Compras elige el proveedor y la condición, y la emite.
-      stage: "solicitud", status: "borrador", priority: "alta", requestedDate: new Date(), neededBy: work?.startDate,
-      history: [{ action: `Creada por el faltante de la cotización ${quote.number}`, at: new Date(), userName: session.name }],
-      requestLines: lines.map(line => ({ stockItemId: line.stockItemId, name: line.name, unit: line.unit, neededQty: line.neededQty, reservedQty: line.reservedQty, shortageQty: line.shortageQty })),
-      userId: session.userId, userName: session.name,
-    })).toObject() as Lean;
-    await notify({
-      title: `Faltan materiales para ${quote.number}`,
-      body: `Se aprobó "${quote.title}". Se reservó lo que había y quedó la solicitud ${String(purchase.number)} con ${short.length} ${short.length === 1 ? "material" : "materiales"} para comprar.`,
-      kind: "stock", href: "/app/purchases", roles: ["compras"], dedupeKey: `quote-shortage-${quote._id}`,
-    });
-  }
+  const shortages = lines.filter(line => line.shortageQty > 0);
   const reservedCount = lines.filter(line => line.reservedQty > 0).length;
-  await Quote.updateOne({ _id: quote._id }, { $push: { history: { action: "Reserva de stock", note: `${reservedCount} ${reservedCount === 1 ? "material reservado" : "materiales reservados"}${short.length ? `; faltante en la solicitud ${String(purchase?.number)}` : "; no falta nada"}`, at: new Date(), userId: session.userId, userName: session.name } } });
-  return { lines, purchase };
+  await Quote.updateOne({ _id: quote._id }, { $push: { history: {
+    action: "Reserva de stock", note: `${reservedCount} materiales reservados · ${shortages.length} faltantes`, at: new Date(), userId: session.userId, userName: session.name,
+  } } });
+  return shortages;
 }
 
 /** La cotización se cayó (rechazada, vencida, vuelta a borrador): lo reservado y no entregado vuelve a estar disponible. */

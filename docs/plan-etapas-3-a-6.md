@@ -126,6 +126,8 @@ Implementada el 16/11. Ver [Indicadores de facturas y documentos de Tesorería](
 
 ## Etapa 5: ventas del salón y cotización operativa (prioridad P1)
 
+Implementadas 5.1 a 5.4 el 16/11. Sigue pendiente el Excel de Cristian para 5.5. Ver [Ventas del Salón y avisos de cotización](decisiones/2026-11-ventas-del-salon.md).
+
 ### 5.1 Facturar desde Ventas con conceptos (C1, C2)
 
 - En **Ventas › Facturas de venta**, la factura se arma por renglones:

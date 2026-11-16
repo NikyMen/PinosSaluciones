@@ -8,6 +8,8 @@ import { MoneyInput, SearchSelect } from "@/components/fields";
 import { COMPANIES, COMPANY_KEYS, companyOf, type CompanyKey } from "@/lib/companies";
 import { FormField, type FieldProps } from "@/components/record-form";
 import { isCreditNote, isNote, voucherLabels } from "@/lib/invoice-labels";
+import { InvoiceLineEditor, type EditableInvoiceLine } from "@/components/invoice-line-editor";
+import { invoiceLinesGrossCents, invoicePrintLines } from "@/lib/invoice-lines";
 import { invoiceLinesNetCents, type RemitoInvoiceLine } from "@/lib/remito-billing";
 
 type Item = Record<string, unknown> & { _id: string };
@@ -30,9 +32,14 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
   quotes: Item[]; works: Item[]; onRelations: (patch: Record<string, string>) => void;
 }) {
   const source = editing || draft;
-  const [byTotal, setByTotal] = useState(() => Boolean(editing && !Number(editing.netCents) && Number(editing.amountCents)));
-  // El subtotal (antes del descuento) y el descuento o bonificación en pesos: el neto gravado es la resta, y es lo que va a ARCA.
-  const [gross, setGross] = useState(() => (Number(source.netCents || 0) + Number(source.discountCents || 0)) / 100);
+  const [lines, setLines] = useState<EditableInvoiceLine[]>(() => invoicePrintLines(source).map((line, index) => ({ ...line, key: String(index) })));
+  const editLines = (!editing || (!editing.cae && !isCreditNote(editing.voucherType)))
+    && ((!editing && source.withRemito === false && !source.replacesId) || invoicePrintLines(source).length > 0)
+    && !(Array.isArray(source.remitoIds) && source.remitoIds.length);
+  const [byTotal, setByTotal] = useState(() => Boolean(editing && !lines.length && !Number(editing.netCents) && Number(editing.amountCents)));
+  // El subtotal sale de los renglones cuando existen; las facturas de antes conservan el importe cargado.
+  const [manualGross, setGross] = useState(() => (Number(source.netCents || 0) + Number(source.discountCents || 0)) / 100);
+  const gross = editLines || lines.length ? invoiceLinesGrossCents(lines) / 100 : manualGross;
   const [discount, setDiscount] = useState(() => Number(source.discountCents || 0) / 100);
   const net = Math.max(0, Math.round((gross - discount) * 100) / 100);
   const [vatPct, setVatPct] = useState(() => source.vatPct === undefined || source.vatPct === null || source.vatPct === "" ? 21 : Number(source.vatPct));
@@ -188,6 +195,13 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
           {(associable || []).map(option => <option key={option._id} value={option._id}>{option.label}{isCreditNote(voucherType) ? ` · debe ${money(option.pendingCents)}` : ""}</option>)}
         </select></label>;
     }
+    if (key === "clientId" && !editing) {
+      const clientProps = props(target);
+      return <div key={key}>
+        <FormField {...clientProps} onCreateRelation={undefined} autoFocus={autoFocus} />
+        <button type="button" className="link-btn" onClick={clientProps.onCreateRelation}>Nuevo cliente</button>
+      </div>;
+    }
     return <FormField key={key} {...props(target)} autoFocus={autoFocus} />;
   }
 
@@ -231,12 +245,19 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
     {Boolean(editing?.cae) && <p className="invoice-note">Emitida en ARCA ({editing?.arcaEnvironment === "homologacion" ? "homologación, de prueba" : "producción"}) · CAE {String(editing?.cae)}. Solo se puede cambiar lo que no es fiscal: obra, cotización, descripción y vencimiento.</p>}
     {Boolean(source.replacesId) && <p className="invoice-note">Sustituye a una Factura X: al guardar, la X queda como sustituida y lo que ya se cobró de ella pasa a esta factura.</p>}
 
+    {editLines && <InvoiceLineEditor lines={lines} onChange={setLines} />}
+    {!editLines && lines.length > 0 && <fieldset><legend><b>Renglones de la factura</b></legend>
+      <ul>{lines.map(row => <li key={row.key}>{row.quantity} {row.unit} · {row.description} · {money(row.unitCents)} por unidad</li>)}</ul>
+    </fieldset>}
     <fieldset><legend><b>Importes</b><small>{isX ? "La X no discrimina IVA: el total es el importe" : byTotal ? "Esta factura se cargó solo con el total" : "El IVA y el total salen del neto"}</small></legend><div className="form-grid">
       {byTotal ? <>
         <label><span>Total *</span><MoneyInput name="amountCents" defaultValue={Number(source.amountCents || 0) / 100} required /></label>
         <label className="readonly-field"><span>Neto e IVA</span><output><button type="button" className="link-btn" onClick={() => { setByTotal(false); setDiscount(0); setGross(Math.round(Number(source.amountCents || 0) / (1 + vatPct / 100)) / 100); }}>Cargar el neto y el IVA</button></output></label>
       </> : <>
-        <label><span>{isX ? "Subtotal *" : "Subtotal sin IVA *"}<em className="field-hint">Antes del descuento</em></span><MoneyInput key={`net-${byTotal}-${netKey}`} name="grossNetCents" defaultValue={gross} required onValueChange={setGross} /></label>
+        <label><span>{isX ? "Subtotal" : "Subtotal sin IVA"}<em className="field-hint">Antes del descuento</em></span>
+          {editLines || lines.length ? <output>{money(Math.round(gross * 100))}</output>
+            : <MoneyInput key={`net-${byTotal}-${netKey}`} name="grossNetCents" defaultValue={gross} required onValueChange={setGross} />}
+        </label>
         <label><span>Descuento / bonificación<em className="field-hint">En pesos, sobre el subtotal</em></span><MoneyInput key={`discount-${byTotal}`} name="discountCents" defaultValue={discount} onValueChange={setDiscount} /></label>
         <label className="readonly-field"><span>{isX ? "Importe" : "Neto gravado"}</span><output>{money(Math.round(net * 100))}{discount > gross && <small className="warning-line">El descuento pasa el subtotal</small>}</output><input type="hidden" name="netCents" value={net || ""} /></label>
         {isX ? <input type="hidden" name="vatPct" value="0" /> : <>

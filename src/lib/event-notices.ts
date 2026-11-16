@@ -1,5 +1,5 @@
 import { notify } from "./notifications";
-import { money } from "./format";
+import { money, qty } from "./format";
 import type { Session } from "./auth";
 
 /*
@@ -11,12 +11,17 @@ import type { Session } from "./auth";
 type Doc = Record<string, unknown> & { _id: unknown };
 
 /** Cotización aprobada: Compras prepara el abastecimiento, Producción planifica y Administración revisa el anticipo. */
-export async function noticeQuoteApproved(quote: Doc, session: Session) {
+export async function noticeQuoteApproved(quote: Doc, session: Session, shortages: Array<{ name: string; unit: string; shortageQty: number }> = []) {
   const label = `${String(quote.number || "")} — ${String(quote.title || "")}`;
   const href = `/app/quotes/${String(quote._id)}`;
   const common = { kind: "cotizacion" as const, href };
-  await notify({ ...common, title: `Cotización aprobada ${label}: reserva y faltantes`, body: `La aprobó ${session.name}. Revisar la reserva de stock, los faltantes y el requerimiento de abastecimiento.`, roles: ["compras"], event: "cotizacion.aprobada.compras", dedupeKey: `quote-approved-${String(quote._id)}-compras` });
-  await notify({ ...common, title: `Cotización aprobada ${label}: planificar la obra`, body: "Planificar la obra y confirmar la fecha real de inicio.", roles: ["arquitecto"], event: "cotizacion.aprobada.produccion", dedupeKey: `quote-approved-${String(quote._id)}-produccion` });
+  const materials = shortages.map(row => `${qty(row.shortageQty)} ${row.unit} · ${row.name}`);
+  await notify({
+    ...common, title: `Cotización aprobada ${label}`,
+    body: materials.length ? `Prepará la solicitud de los materiales que faltan: ${materials.join(" / ")}` : `La aprobó ${session.name}. El stock alcanza para los materiales de la cotización.`,
+    roles: ["compras"], event: "cotizacion.aprobada.compras", dedupeKey: `quote-approved-${String(quote._id)}-compras`,
+  });
+  await notify({ ...common, title: `Cotización aprobada ${label}: planificar la obra`, body: "Asigná las fechas y el personal de la obra.", roles: ["arquitecto"], event: "cotizacion.aprobada.produccion", dedupeKey: `quote-approved-${String(quote._id)}-produccion` });
   await notify({ ...common, title: `Cotización aprobada ${label}: anticipo y condiciones`, body: `Por ${money(Number(quote.amountCents || 0))}. Revisar el anticipo, el crédito y las condiciones financieras.`, roles: ["administracion"], event: "cotizacion.aprobada.administracion", dedupeKey: `quote-approved-${String(quote._id)}-administracion` });
 }
 

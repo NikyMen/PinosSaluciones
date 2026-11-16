@@ -469,6 +469,7 @@ const StockItemSchema = new Schema({
   // El total entre todos los depósitos. Lo que hay en cada uno va en qty_central, qty_salon…
   quantity: { type: Number, default: 0 },
   minQuantity: { type: Number, min: 0, default: 0 },
+  salePriceCents: { type: Number, min: 0 },
   ...warehouseStockFields,
   // De qué empresa es lo que hay en cada ubicación: src/lib/stock-owners.ts.
   owners: Schema.Types.Mixed,
@@ -524,6 +525,7 @@ const SalesRemitoSchema = new Schema({
   company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
   clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" },
+  workId: { type: Schema.Types.ObjectId, ref: "Work" }, receiverName: String,
   warehouse: { type: String, enum: WAREHOUSE_KEYS, default: "salon" },
   date: { type: Date, required: true },
   lines: [{
@@ -538,7 +540,7 @@ const SalesRemitoSchema = new Schema({
   }],
   totalCents: { type: Number, min: 0, default: 0 },
   // "parcial": se facturó una parte. Los de antes no tienen `invoicedQty`: facturados, se facturaron enteros.
-  status: { type: String, enum: ["pendiente", "parcial", "facturado", "anulado"], default: "pendiente" },
+  status: { type: String, enum: ["pendiente", "parcial", "facturado", "entregado", "anulado"], default: "pendiente" },
   // Sube con cada factura que toma o suelta cantidades: dos facturas a la vez no se pisan.
   billingRev: { type: Number, default: 0 },
   invoiceIds: { type: [{ type: Schema.Types.ObjectId, ref: "Invoice" }], default: [] },
@@ -840,6 +842,7 @@ const InvoiceSchema = new Schema({
   // Los remitos de venta que factura. La factura no vuelve a mover stock: eso ya lo hizo el remito.
   remitoIds: { type: [{ type: Schema.Types.ObjectId, ref: "SalesRemito" }], default: undefined },
   withRemito: Boolean,
+  lines: { type: [{ _id: false, stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" }, description: String, quantity: Number, unit: String, unitCents: Number }], default: undefined },
   // Qué cantidades de qué renglones de esos remitos factura (`line` es el índice del renglón).
   remitoLines: { type: [{ _id: false, remitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito", required: true }, line: { type: Number, required: true }, quantity: { type: Number, required: true } }], default: undefined },
   // Una factura que pasa de lo disponible de su cotización, certificado o remitos sólo se guarda si Gerencia la autoriza con motivo.

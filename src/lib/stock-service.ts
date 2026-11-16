@@ -43,7 +43,7 @@ export type MovementInput =
   | Common & { kind: "egreso"; workId: string; parts: Array<{ warehouse: WarehouseKey; quantity: number }>; reference?: string; ticket?: string; remitos?: Partial<Record<WarehouseKey, string>> }
   | Common & { kind: "transferencia"; from: WarehouseKey; to: WarehouseKey; quantity: number; remito?: string; transferId?: string; owner?: OwnerKey }
   | Common & { kind: "recepcion"; from: WarehouseKey; to: WarehouseKey; sentQty: number; receivedQty: number; damagedQty?: number; ownerParts?: OwnerPart[]; remito?: string; transferId?: string }
-  | Common & { kind: "venta"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; owner?: OwnerKey }
+  | Common & { kind: "venta"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; workId?: string; owner?: OwnerKey }
   | Common & { kind: "devolucion"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; ownerParts?: OwnerPart[] }
   | Common & { kind: "ajuste"; warehouse: WarehouseKey; quantity: number; owner?: CompanyKey };
 
@@ -167,7 +167,7 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
     ensureAvailable(item, levels, "salon", input.quantity);
     levels.salon = round(levels.salon - input.quantity);
     const ownerParts = takeOwners(owners, "salon", input.quantity, input.owner);
-    created.push({ kind: "venta", quantity: input.quantity, warehouse: "salon", remito: input.remito, clientId: input.clientId, salesRemitoId: input.salesRemitoId, ownerParts, destinationLabel: input.destinationLabel,
+    created.push({ kind: "venta", quantity: input.quantity, warehouse: "salon", remito: input.remito, clientId: input.clientId, workId: input.workId, salesRemitoId: input.salesRemitoId, ownerParts, destinationLabel: input.destinationLabel,
       unitCostCents: item.avgCostCents, totalCents: Math.round(input.quantity * item.avgCostCents), reference: input.remito, note: input.note, ...who });
   }
 

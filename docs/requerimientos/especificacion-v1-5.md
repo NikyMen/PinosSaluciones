@@ -60,7 +60,7 @@ Leyenda: ✅ hecho · 🟡 parcial · ⏳ pendiente (o esperando una decisión d
 | Estados de cotización: en elaboración, emitida, aprobada | ✅ | Nombres nuevos sobre las claves de siempre (`borrador`, `enviada`, `aprobada`) |
 | Estados de obra: pendiente de inicio, activa, finalizada, cerrada | ✅ | `planificada`, `en_curso`, `terminada` y la nueva `cerrada`. Cerrar exige certificados facturados y facturas cobradas |
 | Consultar stock al cotizar sin reservar, mostrar faltante | ✅ | Panel "Stock para esta cotización" en el costeo (`src/components/quote-stock.tsx`) |
-| Aprobar reserva lo disponible y genera faltante con alerta a Compras | ✅ | `src/lib/reservations.ts`: reserva, solicitud de compra con necesidad/reservado/faltante, aviso a Compras |
+| Aprobar reserva lo disponible y genera faltante con alerta a Compras | ✅ | `src/lib/reservations.ts`: reserva de existencias y aviso a Compras con cantidades de materiales faltantes |
 | La reserva se consume con la salida a la obra y se libera si la cotización se cae | ✅ | |
 | Prioridad de reservas | ⏳ | Por orden de aprobación hasta que se defina (punto 16) |
 

@@ -30,7 +30,7 @@ export function QuoteStock({ quoteId, status }: { quoteId: string; status?: stri
 
   return <section className="panel quote-stock">
     <div className="panel-head"><div><h2><PackageSearch size={17} /> Stock para esta cotización</h2>
-      <p>{approved ? "Aprobada: lo disponible quedó reservado y el faltante pasó a Compras como solicitud." : "Solo consulta: no reserva nada. Al aprobarla se reserva lo disponible y el faltante le llega a Compras."}</p></div>
+      <p>{approved ? "Al aprobar, se reservó lo disponible y Compras recibió el aviso con los materiales faltantes." : "Solo consulta: no reserva nada. Al aprobarla se reserva lo disponible y el faltante le llega a Compras."}</p></div>
       {rows && <span className={short.length ? "badge pendiente" : "badge activo"}>{short.length ? `Faltan ${short.length}` : "Alcanza todo"}</span>}</div>
     {error && <p className="form-error">{error}</p>}
     {rows === null ? <div className="loading-state">Consultando…</div> : <div className="table-scroll"><table><thead><tr>

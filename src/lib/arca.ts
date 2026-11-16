@@ -239,7 +239,7 @@ export type CaeRequest = {
   /** Una nota de débito o de crédito: la factura a la que corresponde (ARCA la pide). */
   associated?: { voucherCode: number; pointOfSale: number; number: number; cuit: string; date: Date };
   /** 1 productos (se factura un remito), 2 servicios (obra, certificado). */
-  concept: 1 | 2;
+  concept: 1 | 2 | 3;
   clientCuit: string; vatCondition: VatCondition;
   issueDate: Date; dueDate?: Date;
   netCents: number; vatPct: number; vatCents: number; amountCents: number;
@@ -270,7 +270,7 @@ export function buildCaeRequest(request: CaeRequest) {
 
   // En servicios ARCA pide el período facturado y el vencimiento del pago: el mes de la factura.
   const issue = request.issueDate;
-  const service = request.concept === 2 ? (() => {
+  const service = request.concept !== 1 ? (() => {
     const from = new Date(Date.UTC(issue.getUTCFullYear(), issue.getUTCMonth(), 1));
     const to = new Date(Date.UTC(issue.getUTCFullYear(), issue.getUTCMonth() + 1, 0));
     const due = request.dueDate && request.dueDate > issue ? request.dueDate : issue;

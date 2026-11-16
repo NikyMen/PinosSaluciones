@@ -170,6 +170,8 @@ Requerimiento integral v4, con lo acordado en el grupo de PINO (`src/lib/purchas
 
 **Indicadores de facturas y cobranzas.** Compras y Ventas muestran la cantidad de comprobantes vigentes y el importe pendiente. El indicador Pendientes filtra por saldo en todo el listado. La cotización y su obra muestran el facturado neto, los recibos aplicados y el saldo por cobrar. Configuración › Empresas y comprobantes guarda el nombre y cargo impresos en los recibos y órdenes de pago. Ver `docs/decisiones/2026-11-indicadores-y-recibos.md`.
 
+**Ventas del Salón.** Facturas de venta permite cargar productos con precio de venta de Stock, conceptos de texto libre y observaciones, dar de alta un cliente en el formulario y bajar el PDF fiscal o de gestión. Remitos de venta permite destinar insumos del Salón a una obra y registrar a quien recibe. Aprobar una cotización avisa a Compras, Obras y Administración. El aviso de Compras enumera los materiales faltantes para que arme la solicitud. Ver `docs/decisiones/2026-11-ventas-del-salon.md`.
+
 ## Papeles de compras y adjuntos
 
 - **Adjuntos con historial** (`src/lib/attachments.ts`, `/api/files/[entity]/[id]`): en solicitudes y órdenes de compra, órdenes de pago, facturas de compra, movimientos de caja y remitos de compra. Cada archivo guarda su nombre original, quién lo subió y cuándo. No se borra: reemplazarlo deja el anterior en el historial, con quién y cuándo lo reemplazó. El archivo único de antes (`attachment`) se muestra como el primero.

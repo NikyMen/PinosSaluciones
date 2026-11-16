@@ -120,7 +120,24 @@ describe("venta al público: Galpón → Salón → remito → factura", () => {
   });
 });
 
-describe("cotización aprobada: reserva, faltante y solicitud de compra", () => {
+it("emite desde el Salón un remito a obra con receptor y descuenta el stock", async () => {
+  const client = await Client.create({ name: "Consorcio de entrega" });
+  const work = await Work.create({ name: "Fachada de prueba", code: "OB-ENTREGA", clientId: client._id, status: "en_curso" });
+  const item = await StockItem.create({ name: "Rodillo de entrega", unit: "unidad", qty_salon: 4, quantity: 4, owners: { salon: { tvp: 4 } } });
+  const body = { workId: String(work._id), date: "2026-11-16", lines: [{ itemId: String(item._id), quantity: 2 }] };
+  const missing = await call(await remitosRoute.POST(json("POST", body)));
+  expect(missing.status).toBe(400);
+  const result = await call(await remitosRoute.POST(json("POST", { ...body, receiverName: "Responsable de obra" })));
+  expect(result).toMatchObject({ status: 201, body: { status: "entregado", workId: body.workId, receiverName: "Responsable de obra" } });
+  expect(await StockItem.findById(item._id).lean()).toMatchObject({ qty_salon: 2, movements: [expect.objectContaining({ workId: work._id })] });
+  const pending = await call(await remitosRoute.GET(new Request("http://test?status=por_facturar")));
+  expect(pending.body.items).not.toContainEqual(expect.objectContaining({ _id: result.body._id }));
+  const cancelled = await call(await remitoCancel.POST(json("POST", { reason: "Se devolvió el material" }), params({ id: result.body._id })));
+  expect(cancelled.status).toBe(200);
+  expect(await StockItem.findById(item._id).lean()).toMatchObject({ qty_salon: 4 });
+});
+
+describe("cotización aprobada: reserva y aviso de materiales faltantes", () => {
   it("consulta sin reservar, reserva al aprobar, pasa el faltante a Compras y la salida a obra consume la reserva", async () => {
     const pintura = await material("Látex interior 20 L", 3);
     const client = await Client.create({ name: "Consorcio Reserva" });
@@ -147,16 +164,16 @@ describe("cotización aprobada: reserva, faltante y solicitud de compra", () => 
     // Aprobada: reserva 3 y pide 2 de látex y los 2 rodillos.
     expect((await call(await recordRoute.PATCH(json("PATCH", { status: "aprobada", workCategoryId }), quoteParams))).status).toBe(200);
     expect(await StockItem.findById(pintura).lean()).toMatchObject({ reservedQty: 3 });
-    const request = await Purchase.findOne({ quoteId: quote._id }).lean<Record<string, unknown>>();
-    expect(request).toMatchObject({ stage: "solicitud", company: "constructora", priority: "alta" });
-    expect(request!.requestLines).toEqual([
-      expect.objectContaining({ name: "Látex interior 20 L", neededQty: 5, reservedQty: 3, shortageQty: 2 }),
-      expect.objectContaining({ name: "Rodillo lana", neededQty: 2, reservedQty: 0, shortageQty: 2 }),
-    ]);
-    expect(await Notification.exists({ dedupeKey: `quote-shortage-${quote._id}` })).toBeTruthy();
+    expect(await Purchase.countDocuments({ quoteId: quote._id })).toBe(0);
+    const notice = await Notification.findOne({ dedupeKey: `quote-approved-${quote._id}-compras` }).lean<{ body: string; roles: string[] }>();
+    expect(notice?.roles).toEqual(["compras"]);
+    expect(notice?.body).toContain("2 balde · Látex interior 20 L");
+    expect(notice?.body).toContain("2 u · Rodillo lana");
+    expect(await Notification.exists({ dedupeKey: `quote-approved-${quote._id}-produccion`, roles: "arquitecto" })).toBeTruthy();
+    expect(await Notification.exists({ dedupeKey: `quote-approved-${quote._id}-administracion`, roles: "administracion" })).toBeTruthy();
     // Aprobarla de nuevo no duplica.
     await call(await recordRoute.PATCH(json("PATCH", { status: "aprobada" }), params({ entity: "quotes", id: String(quote._id) })));
-    expect(await Purchase.countDocuments({ quoteId: quote._id })).toBe(1);
+    expect(await Notification.countDocuments({ dedupeKey: `quote-approved-${quote._id}-compras` })).toBe(1);
 
     // Otra cotización ya no ve esos 3 como disponibles.
     const other = await Quote.create({ number: "COT-901", clientId: client._id, title: "Otra", amountCents: 1, status: "borrador", items: [{ name: "x", qty: 1, composition: [{ rubro: "MAT", name: "Látex interior 20 L", coefPerUnit: 1 }] }] });

@@ -32,7 +32,7 @@ remitos, avisa que se factura algo que no llegó. Es un aviso porque hay casos v
 un flete, una OC cargada a mano sin productos.
 
 **La compra guarda el número de la cotización de venta** (`Purchase.quoteNumber`). Se completa al
-elegir la cotización en la solicitud, desde el pedido del buscador (la de la obra) y en el faltante
+elegir la cotización en la solicitud y desde el pedido del buscador (la de la obra). El aviso de faltantes vincula a la cotización
 de una cotización aprobada. La OC lo copia. La ficha muestra "Para la cotización de venta COT-n" y el
 PDF lo imprime aunque la compra no tenga obra.
 

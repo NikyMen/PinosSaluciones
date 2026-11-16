@@ -275,6 +275,7 @@ Colección `stockitems` · entidad `stock`
 | `unit` | texto | — | valores: `unidad` · `kg` · `litro` · `metro` · `m2` · `m3` · `bolsa` · `balde` · `rollo` · por defecto `"unidad"` |
 | `quantity` | número | — | por defecto `0` |
 | `minQuantity` | número | — | mínimo 0 · por defecto `0` |
+| `salePriceCents` | número | — | mínimo 0 |
 | `qty_central` | número | — | — |
 | `min_central` | número | — | mínimo 0 |
 | `qty_salon` | número | — | — |
@@ -527,6 +528,12 @@ Colección `invoices` · entidad `invoices`
 | `replacedById` | referencia | — | apunta a **Invoice** |
 | `remitoIds` | lista | — | — |
 | `withRemito` | sí/no | — | — |
+| `lines` | lista de objetos | — | — |
+| `lines.stockItemId` | referencia | — | apunta a **StockItem** |
+| `lines.description` | texto | — | — |
+| `lines.quantity` | número | — | — |
+| `lines.unit` | texto | — | — |
+| `lines.unitCents` | número | — | — |
 | `remitoLines` | lista de objetos | — | — |
 | `remitoLines.remitoId` | referencia | sí | apunta a **SalesRemito** |
 | `remitoLines.line` | número | sí | — |
@@ -1098,6 +1105,8 @@ Remitos de venta al cliente desde el Salón (y devoluciones). Descuentan el stoc
 | `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
 | `clientId` | referencia | sí | apunta a **Client** |
 | `quoteId` | referencia | — | apunta a **Quote** |
+| `workId` | referencia | — | apunta a **Work** |
+| `receiverName` | texto | — | — |
 | `warehouse` | texto | — | valores: `central` · `salon` · por defecto `"salon"` |
 | `date` | fecha | sí | — |
 | `lines` | lista de objetos | — | — |
@@ -1114,7 +1123,7 @@ Remitos de venta al cliente desde el Salón (y devoluciones). Descuentan el stoc
 | `lines.ownerParts.quantity` | número | — | — |
 | `lines.invoicedQty` | número | — | — |
 | `totalCents` | número | — | mínimo 0 · por defecto `0` |
-| `status` | texto | — | valores: `pendiente` · `parcial` · `facturado` · `anulado` · por defecto `"pendiente"` |
+| `status` | texto | — | valores: `pendiente` · `parcial` · `facturado` · `entregado` · `anulado` · por defecto `"pendiente"` |
 | `billingRev` | número | — | por defecto `0` |
 | `invoiceIds` | lista | — | por defecto `[]` |
 | `returnsId` | referencia | — | apunta a **SalesRemito** |

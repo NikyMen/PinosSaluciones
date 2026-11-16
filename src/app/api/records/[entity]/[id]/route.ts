@@ -71,10 +71,10 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
       await Quote.updateOne({ _id: id }, { $push: { history: { action: `Estado: ${(item as Record<string, unknown>).status}`, at: new Date(), userId: session.userId } } });
       // Aprobada: reserva lo disponible y pasa el faltante a Compras. Si se cae, la reserva se libera.
       const status = String((item as Record<string, unknown>).status);
-      if (status === "aprobada") await reserveForQuote(id, session);
-      // Cada área recibe su aviso con lo que le toca.
-      if (status === "aprobada") await noticeQuoteApproved(item as Record<string, unknown> & { _id: unknown }, session);
-      else if (status !== "convertida") await releaseForQuote(id, session);
+      if (status === "aprobada") {
+        const shortages = await reserveForQuote(id, session);
+        await noticeQuoteApproved(item as Record<string, unknown> & { _id: unknown }, session, shortages || []);
+      } else if (status !== "convertida") await releaseForQuote(id, session);
     }
     // Una factura anulada libera sus remitos: vuelven a estar pendientes de facturar.
     if (entity === "invoices" && item && !VOID_INVOICE_STATUSES.includes(String((before as Record<string, unknown>).status)) && String((item as Record<string, unknown>).status) === "anulada") await releaseRemitos(item as Record<string, unknown>);

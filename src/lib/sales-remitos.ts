@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { z } from "zod";
-import { Client, Invoice, SalesRemito, StockItem } from "./models";
+import { Client, Invoice, SalesRemito, StockItem, Work } from "./models";
 import { applyStockMovement, nextRemitoNumber, StockError } from "./stock-service";
 import { levelsOf } from "./stock-levels";
 import { HttpError } from "./api";
@@ -25,12 +25,13 @@ type Lean = Record<string, unknown> & { _id: Types.ObjectId };
 const id = z.string().regex(/^[a-f\d]{24}$/i, "ID inválido");
 export const salesRemitoSchema = z.object({
   company: z.enum(["tvp", "constructora"]).default("tvp"),
-  clientId: id,
+  clientId: id.optional(),
+  workId: id.optional(), receiverName: z.string().trim().min(2).max(100).optional(),
   quoteId: z.union([id, z.literal("")]).optional().transform(value => value || undefined),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Poné la fecha").transform(value => new Date(`${value}T00:00:00.000Z`)),
   note: z.string().trim().max(1000).optional().default(""),
   lines: z.array(z.object({ itemId: id, quantity: z.coerce.number().positive("Cada cantidad tiene que ser mayor a cero"), unitPriceCents: z.coerce.number().int().min(0).default(0), discountCents: z.coerce.number().int().min(0).default(0) })).min(1, "Agregá al menos un material").max(100),
-});
+}).refine(data => data.workId ? Boolean(data.receiverName) : Boolean(data.clientId), "Elegí el destino y completá el nombre de quien recibe en obra");
 export type SalesRemitoInput = z.infer<typeof salesRemitoSchema>;
 
 export const returnSchema = z.object({
@@ -43,10 +44,15 @@ const round = (value: number) => Math.round(value * 1000) / 1000;
 
 /** Emite el remito de salida al cliente desde el Salón. Si un material no alcanza, no sale ninguno. */
 export async function createSalesRemito(input: SalesRemitoInput, session: Session) {
-  const client = await Client.findById(input.clientId).select("name").lean<{ name?: string }>();
+  const work = input.workId ? await Work.findById(input.workId).select("clientId code name status").lean<Lean>() : null;
+  if (input.workId && (!work || !work.clientId || ["cerrada", "cancelada"].includes(String(work.status)))) throw new HttpError("Elegí una obra vigente con cliente");
+  const clientId = String(work?.clientId || input.clientId || "");
+  const client = clientId ? await Client.findById(clientId).select("name").lean<{ name?: string }>() : null;
   if (!client) throw new HttpError("Elegí el cliente");
+  const destinationLabel = work ? [work.code, work.name].filter(Boolean).join(" · ") : client.name;
   const merged = new Map<string, { itemId: string; quantity: number; unitPriceCents: number; discountCents: number }>();
-  for (const line of input.lines) {
+  for (const entry of input.lines) {
+    const line = work ? { ...entry, unitPriceCents: 0, discountCents: 0 } : entry;
     const current = merged.get(line.itemId);
     if (current) { current.quantity = round(current.quantity + line.quantity); current.discountCents += line.discountCents; } else merged.set(line.itemId, { ...line });
   }
@@ -64,13 +70,13 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
   if (short.length) throw new StockError(`No alcanza el stock del Salón de Ventas (si está en el Galpón, primero hay que transferirlo). ${short.join(" · ")}`);
 
   const number = await nextRemitoNumber();
-  const remito = await SalesRemito.create({ number, kind: "salida", company: input.company, clientId: input.clientId, quoteId: input.quoteId, date: input.date, warehouse: "salon", note: input.note, userId: session.userId, userName: session.name, lines: [] });
+  const remito = await SalesRemito.create({ number, kind: "salida", company: input.company, clientId, quoteId: work ? undefined : input.quoteId, workId: work?._id, receiverName: work ? input.receiverName : undefined, status: work ? "entregado" : "pendiente", date: input.date, warehouse: "salon", note: input.note, userId: session.userId, userName: session.name, lines: [] });
   const remitoLines: Array<Record<string, unknown>> = [];
   const changed: Array<{ item: ItemDoc; before: Record<string, unknown>; after: Record<string, unknown> }> = [];
   for (const line of lines) {
     const item = byId.get(line.itemId)!;
     const before = item.toObject();
-    const result = await applyStockMovement(item, { kind: "venta", quantity: line.quantity, clientId: input.clientId, remito: number, salesRemitoId: String(remito._id), destinationLabel: client.name, owner: input.company, note: input.note, date: input.date }, session);
+    const result = await applyStockMovement(item, { kind: "venta", quantity: line.quantity, clientId, remito: number, salesRemitoId: String(remito._id), destinationLabel, workId: input.workId, owner: input.company, note: input.note, date: input.date }, session);
     const movement = result.movements[0] as { ownerParts?: OwnerPart[]; unitCostCents?: number };
     remitoLines.push({ stockItemId: item._id, name: item.name, unit: item.unit, quantity: line.quantity, unitPriceCents: line.unitPriceCents, discountCents: line.discountCents || undefined, totalCents: Math.max(0, Math.round(line.quantity * line.unitPriceCents) - line.discountCents), unitCostCents: movement.unitCostCents, ownerParts: movement.ownerParts });
     changed.push({ item, before, after: result.item });
@@ -78,13 +84,14 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
   remito.set("lines", remitoLines);
   remito.totalCents = remitoLines.reduce((total, line) => total + Number(line.totalCents || 0), 0);
   await remito.save();
-  return { remito: remito.toObject() as Record<string, unknown>, changed };
+  return { remito: { ...remito.toObject(), work: work ? { _id: work._id, code: work.code, name: work.name } : null } as Record<string, unknown>, changed };
 }
 
 /** El cliente devuelve material de un remito: vuelve al Salón, con su mismo dueño, y queda un remito de entrada. */
 export async function returnSalesRemito(remitoId: string, input: z.infer<typeof returnSchema>, session: Session) {
   const original = await SalesRemito.findById(remitoId).lean<Lean & { number: string; kind: string; status: string; company: string; clientId: Types.ObjectId; lines: Array<{ stockItemId: Types.ObjectId; name: string; unit: string; quantity: number; unitPriceCents: number; totalCents?: number; ownerParts?: OwnerPart[] }> }>();
   if (!original || original.kind !== "salida") throw new HttpError("Remito no encontrado");
+  if (original.workId) throw new HttpError("Para revertir una entrega a obra, anulá el remito");
   if (original.status === "anulado") throw new HttpError("El remito está anulado");
   // Lo que ya se devolvió de este remito no se devuelve dos veces.
   const previous = await SalesRemito.find({ returnsId: original._id, kind: "devolucion", status: { $ne: "anulado" } }).lean<Array<{ lines: Array<{ stockItemId: Types.ObjectId; quantity: number }> }>>();
@@ -121,9 +128,9 @@ export async function returnSalesRemito(remitoId: string, input: z.infer<typeof 
 export async function cancelSalesRemito(remitoId: string, reason: string, session: Session) {
   const remito = await SalesRemito.findById(remitoId);
   if (!remito || remito.kind !== "salida") throw new HttpError("Remito no encontrado");
-  if (remito.status !== "pendiente") throw new HttpError(remito.status === "facturado" ? "El remito ya está facturado: primero hay que anular la factura" : "El remito ya está anulado");
+  if (!["pendiente", "entregado"].includes(remito.status)) throw new HttpError(remito.status === "facturado" || remito.status === "parcial" ? "El remito ya está facturado: primero hay que anular la factura" : "El remito ya está anulado");
   if (await SalesRemito.exists({ returnsId: remito._id, status: { $ne: "anulado" } })) throw new HttpError("El remito tiene devoluciones cargadas: no se anula");
-  const claimed = await SalesRemito.updateOne({ _id: remito._id, status: "pendiente" }, { $set: { status: "anulado", note: [remito.note, `Anulado por ${session.name}: ${reason}`].filter(Boolean).join(" · ") } });
+  const claimed = await SalesRemito.updateOne({ _id: remito._id, status: remito.status }, { $set: { status: "anulado", note: [remito.note, `Anulado por ${session.name}: ${reason}`].filter(Boolean).join(" · ") } });
   if (!claimed.modifiedCount) throw new HttpError("El remito ya cambió de estado");
   for (const line of remito.lines as Array<{ stockItemId: Types.ObjectId; quantity: number; ownerParts?: OwnerPart[] }>) {
     const item = await StockItem.findById(line.stockItemId) as unknown as ItemDoc | null;
@@ -280,15 +287,18 @@ export async function listSalesRemitos(filter: { status?: string; clientId?: str
   if (filter.clientId) query.clientId = filter.clientId;
   if (filter.kind && filter.status !== "por_facturar") query.kind = filter.kind;
   const remitos = await SalesRemito.find(query).sort({ createdAt: -1 }).limit(300).lean<Lean[]>();
-  const [clients, invoices] = await Promise.all([
+  const [clients, invoices, works] = await Promise.all([
     Client.find({ _id: { $in: remitos.map(remito => remito.clientId) } }).select("name cuit address").lean<Lean[]>(),
     Invoice.find({ _id: { $in: remitos.flatMap(remito => (remito.invoiceIds as unknown[]) || []) } }).select("number voucherType status").lean<Lean[]>(),
+    Work.find({ _id: { $in: remitos.map(remito => remito.workId).filter(Boolean) } }).select("code name").lean<Lean[]>(),
   ]);
   const clientById = new Map(clients.map(client => [String(client._id), client]));
   const invoiceById = new Map(invoices.map(invoice => [String(invoice._id), invoice]));
+  const workById = new Map(works.map(work => [String(work._id), work]));
   return remitos.map(remito => ({
     ...remito,
     client: clientById.get(String(remito.clientId)) || null,
+    work: workById.get(String(remito.workId)) || null,
     invoices: ((remito.invoiceIds as unknown[]) || []).map(invoiceId => invoiceById.get(String(invoiceId))).filter(Boolean),
   }));
 }

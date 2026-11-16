@@ -12,11 +12,11 @@ Estado de cada pedido: ✅ ya está en el sistema · ◐ está a medias · 🆕 
 
 | # | Pedido | Estado |
 |---|---|---|
-| C1 | **Facturar desde Ventas** como en Tango: elegir el cliente o crearlo con un botón **Nuevo cliente**, elegir la empresa (Verticales o Constructora) y cargar ítems, sean **productos** del salón o **conceptos/servicios** (por ejemplo, "por m²") con precio unitario editable | 🆕 |
-| C2 | Que esa factura tenga un campo de **descripción u observaciones** ("El trabajo comprende…") y se pueda **descargar en PDF** | 🆕 |
-| C3 | **Venta con remito** para sacar insumos del salón hacia una obra: se elige la obra, Jorge firma el remito y baja el stock (sirve de control) | ◐ ya hay remitos de venta |
-| C4 | Cristian **aprueba** la cotización o la venta, y al aprobarla **les avisa a Jorge, Fede y Fer**. Ellos solo la consultan, no la aprueban. Recién ahí Fer puede facturar | ◐ falta revisar el aviso |
-| C5 | En la cotización, cargar los **insumos** que va a necesitar la obra (tachos, rodillos, lija, sellador, fijador) **aunque no estén en stock**. Si falta algo, **se le avisa a Jorge** | 🆕 |
+| C1 | **Facturar desde Ventas** como en Tango: elegir el cliente o crearlo con un botón **Nuevo cliente**, elegir la empresa (Verticales o Constructora) y cargar ítems, sean **productos** del salón o **conceptos/servicios** (por ejemplo, "por m²") con precio unitario editable | ✅ 16/11 |
+| C2 | Que esa factura tenga un campo de **descripción u observaciones** ("El trabajo comprende…") y se pueda **descargar en PDF** | ✅ 16/11 |
+| C3 | **Venta con remito** para sacar insumos del salón hacia una obra: se elige la obra, Jorge firma el remito y baja el stock (sirve de control) | ✅ 16/11 |
+| C4 | Cristian **aprueba** la cotización o la venta, y al aprobarla **les avisa a Jorge, Fede y Fer**. Ellos solo la consultan, no la aprueban. Recién ahí Fer puede facturar | ✅ 16/11, avisos por rol |
+| C5 | En la cotización, cargar los **insumos** que va a necesitar la obra (tachos, rodillos, lija, sellador, fijador) **aunque no estén en stock**. Si falta algo, **se le avisa a Jorge** | ✅ 16/11 |
 | C6 | Cargar los productos del **Salón de Ventas** desde el Excel que va a pasar Cristian | 🆕 falta el Excel |
 
 ## 2. Jorge: compras

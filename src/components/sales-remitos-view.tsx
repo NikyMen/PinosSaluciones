@@ -14,23 +14,24 @@ import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 type Line = { stockItemId: string; name: string; unit: string; quantity: number; unitPriceCents: number; totalCents: number; invoicedQty?: number };
 type Remito = {
-  _id: string; number: string; kind: "salida" | "devolucion"; company: CompanyKey; clientId: string; date: string; status: "pendiente" | "parcial" | "facturado" | "anulado";
+  _id: string; number: string; kind: "salida" | "devolucion"; company: CompanyKey; clientId: string; date: string; status: "pendiente" | "parcial" | "facturado" | "entregado" | "anulado";
   lines: Line[]; totalCents: number; note?: string; userName?: string; returnsId?: string;
+  work?: { _id: string; code: string; name: string } | null; receiverName?: string;
   client: { name?: string; cuit?: string } | null; invoices: Array<{ _id: string; number?: string; voucherType?: string; status?: string }>;
 };
 
 const filters = [
   { value: "pendiente", label: "Para facturar" }, { value: "facturado", label: "Facturados" },
-  { value: "devolucion", label: "Devoluciones" }, { value: "anulado", label: "Anulados" }, { value: "", label: "Todos" },
+  { value: "entregado", label: "Entregas a obra" }, { value: "devolucion", label: "Devoluciones" }, { value: "anulado", label: "Anulados" }, { value: "", label: "Todos" },
 ] as const;
-const statusLabels = { pendiente: "Para facturar", parcial: "Facturado en parte", facturado: "Facturado", anulado: "Anulado" };
+const statusLabels = { pendiente: "Para facturar", parcial: "Facturado en parte", facturado: "Facturado", entregado: "Entregado a obra", anulado: "Anulado" };
 /** Lo que todavía se puede facturar: lo pendiente y lo facturado en parte. */
 const billable = (status: string) => status === "pendiente" || status === "parcial";
 
 function pdfData(remito: Remito) {
   return {
-    number: remito.number, date: remito.date, kind: remito.kind === "devolucion" ? "devolucion" as const : "venta" as const,
-    fromWarehouse: "Salón de Ventas", destination: remito.client?.name || "Cliente",
+    number: remito.number, date: remito.date, kind: remito.work ? "egreso" as const : remito.kind === "devolucion" ? "devolucion" as const : "venta" as const,
+    fromWarehouse: "Salón de Ventas", destination: remito.work ? `${remito.work.code} · ${remito.work.name}` : remito.client?.name || "Cliente", receiverName: remito.receiverName,
     items: remito.lines.map(line => ({ name: line.name, unit: line.unit, quantity: line.quantity })), note: remito.note, userName: remito.userName,
   };
 }
@@ -79,7 +80,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
     <div className="page-heading"><div>
       <p className="eyebrow">VENTAS</p>
       <h1>Remitos de venta</h1>
-      <p>La salida al cliente desde el Salón de Ventas: es lo que descuenta el stock. La factura después referencia uno o varios remitos del mismo cliente y no vuelve a descontar.</p>
+      <p>Remitos del Salón de Ventas para clientes y obras. Las entregas a clientes se pueden facturar desde acá.</p>
     </div>{canEdit && <button className="primary-btn" onClick={() => setCreating(true)}><Plus size={18} /> Nuevo remito</button>}</div>
     <div className="toolbar">
       <div className="tracking-filter" role="group" aria-label="Estado">
@@ -93,25 +94,25 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
     {notice && <div className="notice success" role="status">{notice}</div>}
     <section className="table-panel">
       {rows === null ? <div className="loading-state">Cargando…</div> : !visible.length ? <div className="empty-state"><p>No hay remitos en esta vista.</p></div>
-        : <div className="table-scroll"><table><thead><tr>{filter === "pendiente" && canInvoice && <th />}<th>Remito</th><th>Fecha</th><th>Cliente</th><th>Factura</th><th>Materiales</th><th>Total</th><th>Estado</th><th /></tr></thead><tbody>
+        : <div className="table-scroll"><table><thead><tr>{filter === "pendiente" && canInvoice && <th />}<th>Remito</th><th>Fecha</th><th>Destino</th><th>Factura</th><th>Materiales</th><th>Total</th><th>Estado</th><th /></tr></thead><tbody>
           {visible.map(row => <tr key={row._id} className={selected.includes(row._id) ? "row-selected" : ""}>
             {filter === "pendiente" && canInvoice && <td><input type="checkbox" checked={selected.includes(row._id)} onChange={() => toggle(row)} aria-label={`Elegir ${row.number}`} /></td>}
             <td data-label="Remito"><b>{row.number}</b>{row.kind === "devolucion" && <small className="tracking-sub">Devolución</small>}</td>
             <td data-label="Fecha">{date(row.date)}</td>
-            <td data-label="Cliente">{row.client?.name || "—"}</td>
+            <td data-label="Destino">{row.work ? `${row.work.code} · ${row.work.name}` : row.client?.name || "—"}{row.receiverName && <small className="tracking-sub">Recibe {row.receiverName}</small>}</td>
             <td data-label="Factura"><span className={`company-badge ${row.company}`}>{companyOf(row.company).short}</span>{row.invoices.map(invoice => <small key={invoice._id} className="tracking-sub">{invoiceLabel(invoice)}</small>)}</td>
             <td data-label="Materiales"><ul className="transfer-lines">{row.lines.map(line => <li key={line.stockItemId}>{qty(line.quantity)} {line.unit} · {line.name}{row.status === "parcial" && invoicedQtyOf(line, row.status) > 0 ? ` (facturado ${qty(invoicedQtyOf(line, row.status))})` : ""}</li>)}</ul></td>
             <td data-label="Total">{money(row.totalCents)}{row.status === "parcial" && <small className="tracking-sub">Falta {money(remitoPendingCents(row))}</small>}</td>
             <td data-label="Estado">{row.kind === "devolucion" ? <span className="badge devolucion">Devolución</span> : <span className={`badge remito-${row.status}`}>{statusLabels[row.status]}</span>}</td>
             <td className="row-actions">
               <button className="row-action-wide" onClick={() => { void downloadRemitoPdf(pdfData(row)); }}><FileText size={15} /> PDF</button>
-              {canEdit && row.kind === "salida" && row.status !== "anulado" && <button className="row-action-wide" title="El cliente devuelve material: vuelve al Salón" onClick={() => setReturning(row)}><Undo2 size={15} /> Devolución</button>}
-              {canEdit && row.kind === "salida" && row.status === "pendiente" && <button title="Anular: el material vuelve al Salón" onClick={() => { void cancel(row); }}><Trash2 size={16} /></button>}
+              {canEdit && row.kind === "salida" && row.status !== "anulado" && !row.work && <button className="row-action-wide" title="El cliente devuelve material: vuelve al Salón" onClick={() => setReturning(row)}><Undo2 size={15} /> Devolución</button>}
+              {canEdit && row.kind === "salida" && ["pendiente", "entregado"].includes(row.status) && <button title="Anular: el material vuelve al Salón" onClick={() => { void cancel(row); }}><Trash2 size={16} /></button>}
             </td>
           </tr>)}
         </tbody></table></div>}
     </section>
-    {creating && <NewRemitoModal onClose={() => setCreating(false)} onDone={remito => { setCreating(false); setNotice(`Remito ${remito.number} emitido.`); void downloadRemitoPdf(pdfData(remito)).catch(() => {}); void load(); }} />}
+    {creating && <NewRemitoModal onClose={() => setCreating(false)} onDone={remito => { setCreating(false); if (remito.work) setFilter("entregado"); setNotice(`Remito ${remito.number} emitido.`); void downloadRemitoPdf(pdfData(remito)).catch(() => {}); void load(); }} />}
     {returning && <ReturnModal remito={returning} onClose={() => setReturning(null)} onDone={number => { setReturning(null); setNotice(`Devolución ${number} registrada: el material volvió al Salón. Si corresponde, falta la nota de crédito.`); void load(); }} />}
   </>;
 }
@@ -128,6 +129,11 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
   useEscape(onClose);
   const [clients, setClients] = useState<Option[]>([]);
   const [clientId, setClientId] = useState("");
+  const [destination, setDestination] = useState<"cliente" | "obra">("cliente");
+  const [works, setWorks] = useState<Array<{ _id: string; code: string; name: string; status: string }>>([]);
+  const [workId, setWorkId] = useState("");
+  const [receiverName, setReceiverName] = useState("");
+  const toWork = destination === "obra";
   const [company, setCompany] = useState<CompanyKey>("tvp");
   // La cotización que entrega este remito, si la hay: queda habilitada para facturarlo.
   const [quotes, setQuotes] = useState<Array<{ _id: string; number: string; title: string; clientId: string; company?: CompanyKey; status: string }>>([]);
@@ -142,6 +148,7 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
     void fetchAllRecords<{ _id: string; name: string; cuit?: string }>("clients").then(items => ({ items }))
       .then(result => setClients((result.items || []).map((client: { _id: string; name: string; cuit?: string }) => ({ value: client._id, label: client.name, hint: client.cuit }))));
     void fetchAllRecords<{ _id: string; number: string; title: string; clientId: string; company?: CompanyKey; status: string }>("quotes").then(setQuotes);
+    void fetchAllRecords<{ _id: string; code: string; name: string; status: string }>("works").then(setWorks);
   }, []);
   const clientQuotes = quotes.filter(quote => quote.clientId === clientId && ["aprobada", "convertida"].includes(quote.status));
 
@@ -151,15 +158,15 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
   const total = lines.reduce((sum, line) => sum + lineCents(line), 0);
 
   async function submit() {
-    if (!clientId) return setError("Elegí el cliente");
+    if (toWork ? !workId || receiverName.trim().length < 2 : !clientId) return setError(toWork ? "Elegí la obra y completá quién recibe" : "Elegí el cliente");
     if (lines.some(line => amount(line.quantity) <= 0)) return setError("Poné la cantidad de cada material");
     const over = lines.find(line => amount(line.quantity) > line.available);
     if (over) return setError(`De ${over.item.name} hay ${qty(over.available)} en el Salón`);
     const overDiscount = lines.find(line => Math.round(line.discount * 100) > Math.round(amount(line.quantity) * line.price * 100));
-    if (overDiscount) return setError(`El descuento de ${overDiscount.item.name} pasa el importe del renglón`);
+    if (!toWork && overDiscount) return setError(`El descuento de ${overDiscount.item.name} pasa el importe del renglón`);
     setBusy(true); setError("");
     const response = await fetch("/api/remitos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-      company, clientId, quoteId, date: day, note, lines: lines.map(line => ({ itemId: line.item._id, quantity: amount(line.quantity), unitPriceCents: Math.round(line.price * 100), discountCents: Math.round(line.discount * 100) })),
+      company, ...(toWork ? { workId, receiverName } : { clientId, quoteId }), date: day, note, lines: lines.map(line => ({ itemId: line.item._id, quantity: amount(line.quantity), unitPriceCents: Math.round(line.price * 100), discountCents: Math.round(line.discount * 100) })),
     }) });
     const result = await response.json();
     setBusy(false);
@@ -171,36 +178,42 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
     <button className="modal-backdrop" onClick={onClose} aria-label="Cerrar" />
     <section className="modal entity-modal" role="dialog" aria-modal="true" aria-labelledby="new-remito-title">
       <header><div className="modal-title-wrap"><span className="modal-heading-icon"><PackageOpen /></span><div>
-        <p className="eyebrow">NUEVO REMITO DE VENTA</p><h2 id="new-remito-title">Salida al cliente desde el Salón</h2>
-        <small>Descuenta el stock del Salón de Ventas. La factura se hace después, referenciando el remito.</small>
+        <p className="eyebrow">NUEVO REMITO DE VENTA</p><h2 id="new-remito-title">Salida desde el Salón de Ventas</h2>
+        <small>Descuenta el stock del Salón al emitir el remito.</small>
       </div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
       {/* El form es para el espaciado de los modales; se confirma con el botón, no con Enter (el buscador usa Enter). */}
       <form onSubmit={event => event.preventDefault()}><div className="modal-form-body">
         <div className="form-grid">
+          <label><span>Destino *</span><select value={destination} onChange={event => setDestination(event.target.value as "cliente" | "obra")}><option value="cliente">Cliente</option><option value="obra">Obra</option></select></label>
+          {toWork ? <>
+            <label><span>Obra *</span><SearchSelect name="workId" value={workId} onChange={setWorkId} options={works.filter(row => !["cerrada", "cancelada"].includes(row.status)).map(row => ({ value: row._id, label: `${row.code} · ${row.name}` }))} /></label>
+            <label><span>Nombre de quien recibe *</span><input value={receiverName} maxLength={100} onChange={event => setReceiverName(event.target.value)} /></label>
+          </> : <>
           <label><span>Cliente *</span><SearchSelect name="clientId" options={clients} value={clientId} onChange={value => { setClientId(value); setQuoteId(""); }} placeholder="Elegí el cliente…" /></label>
           <label><span>Cotización<em className="field-hint">Si el remito entrega una cotización aprobada: la habilita para facturar</em></span>
             <SearchSelect name="quoteId" options={clientQuotes.map(quote => ({ value: quote._id, label: `${quote.number} — ${quote.title}` }))} value={quoteId}
               onChange={value => { setQuoteId(value); const quote = clientQuotes.find(candidate => candidate._id === value); if (quote?.company) setCompany(quote.company); }}
               placeholder={clientId ? clientQuotes.length ? "Sin cotización" : "El cliente no tiene cotizaciones aprobadas" : "Elegí primero el cliente"} /></label>
-          <label><span>Empresa que va a facturar *</span><select value={company} onChange={event => setCompany(event.target.value as CompanyKey)}>{COMPANY_KEYS.map(key => <option key={key} value={key}>{COMPANIES[key].legalName}</option>)}</select></label>
+          </>}
+          <label><span>{toWork ? "Empresa" : "Empresa que va a facturar"} *</span><select value={company} onChange={event => setCompany(event.target.value as CompanyKey)}>{COMPANY_KEYS.map(key => <option key={key} value={key}>{COMPANIES[key].legalName}</option>)}</select></label>
           <label><span>Fecha *</span><DateInput name="date" defaultValue={day} required recent onValueChange={setDay} /></label>
           <label><span>Observaciones</span><input value={note} onChange={event => setNote(event.target.value)} placeholder="Quién retira, entrega…" /></label>
         </div>
-        {lines.length > 0 && <table className="picked-lines"><thead><tr><th>Material</th><th>En el Salón</th><th>Cantidad</th><th>Precio unitario (neto)</th><th>Descuento ($)</th><th>Subtotal</th><th /></tr></thead><tbody>
+        {lines.length > 0 && <table className="picked-lines"><thead><tr><th>Material</th><th>En el Salón</th><th>Cantidad</th>{!toWork && <><th>Precio unitario (neto)</th><th>Descuento ($)</th><th>Subtotal</th></>}<th /></tr></thead><tbody>
           {lines.map((line, index) => <tr key={line.item._id} className={amount(line.quantity) > line.available ? "row-alert" : ""}>
             <td>{line.item.name}</td><td>{qty(line.available)} {line.item.unit}</td>
             <td><input inputMode="decimal" value={line.quantity} onChange={event => setLines(current => current.map((row, position) => position === index ? { ...row, quantity: event.target.value.replace(/[^\d,.]/g, "") } : row))} /></td>
-            <td><MoneyInput name={`price-${index}`} defaultValue={line.price} onValueChange={value => setLines(current => current.map((row, position) => position === index ? { ...row, price: value } : row))} /></td>
+            {!toWork && <><td><MoneyInput name={`price-${index}`} defaultValue={line.price} onValueChange={value => setLines(current => current.map((row, position) => position === index ? { ...row, price: value } : row))} /></td>
             <td><MoneyInput name={`discount-${index}`} defaultValue={line.discount} onValueChange={value => setLines(current => current.map((row, position) => position === index ? { ...row, discount: value } : row))} /></td>
-            <td>{money(lineCents(line))}</td>
+            <td>{money(lineCents(line))}</td></>}
             <td><button type="button" className="icon-btn" onClick={() => setLines(current => current.filter((_, position) => position !== index))} aria-label="Sacar"><X size={15} /></button></td>
           </tr>)}
         </tbody></table>}
-        <StockPicker warehouse="salon" exclude={lines.map(line => line.item._id)} onPick={(item, available) => setLines(current => [...current, { item, available, quantity: "", price: Number(item.lastPriceCents || 0) / 100, discount: 0 }])} />
+        <StockPicker warehouse="salon" exclude={lines.map(line => line.item._id)} onPick={(item, available) => setLines(current => [...current, { item, available, quantity: "", price: Number(item.salePriceCents || 0) / 100, discount: 0 }])} />
         <p className="invoice-note">Si el material está en el Galpón, primero se transfiere al Salón (Stock y logística &gt; Transferencias).</p>
       </div>
       {error && <p className="form-error modal-error">{error}</p>}
-      <footer><span>Total del remito: <b>{money(total)}</b></span><button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button type="button" className="primary-btn" disabled={busy || !lines.length} onClick={() => { void submit(); }}>{busy ? "Emitiendo…" : "Emitir remito y bajar el PDF"}</button></footer></form>
+      <footer>{!toWork && <span>Total del remito <b>{money(total)}</b></span>}<button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button type="button" className="primary-btn" disabled={busy || !lines.length} onClick={() => { void submit(); }}>{busy ? "Emitiendo…" : "Emitir remito y bajar el PDF"}</button></footer></form>
     </section>
   </div>;
 }

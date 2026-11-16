@@ -92,6 +92,34 @@ describe("resumen de facturas y recibos", () => {
   });
 });
 
+it("calcula una factura de productos y conceptos a partir de sus renglones", async () => {
+  asRole("gerencia");
+  const client = await Client.create({ name: "Cliente para factura por renglones" });
+  const product = await StockItem.create({ name: "Pincel de prueba", unit: "unidad", salePriceCents: 7500, qty_salon: 3 });
+  const body = {
+    clientId: String(client._id), number: nextNumber(), voucherType: "factura_a", issueDate: "2026-11-16", withRemito: false,
+    discountCents: 100, vatPct: 21, netCents: 1,
+    lines: [
+      { stockItemId: String(product._id), description: "Pincel de prueba", quantity: 2, unit: "unidad", unitCents: 7500 },
+      { description: "Pintura interior", quantity: 1.5, unit: "m²", unitCents: 10000 },
+    ],
+  };
+  const saved = await call(await recordsRoute.POST(json("POST", body), params({ entity: "invoices" })));
+  expect(saved).toMatchObject({ status: 201, body: { netCents: 29900, amountCents: 36179, lines: body.lines } });
+  expect(await StockItem.findById(product._id).lean()).toMatchObject({ qty_salon: 3 });
+  const { jsPDF } = await import("jspdf");
+  const { buildSaleInvoicePdf } = await import("../src/lib/invoice-pdf");
+  const { buildFiscalInvoicePdf, fiscalInvoicePdfData } = await import("../src/lib/fiscal-invoice-pdf");
+  for (const pdf of [new jsPDF({ compress: false }), new jsPDF({ compress: false })].map((doc, index) => {
+    if (index === 0) buildSaleInvoicePdf(doc, saved.body, { name: "Cliente" });
+    else buildFiscalInvoicePdf(doc, fiscalInvoicePdfData(saved.body), { qr: "" });
+    return doc.output();
+  })) {
+    expect(pdf).toContain("Pincel de prueba");
+    expect(pdf).toContain("Pintura interior");
+  }
+});
+
 describe("cuánto se facturó de una cotización (cálculo)", () => {
   it("vigente con adicionales y reducciones, notas de crédito y débito, y las anuladas no cuentan", () => {
     const billing = quoteBilling({

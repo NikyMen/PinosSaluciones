@@ -19,7 +19,7 @@ import { levelsOf } from "@/lib/stock-levels";
 import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-owners";
 import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
 import { InvoiceWorkModal, currentPeriod, type InvoiceableWork } from "@/components/work-invoice";
-import { buildInvoicePdf } from "@/lib/invoice-pdf";
+import { buildInvoicePdf, downloadSaleInvoicePdf } from "@/lib/invoice-pdf";
 import { downloadFiscalInvoicePdf, fiscalInvoicePdfData } from "@/lib/fiscal-invoice-pdf";
 import { readPdfLogo } from "@/lib/pdf-brand";
 import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-order-pdf";
@@ -403,8 +403,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       item.clientId ? read(`/api/records/clients/${String(item.clientId)}`) : null,
       item.associatedInvoiceId ? read(`/api/records/invoices/${String(item.associatedInvoiceId)}`) : null,
     ]);
-    await downloadFiscalInvoicePdf(fiscalInvoicePdfData(item, client || relations.clients?.find(row => row._id === String(item.clientId || "")), associated))
-      .catch(() => setError("No se pudo generar el PDF de la factura"));
+    const customer = client || relations.clients?.find(row => row._id === String(item.clientId || ""));
+    const download = item.cae ? downloadFiscalInvoicePdf(fiscalInvoicePdfData(item, customer, associated)) : downloadSaleInvoicePdf(item, customer);
+    await download.catch(() => setError("No se pudo generar el PDF de la factura"));
   }
 
   async function downloadReceipt(item: Item) {
@@ -551,7 +552,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       company: item.company, voucherType: "factura_a", clientId: item.clientId, quoteId: item.quoteId, workId: item.workId,
       certificateNumber: item.certificateNumber, certificateId: item.certificateId, netCents: item.netCents || item.amountCents, vatPct: 21, issueDate: new Date().toISOString().slice(0, 10),
       description: [`Sustituye la ${String(item.number || "").replace(/^X-/, "Factura X ")}`, String(item.description || "")].filter(Boolean).join(" · "),
-      replacesId: item._id, remitoIds: item.remitoIds, withRemito: item.withRemito,
+      replacesId: item._id, remitoIds: item.remitoIds, withRemito: item.withRemito, lines: item.lines,
     });
   }
 
@@ -654,7 +655,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           {entity === "invoices" && Boolean(item.quoteId) && <Link className="row-action-wide" href={`/app/quotes/${String(item.quoteId)}`} title="Ver la cotización y cuánto queda por facturar"><Calculator size={15} /> Cotización</Link>}
           {entity === "invoices" && Boolean(item.workId) && <Link className="row-action-wide" href={`/app/works/${String(item.workId)}`} title={item.certificateNumber ? `Ver la obra y el certificado ${String(item.certificateNumber)}` : "Ver la obra"}><HardHat size={15} /> Obra</Link>}
           {entity === "invoices" && Array.isArray(item.remitoIds) && item.remitoIds.length > 0 && <Link className="row-action-wide" href="/app/remitos" title={`Factura ${item.remitoIds.length} remito${item.remitoIds.length === 1 ? "" : "s"} de venta`}><FileSymlink size={15} /> Remitos</Link>}
-          {entity === "invoices" && Boolean(item.cae) && <button className="row-action-wide" title={`Descargar la factura emitida en ARCA (CAE ${String(item.cae)})`} onClick={() => { void downloadInvoice(item); }}><Download size={15} /> PDF fiscal</button>}
+          {entity === "invoices" && <button className="row-action-wide" title={item.cae ? `Descargar la factura emitida en ARCA (CAE ${String(item.cae)})` : "Descargar la copia de gestión"} onClick={() => { void downloadInvoice(item); }}><Download size={15} /> {item.cae ? "PDF fiscal" : "PDF"}</button>}
           {entity === "invoices" && canEdit && (item.status === "pendiente" || item.status === "parcial") && <button className="row-action-wide approve" title="Registrar un cobro de esta factura y hacer el recibo" onClick={() => setReceiptFor({ receipt: null, clientId: String(item.clientId || ""), invoiceId: item._id })}><HandCoins size={15} /> Cobrar</button>}
           {entity === "checks" && canEdit && item.direction === "emitido" && item.status === "emitido" && <button className="row-action-wide approve" title="El banco lo debitó: registrar la transferencia de cheque diferido al banco" onClick={() => setCheckAction({ check: item, action: "debit" })}><Landmark size={15} /> Debitar</button>}
           {entity === "checks" && canEdit && item.direction === "recibido" && item.status === "cartera" && <button className="row-action-wide approve" title="Depositarlo: pase de Valores al Cobro al banco" onClick={() => setCheckAction({ check: item, action: "deposit" })}><Landmark size={15} /> Depositar</button>}

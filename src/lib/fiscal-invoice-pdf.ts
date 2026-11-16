@@ -1,5 +1,6 @@
 import type { jsPDF } from "jspdf";
-import { date } from "./format";
+import { date, qty } from "./format";
+import { invoiceLineCents, invoicePrintLines, type InvoiceLine } from "./invoice-lines";
 import { invoiceLabel } from "./invoice-labels";
 import { plain, readPdfLogo } from "./pdf-brand";
 import { companyOf, type CompanyKey } from "./companies";
@@ -17,6 +18,7 @@ export type FiscalInvoicePdfData = {
   /** En una nota: la factura a la que corresponde ("Factura A 0003-00000012 del 06/10/2026"). */
   associated?: string;
   issueDate: string; dueDate?: string; description: string;
+  lines?: InvoiceLine[];
   netCents: number; vatPct: number; vatCents: number; amountCents: number;
   /** El descuento o la bonificación en pesos, sin IVA: el neto ya viene con él restado. */
   discountCents?: number;
@@ -33,11 +35,11 @@ export function fiscalInvoicePdfData(invoice: Record<string, unknown>, client?: 
     company: companyOf(invoice.company).key, voucherType: String(invoice.voucherType) in ARCA_VOUCHER_CODE ? invoice.voucherType as ArcaVoucherType : "factura_a",
     associated: associated ? `${invoiceLabel(associated)} del ${date(String(associated.issueDate || ""))}` : undefined,
     number: String(invoice.number || ""), issueDate: String(invoice.issueDate || ""), dueDate: invoice.dueDate ? String(invoice.dueDate) : undefined,
-    description: String(invoice.description || "Servicios"),
+    description: String(invoice.description || ""), lines: invoicePrintLines(invoice),
     netCents: Number(invoice.netCents || 0), vatPct: Number(invoice.vatPct ?? 21), vatCents: Number(invoice.vatCents || 0), amountCents: Number(invoice.amountCents || 0),
     discountCents: Number(invoice.discountCents || 0) || undefined,
     cae: String(invoice.cae || ""), caeDueDate: String(invoice.caeDueDate || ""), environment: String(invoice.arcaEnvironment || ""),
-    products: Array.isArray(invoice.remitoIds) && invoice.remitoIds.length > 0,
+    products: Boolean(Array.isArray(invoice.remitoIds) && invoice.remitoIds.length) || Boolean(invoicePrintLines(invoice).length && invoicePrintLines(invoice).every(line => line.stockItemId)),
     client: { name: String(client?.name || "Cliente"), cuit: String(client?.cuit || ""), address: String(client?.address || ""), vatCondition: client?.vatCondition ? String(client.vatCondition) : undefined },
   };
 }
@@ -110,7 +112,54 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
   const discount = Number(data.discountCents || 0);
   const discountShown = isA ? discount : Math.round(discount * (1 + (Number(data.vatPct) || 0) / 100));
   const price = (isA ? data.netCents : data.amountCents) + discountShown;
-  const lines = doc.splitTextToSize(plain(data.description), isA ? 68 : 94).slice(0, 14);
+  if (data.lines?.length) {
+    let y = 112;
+    const nextPage = () => {
+      doc.addPage();
+      doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+      doc.text(company.legalName, M, 14);
+      doc.text(`${title} ${isA ? "A" : "B"} · ${data.number}`, M, 21);
+      doc.setFillColor(204, 204, 204); doc.rect(M, 27, W, 7, "FD"); doc.setFontSize(7.5);
+      columns.forEach(([label, x, width]) => doc.text(label, x + width / 2, 31.5, { align: "center" }));
+      y = 40;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    };
+    const x = isA ? { qty: 98, unit: 108, price: 138, total: 164 } : { qty: 124, unit: 134, price: 164, total: 188 };
+    const vat = isA ? 1 : 1 + Number(data.vatPct || 0) / 100;
+    let runningNet = 0;
+    let shown = 0;
+    for (const [index, line] of data.lines.entries()) {
+      const text = doc.splitTextToSize(plain(line.description), isA ? 68 : 94) as string[];
+      const height = text.length * 3.8 + 2;
+      if (y + height > 193) nextPage();
+      runningNet += invoiceLineCents(line);
+      const rowTotal = Math.round(runningNet * vat) - shown;
+      shown += rowTotal;
+      doc.text(String(index + 1).padStart(3, "0"), M + 7, y, { align: "center" });
+      doc.text(text, M + 15, y);
+      doc.text(qty(line.quantity), M + x.qty, y, { align: "right" });
+      doc.text(plain(line.unit), M + x.unit, y, { align: "center", maxWidth: 15 });
+      doc.text(pesos(Math.round(line.unitCents * vat)), M + x.price, y, { align: "right" });
+      doc.text(pesos(rowTotal), M + x.total, y, { align: "right" });
+      if (isA) doc.text(`${String(data.vatPct).replace(".", ",")}%`, M + 178, y, { align: "center" });
+      y += height;
+    }
+    if (discount > 0) {
+      if (y + 7 > 193) nextPage();
+      doc.text("Bonificación / descuento", M + 15, y);
+      doc.text(`-${pesos(shown - (isA ? data.netCents : data.amountCents))}`, M + x.total, y, { align: "right" });
+      y += 7;
+    }
+    if (data.description.trim()) {
+      const observations = doc.splitTextToSize(plain(data.description), W - 4) as string[];
+      for (const observation of observations) {
+        if (y + 4 > 193) nextPage();
+        doc.text(observation, M + 2, y);
+        y += 4;
+      }
+    }
+  } else {
+  const lines = doc.splitTextToSize(plain(data.description || "Servicios"), isA ? 68 : 94).slice(0, 14);
   doc.text("001", M + 7, 112, { align: "center" });
   doc.text(lines, M + 15, 112);
   if (isA) {
@@ -125,6 +174,8 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
     const discountY = 112 + lines.length * 3.6 + 3;
     doc.text("Bonificación / descuento", M + 15, discountY);
     doc.text(`-${pesos(discountShown)}`, M + (isA ? 164 : 188), discountY, { align: "right" });
+  }
+
   }
 
   // Totales.
@@ -150,10 +201,14 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
   doc.setFontSize(8.5);
   doc.setFont("helvetica", "bold"); doc.text("CAE N°:", 165, 264, { align: "right" }); doc.setFont("helvetica", "normal"); doc.text(data.cae, 167, 264);
   doc.setFont("helvetica", "bold"); doc.text("Fecha de Vto. de CAE:", 165, 270, { align: "right" }); doc.setFont("helvetica", "normal"); doc.text(date(data.caeDueDate), 167, 270);
-  doc.setFontSize(7.5); doc.text("Pág. 1/1", 105, 290, { align: "center" });
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page); doc.setFontSize(7.5); doc.text(`Pág. ${page}/${pages}`, 105, 290, { align: "center" });
+  }
 
   // Una factura del ambiente de prueba de ARCA no vale: que se note.
-  if (data.environment === "homologacion") {
+  if (data.environment === "homologacion") for (let page = 1; page <= pages; page++) {
+    doc.setPage(page);
     doc.saveGraphicsState(); doc.setGState(new (doc as unknown as { GState: new (options: { opacity: number }) => unknown }).GState({ opacity: 0.16 }) as never);
     doc.setTextColor(224, 0, 16); doc.setFont("helvetica", "bold"); doc.setFontSize(30);
     doc.text("HOMOLOGACION - SIN VALIDEZ FISCAL", 28, 212, { angle: 35 });

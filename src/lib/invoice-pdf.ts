@@ -1,7 +1,66 @@
 import type { jsPDF } from "jspdf";
 import { date, money, todayIso } from "./format";
-import { drawFooter, drawLetterhead, PAGE } from "./pdf-brand";
+import { drawFooter, drawLetterhead, readPdfLogo, PAGE } from "./pdf-brand";
+import { invoiceLabel } from "./invoice-labels";
+import { invoiceLineCents, invoicePrintLines } from "./invoice-lines";
 import { bankLines, companyOf, type CompanyKey } from "./companies";
+
+export function buildSaleInvoicePdf(doc: jsPDF, invoice: Record<string, unknown>, client: Record<string, unknown> | undefined, logo?: string) {
+  const company = companyOf(invoice.company);
+  const label = invoiceLabel(invoice);
+  const header = () => drawLetterhead(doc, { title: "Factura de venta", number: label, company, logo,
+    lines: [`Emitida el ${date(String(invoice.issueDate || ""))}`, "Copia de gestión sin validez fiscal"] });
+  let page = 1;
+  let y = header();
+  const footer = () => drawFooter(doc, { page, company, author: company.short, note: "Copia de gestión sin validez fiscal" });
+  const ensureSpace = (height: number) => { if (y + height > PAGE.bottom) { footer(); doc.addPage(); page++; y = header(); } };
+  const x = PAGE.margin;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+  doc.text(plain(String(client?.name || "Cliente")), x, y);
+  y += 6;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+  doc.text(plain([client?.cuit, client?.address].filter(Boolean).join(" · ")), x, y);
+  y += 12;
+  const lines = invoicePrintLines(invoice);
+  for (const line of lines) {
+    const parts = doc.splitTextToSize(plain(line.description), 86) as string[];
+    const height = parts.length * 4 + 4;
+    ensureSpace(height);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    doc.text(parts, x, y);
+    doc.text(plain(`${line.quantity} ${line.unit}`), 130, y, { align: "right" });
+    doc.text(plain(money(line.unitCents)), 161, y, { align: "right" });
+    doc.text(plain(money(invoiceLineCents(line))), 196, y, { align: "right" });
+    y += height;
+  }
+  const description = String(invoice.description || "");
+  if (description) {
+    for (const part of doc.splitTextToSize(plain(description), 175) as string[]) {
+      ensureSpace(8);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+      doc.text(part, x, y); y += 5;
+    }
+  }
+  ensureSpace(32);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  const totals = [
+    ...(Number(invoice.discountCents) > 0 ? [["Descuento", -Number(invoice.discountCents)]] as const : []),
+    ...(Number(invoice.netCents) > 0 ? [["Neto", Number(invoice.netCents)], ["IVA", Number(invoice.vatCents || 0)]] as const : []),
+    ["Total", Number(invoice.amountCents || 0)] as const,
+  ];
+  for (const [text, cents] of totals) {
+    doc.text(text, 160, y, { align: "right" });
+    doc.text(plain(money(cents)), 196, y, { align: "right" }); y += 6;
+  }
+  footer();
+  return `factura-venta-${String(invoice.number || "sin-numero")}.pdf`;
+}
+
+export async function downloadSaleInvoicePdf(invoice: Record<string, unknown>, client?: Record<string, unknown>) {
+  const [{ jsPDF }, logo] = await Promise.all([import("jspdf"), readPdfLogo()]);
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  doc.save(buildSaleInvoicePdf(doc, invoice, client, logo));
+}
 
 /**
  * Factura de avance de obra, en PDF.

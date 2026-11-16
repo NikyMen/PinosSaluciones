@@ -6,7 +6,7 @@ import { qty } from "@/lib/format";
 import { levelsOf } from "@/lib/stock-levels";
 import { warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
 
-export type PickedItem = { _id: string; name: string; unit: string; sku?: string; avgCostCents?: number; lastPriceCents?: number } & Record<string, unknown>;
+export type PickedItem = { _id: string; name: string; unit: string; sku?: string; avgCostCents?: number; lastPriceCents?: number; salePriceCents?: number } & Record<string, unknown>;
 
 /**
  * Busca un material del stock y muestra cuánto hay en el depósito que importa

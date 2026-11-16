@@ -30,6 +30,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Indicadores y documentos: las listas de facturas muestran pendientes y saldos. La cotización y su obra muestran facturación y cobranza. Gerencia configura la firma del recibo y la OP por empresa. Administración tiene Compras en solo lectura por defecto y puede cargar facturas y OP. Ver `docs/decisiones/2026-11-indicadores-y-recibos.md`.
 
+- Ventas del Salón: facturas por productos y conceptos, con PDF y alta rápida de clientes. Un remito a obra baja stock del Salón y registra a quien recibe. La cotización aprobada notifica a Compras, Obras y Administración. Compras recibe la lista de faltantes para armar la solicitud. Ver `docs/decisiones/2026-11-ventas-del-salon.md`.
+
 - Importación: botón Plantilla (`GET /api/import/[entity]`); las relaciones se resuelven por nombre, CUIT o código y las fechas en dd/mm/aaaa. Así se cargan las cotizaciones.
 
 Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en VPS", "Actualizar producción" y "Backups". En resumen:

@@ -20,6 +20,7 @@ export type RemitoData = {
   items: Array<{ code?: string; name: string; unit: string; quantity: number }>;
   note?: string;
   userName?: string;
+  receiverName?: string;
 };
 
 const { margin: MARGIN, width: WIDTH, bottom: BOTTOM } = PAGE;
@@ -99,7 +100,7 @@ export function buildRemitoPdf(doc: jsPDF, data: RemitoData, meta: { author: str
   doc.line(WIDTH - MARGIN - 70, signY, WIDTH - MARGIN, signY);
   setColor(MUTED); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
   doc.text("Entregó (firma y aclaración)", MARGIN + 35, signY + 4.5, { align: "center" });
-  doc.text("Recibió conforme (firma, aclaración y DNI)", WIDTH - MARGIN - 35, signY + 4.5, { align: "center" });
+  doc.text(plain(data.receiverName || "Recibió conforme (firma, aclaración y DNI)"), WIDTH - MARGIN - 35, signY + 4.5, { align: "center", maxWidth: 70 });
 
   drawFooter(doc, { page, author: meta.author, note: "Remito interno, sin valor comercial" });
   return `remito-${data.number}.pdf`;

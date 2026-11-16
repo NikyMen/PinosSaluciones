@@ -1,4 +1,4 @@
-import { Client, Collection, Invoice, Work } from "./models";
+import { Client, Collection, Invoice, StockItem, Work } from "./models";
 import { HttpError } from "./api";
 import { baseInvoiceType, formatVoucherNumber, invoiceLabel, isCreditNote, isFiscalVoucher, isNote, voucherLabels, VOID_INVOICE_STATUSES } from "./invoice-labels";
 import { arcaBookFor, arcaCredentials, arcaEmitInvoice, arcaEnvironment, arcaPointsOfSale } from "./arca";
@@ -6,6 +6,7 @@ import { COMPANIES, companyOf } from "./companies";
 import { ARCA_VOUCHER_CODE, vatConditionFor, type ArcaVoucherType } from "./fiscal";
 import { applyInvoiceCollection } from "./balances";
 import { money } from "./format";
+import { invoiceLinesGrossCents, type InvoiceLine } from "./invoice-lines";
 
 export { invoiceLabel, voucherLabels, VOUCHER_TYPES } from "./invoice-labels";
 
@@ -22,9 +23,22 @@ export async function prepareInvoice(data: Record<string, unknown>, before: Reco
   const remitos = Array.isArray(merged.remitoIds) && merged.remitoIds.length > 0;
   if (merged.withRemito === true && !remitos) throw new HttpError("Elegí al menos un remito de venta");
   if (merged.withRemito === false && remitos) throw new HttpError("Elegí Factura con remito para facturar remitos de venta");
-  const net = Number(merged.netCents || 0);
+  const lines = Array.isArray(merged.lines) ? merged.lines as InvoiceLine[] : [];
+  if (remitos && lines.length) throw new HttpError("Los productos de los remitos se cargan desde el remito");
+  if (merged.withRemito === false && !lines.length && !isNote(merged.voucherType) && !merged.replacesId && (!before._id || Array.isArray(before.lines) && before.lines.length)) throw new HttpError("Agregá al menos un producto o concepto");
+  if ("lines" in data && lines.length) {
+    const products = [...new Set(lines.map(line => line.stockItemId).filter(Boolean))];
+    if (products.length && await StockItem.countDocuments({ _id: { $in: products } }) !== products.length) throw new HttpError("Uno de los productos ya no existe en Stock");
+  }
+  if (lines.length && ["lines", "netCents", "discountCents", "amountCents"].some(key => key in data)) {
+    const net = invoiceLinesGrossCents(lines) - Number(merged.discountCents || 0);
+    if (net < 0) throw new HttpError("El descuento pasa el subtotal");
+    data.netCents = net;
+    if (!net) Object.assign(data, { vatCents: 0, amountCents: 0 });
+  }
+  const net = Number(data.netCents ?? merged.netCents ?? 0);
   if (("netCents" in data || "vatPct" in data) && net > 0) {
-    const pct = Number(merged.vatPct ?? 21);
+    const pct = merged.voucherType === "factura_x" ? 0 : Number(merged.vatPct ?? 21);
     const vat = Math.round(net * pct / 100);
     Object.assign(data, { vatPct: pct, vatCents: vat, amountCents: net + vat });
   }
@@ -106,7 +120,9 @@ export async function emitInvoiceInArca(data: Record<string, unknown>) {
 
   // ARCA autoriza con fecha de hasta 5 días antes (productos) o 10 (servicios). Una factura vieja
   // ya se emitió: se carga a mano con su número (reunión con Tesorería, 10/11/2026).
-  const concept = Array.isArray(data.remitoIds) && data.remitoIds.length ? 1 : 2;
+  const lines = (data.lines || []) as InvoiceLine[];
+  const products = lines.filter(line => line.stockItemId).length;
+  const concept = (Array.isArray(data.remitoIds) && data.remitoIds.length) || (products > 0 && products === lines.length) ? 1 : products > 0 ? 3 : 2;
   const windowDays = concept === 1 ? 5 : 10;
   const issue = new Date(data.issueDate as string | Date);
   if (Number.isFinite(issue.getTime()) && Date.now() - issue.getTime() > (windowDays + 1) * 86_400_000) {
@@ -143,6 +159,7 @@ const FISCAL_FIELDS = ["company", "voucherType", "pointOfSale", "number", "clien
 
 export function checkFiscalChanges(before: Record<string, unknown>, changes: Record<string, unknown>) {
   // Una nota de crédito cargada a mano tampoco cambia: ya descontó su importe de la factura. Se borra y se carga de nuevo.
+  if ((before.cae || isCreditNote(before.voucherType)) && "lines" in changes) throw new HttpError("Los renglones de esta factura ya están emitidos");
   if (!before.cae && isCreditNote(before.voucherType)) {
     if (["amountCents", "netCents", "vatPct", "clientId", "company", "associatedInvoiceId"].some(key => key in changes && String(changes[key] ?? "") !== String(before[key] ?? ""))) throw new HttpError("La nota de crédito ya descontó su importe de la factura: para corregirla, borrala y cargala de nuevo.");
     return;
