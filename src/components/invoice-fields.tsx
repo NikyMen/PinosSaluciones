@@ -246,7 +246,8 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
         <label className="readonly-field"><span>Total</span><output><b>{money(Math.round(total * 100))}</b></output><input type="hidden" name="amountCents" value={total || ""} /></label>
       </>}
       {field("collectedCents") && editing && <FormField {...fieldProps(field("collectedCents")!)} />}
-      {field("status") && <FormField {...fieldProps(field("status")!)} />}
+      {/* El estado sale de los recibos: al cargarla no se elige; al editarla queda para anularla (Tesorería, 10/11/2026). */}
+      {field("status") && editing && <FormField {...fieldProps(field("status")!)} />}
     </div></fieldset>
 
     <fieldset><legend><b>Detalle</b><small>Descripción y el PDF de la factura</small></legend><div className="form-grid">

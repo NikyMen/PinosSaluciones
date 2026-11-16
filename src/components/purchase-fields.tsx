@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { Field } from "@/lib/entity-config";
 import { date, money } from "@/lib/format";
 import { FormField, type FieldProps } from "@/components/record-form";
-import { PURCHASE_PERCEPTIONS, pctLabel, purchaseLineNetCents, purchaseTotals, storedPurchaseTaxes, voucherTaxFields } from "@/lib/purchase-taxes";
-import { baseInvoiceType, isCreditNote } from "@/lib/invoice-labels";
+import { PURCHASE_PERCEPTIONS, pctLabel, purchaseLineNetCents, purchaseTotals, storedPurchaseTaxes, VOUCHER_TAX_CENTS_KEYS, voucherTaxFields } from "@/lib/purchase-taxes";
+import { baseInvoiceType, isCreditNote, isNote } from "@/lib/invoice-labels";
 import { MoneyInput } from "@/components/fields";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
 import { todayIso } from "@/lib/format";
@@ -38,15 +38,17 @@ function useFormValues(wrap: RefObject<HTMLDivElement | null>) {
 const ratesOf = (number: (key: string) => number): Rates => ({ perceptionVatPct: number("perceptionVatPct"), perceptionIibbPct: number("perceptionIibbPct"), perceptionIibbProvPct: number("perceptionIibbProvPct"), internalTaxPct: number("internalTaxPct") });
 
 /** Del neto al total, renglón por renglón. */
-function TaxPreview({ netCents, vatRows, rates, amounts, totalLabel }: {
+function TaxPreview({ netCents, vatRows, rates, amounts, totalLabel, byAmount = false }: {
   netCents: number; vatRows: Array<{ pct: number; vatCents: number }>; rates: Rates;
   amounts: { perceptionVatCents: number; perceptionIibbCents: number; perceptionIibbProvCents: number; internalTaxCents: number; amountCents: number }; totalLabel: string;
+  /** En la factura del proveedor las percepciones van por importe: no se muestra el porcentaje. */ byAmount?: boolean;
 }) {
+  const shows = (percent: number, cents: number) => byAmount ? cents > 0 : percent > 0;
   return <dl className="purchase-taxes-preview" aria-live="polite">
     <div><dt>Neto (sin IVA)</dt><dd>{money(netCents)}</dd></div>
     {vatRows.map(row => <div key={row.pct}><dt>IVA {pctLabel(row.pct)}</dt><dd>{money(row.vatCents)}</dd></div>)}
-    {PURCHASE_PERCEPTIONS.map(({ key, label }) => rates[`${key}Pct`] > 0 && <div key={key}><dt>{label} {pctLabel(rates[`${key}Pct`])}</dt><dd>{money(amounts[`${key}Cents`])}</dd></div>)}
-    {rates.internalTaxPct > 0 && <div><dt>Impuesto interno {pctLabel(rates.internalTaxPct)}</dt><dd>{money(amounts.internalTaxCents)}</dd></div>}
+    {PURCHASE_PERCEPTIONS.map(({ key, label }) => shows(rates[`${key}Pct`], amounts[`${key}Cents`]) && <div key={key}><dt>{label}{byAmount ? "" : ` ${pctLabel(rates[`${key}Pct`])}`}</dt><dd>{money(amounts[`${key}Cents`])}</dd></div>)}
+    {shows(rates.internalTaxPct, amounts.internalTaxCents) && <div><dt>Impuesto interno{byAmount ? "" : ` ${pctLabel(rates.internalTaxPct)}`}</dt><dd>{money(amounts.internalTaxCents)}</dd></div>}
     <div className="total"><dt>{totalLabel}</dt><dd>{money(amounts.amountCents)}</dd></div>
   </dl>;
 }
@@ -71,6 +73,10 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
   const [lines, setLines] = useState<Line[]>(() => initial.length ? initial.map((line, key) => ({ ...blank(key), ...line, key })) : [blank(0)]);
   useEffect(() => { let active = true; fetchAllRecords("stock").then(items => { if (active) setCatalog(items as Item[]); }).catch(() => {}); return () => { active = false; }; }, []);
   const patchLine = (key: number, patch: Partial<Line>) => setLines(current => current.map(line => line.key === key ? { ...line, ...patch } : line));
+  // El presupuesto del proveedor suele venir con precios finales: con esto se cargan con IVA y se guarda el neto (Jorge, 10/11/2026).
+  const [pricesWithVat, setPricesWithVat] = useState(false);
+  const toNet = (pesos: number, vatPct: number) => Math.round(pesos * 100 / (pricesWithVat ? 1 + vatPct / 100 : 1));
+  const shownPrice = (cents: number, vatPct: number) => Math.round(cents * (pricesWithVat ? 1 + vatPct / 100 : 1)) / 100;
   const itemMode = stockMode || !editing || initial.length > 0;
 
   const terms = values.paymentTerms || String(editing?.paymentTerms || "contado");
@@ -106,6 +112,8 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
       <input type="hidden" name="description" value={lines.map(line => `${line.quantity} × ${line.name}`).join(", ").slice(0, 2000)} />
       <input type="hidden" name="subtotalCents" value={totals.subtotalCents / 100} />
       <input type="hidden" name="vatPct" value={stored?.vatPct ?? 21} />
+      <label className="wide checkbox-line"><input type="checkbox" checked={pricesWithVat} onChange={event => setPricesWithVat(event.target.checked)} />
+        <span>Los precios ya incluyen IVA<em className="field-hint">Si el presupuesto del proveedor viene con el precio final: se escribe con IVA y se guarda el neto, así el IVA no se suma dos veces</em></span></label>
       <datalist id="purchase-stock-products">{catalog.map(item => <option key={item._id} value={String(item.name)}>{String(item.barcode || item.sku || "")}</option>)}</datalist>
       <div className="purchase-item-list wide">{lines.map((line, index) => <fieldset key={line.key} className="form-grid">
         <legend>Ítem {index + 1}</legend>
@@ -116,8 +124,8 @@ export function PurchaseFields({ fields, fieldProps, editing }: { fields: Field[
         }} /></label>
         <label><span>Cantidad *</span><input type="number" min="0.001" step="0.001" required value={line.quantity || ""} onChange={event => patchLine(line.key, { quantity: Number(event.target.value) })} /></label>
         <label><span>Unidad</span><select value={line.unit} disabled={Boolean(line.stockItemId)} onChange={event => patchLine(line.key, { unit: event.target.value })}>{["unidad", "kg", "litro", "metro", "m2", "m3", "bolsa", "balde", "rollo"].map(unit => <option key={unit}>{unit}</option>)}</select></label>
-        <label><span>Costo unitario sin IVA</span><MoneyInput name={`item-cost-${line.key}`} defaultValue={line.unitCents / 100} key={`${line.key}-${line.stockItemId || "nuevo"}`} onValueChange={value => patchLine(line.key, { unitCents: Math.round(value * 100) })} /></label>
-        <label><span>Descuento / bonificación<em className="field-hint">En pesos, sobre el renglón</em></span><MoneyInput name={`item-discount-${line.key}`} defaultValue={(line.discountCents || 0) / 100} onValueChange={value => patchLine(line.key, { discountCents: Math.round(value * 100) })} /></label>
+        <label><span>{pricesWithVat ? "Costo unitario con IVA" : "Costo unitario sin IVA"}{pricesWithVat && <em className="field-hint">Neto: {money(line.unitCents)}</em>}</span><MoneyInput name={`item-cost-${line.key}`} defaultValue={shownPrice(line.unitCents, line.vatPct)} key={`${line.key}-${line.stockItemId || "nuevo"}-${pricesWithVat}`} onValueChange={value => patchLine(line.key, { unitCents: toNet(value, line.vatPct) })} /></label>
+        <label><span>Descuento / bonificación<em className="field-hint">En pesos, sobre el renglón{pricesWithVat ? ", con IVA" : ""}</em></span><MoneyInput name={`item-discount-${line.key}`} key={`discount-${line.key}-${pricesWithVat}`} defaultValue={shownPrice(line.discountCents || 0, line.vatPct)} onValueChange={value => patchLine(line.key, { discountCents: toNet(value, line.vatPct) })} /></label>
         <label><span>IVA</span><select value={line.vatPct} onChange={event => patchLine(line.key, { vatPct: Number(event.target.value) })}>{PURCHASE_VAT_RATES.map(rate => <option value={rate} key={rate}>{pctLabel(rate)}</option>)}</select></label>
         {!line.stockItemId && <label><span>Rubro</span><select value={line.category} onChange={event => patchLine(line.key, { category: event.target.value })}>{["materiales", "herramientas", "seguridad", "consumibles", "otros"].map(category => <option key={category}>{category}</option>)}</select></label>}
         <div><span>Neto: {money(purchaseLineNetCents(line))}</span>{(line.discountCents || 0) > Math.round(line.quantity * line.unitCents) && <small className="warning-line">El descuento pasa el importe del renglón</small>} <button type="button" className="secondary-btn" disabled={lines.length === 1} onClick={() => setLines(current => current.filter(row => row.key !== line.key))}>Quitar ítem</button></div>
@@ -174,10 +182,16 @@ export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]
   const grossCents = values.grossNetCents === undefined ? storedNet + storedDiscount : Math.round(number("grossNetCents") * 100);
   const discountCents = values.discountCents === undefined ? storedDiscount : Math.round(number("discountCents") * 100);
   const net = Math.max(0, grossCents - discountCents);
-  const voucherType = values.voucherType || "";
+  const voucherType = values.voucherType ?? String(editing?.voucherType || "");
   const withVat = Boolean(voucherType) && baseInvoiceType(voucherType) === "factura_a";
-  const rates = ratesOf(number);
-  const amounts = voucherTaxFields(net, { ...rates, vatPct: values.vatPct === undefined || values.vatPct === "" ? undefined : number("vatPct") }, withVat);
+  // Las percepciones y el impuesto interno se cargan por importe, como figuran en la factura (en pesos en el formulario).
+  const typed = (key: string) => values[key] === undefined ? Number(editing?.[key] || 0) : Math.round(number(key) * 100);
+  const amounts = voucherTaxFields(net, { vatPct: values.vatPct === undefined || values.vatPct === "" ? undefined : number("vatPct") }, withVat,
+    Object.fromEntries(VOUCHER_TAX_CENTS_KEYS.map(key => [key, typed(key)])));
+  const rates: Rates = { perceptionVatPct: amounts.perceptionVatPct, perceptionIibbPct: amounts.perceptionIibbPct, perceptionIibbProvPct: amounts.perceptionIibbProvPct, internalTaxPct: amounts.internalTaxPct };
+  // La letra sale del tipo de comprobante: el número es 4 dígitos, guion y 8 (Tesorería, 10/11/2026).
+  const letter = voucherType ? voucherType.slice(-1).toUpperCase() : "";
+  const originalNumber = String(editing?.number || "");
 
   const receiptsField = fields.find(field => field.key === "purchaseReceiptIds");
   const initial = receiptsField ? fieldProps(receiptsField).value : undefined;
@@ -203,13 +217,27 @@ export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]
         : `Con esta factura, la orden ${order.number} tendría facturado ${money(invoiced)} netos y recibido ${money(received)}.`)
         : "";
 
+  // Al cargar no se elige el estado (sale de las órdenes de pago) y "Factura que corrige" es sólo de las notas.
+  const shown = fields.filter(field => field !== receiptsField && !(field.key === "status" && !editing) && !(field.key === "associatedExpenseId" && !isNote(voucherType)));
+
   return <div className="form-grid" ref={wrap}>
-    {fields.filter(field => field !== receiptsField).map((field, index) => field === netField
+    {shown.map((field, index) => field === netField
       ? <label key={field.key}><span>Subtotal sin IVA<em className="field-hint">Antes del descuento. Si lo cargás, el IVA, las percepciones y el total salen solos</em></span>
         <MoneyInput name="grossNetCents" defaultValue={(storedNet + storedDiscount) / 100} />
         <input type="hidden" name="netCents" value={grossCents > 0 ? net / 100 : ""} />
         {grossCents > 0 && <small className={discountCents > grossCents ? "warning-line" : "muted-line"}>{discountCents > grossCents ? "El descuento pasa el subtotal" : `Neto después del descuento: ${money(net)}`}</small>}</label>
-      : <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}
+      : field.key === "number" && letter
+        ? <label key={field.key}><span>Número *<em className="field-hint">4 números, guion y 8 números</em></span>
+          <div className="voucher-number"><b aria-label={`Letra ${letter}`}>{letter}</b>
+            <input name="number" required inputMode="numeric" autoComplete="off" maxLength={13} placeholder="0001-00012345" defaultValue={originalNumber}
+              onInput={event => {
+                const input = event.currentTarget;
+                const digits = input.value.replace(/\D/g, "").slice(0, 12);
+                input.value = digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
+                // Una factura de antes con otro formato se guarda igual mientras no se toque el número.
+                input.setCustomValidity(input.value === originalNumber || digits.length === 12 ? "" : "Tienen que ser 12 números: 4 antes del guion y 8 después");
+              }} /></div></label>
+        : <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}
     {receiptsField && <input type="hidden" name="purchaseReceiptIds" value={order ? selected.join(",") : ""} />}
     {order && <fieldset className="receipt-picker">
       <span>Remitos de la orden {order.number} que factura</span>
@@ -221,6 +249,6 @@ export function ExpenseFields({ fields, fieldProps, editing }: { fields: Field[]
         </label>)}
     </fieldset>}
     {warning && <p className="notice warning invoice-warning" role="status">{warning}</p>}
-    {net > 0 && <TaxPreview netCents={net} vatRows={withVat ? [{ pct: amounts.vatPct, vatCents: amounts.vatCents }] : []} rates={rates} amounts={amounts} totalLabel="Total del comprobante (se guarda este)" />}
+    {net > 0 && <TaxPreview netCents={net} vatRows={withVat ? [{ pct: amounts.vatPct, vatCents: amounts.vatCents }] : []} rates={rates} amounts={amounts} byAmount totalLabel="Total del comprobante (se guarda este)" />}
   </div>;
 }

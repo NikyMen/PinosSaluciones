@@ -25,7 +25,7 @@ Estado de cada pedido: ✅ ya está en el sistema · ◐ está a medias · 🆕 
 |---|---|---|
 | J1 | IVA 0 % en la solicitud | ✅ |
 | J2 | Que la compra pueda ir al **Galpón** o al **Salón de Ventas** y después repartirse a la obra o a los utilitarios | ✅ (`stockOnApproval`) |
-| J3 | Que al lado del IVA se pueda indicar **"IVA ya incluido"**, porque el presupuesto del proveedor viene con precios finales y el sistema le sumó el IVA de nuevo | 🆕 |
+| J3 | Que al lado del IVA se pueda indicar **"IVA ya incluido"**, porque el presupuesto del proveedor viene con precios finales y el sistema le sumó el IVA de nuevo | ✅ 16/11 |
 | J4 | **Adjuntar el PDF** del presupuesto del proveedor a la solicitud o la OC | ❓ revisar si ya se puede |
 | J5 | Jorge carga **todos los remitos** y no puede guardar ninguno sin asociarlo a una obra o cotización | ◐ |
 
@@ -72,13 +72,13 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 | R3 | Factura cargada desde una OC: la **obra, el proveedor y los artículos vienen bloqueados** y solo se editan los **precios** (por diferencias de IVA) | ◐ |
 | R4 | **Asociar después** una factura sin OC a una OC o cotización (el "camino inverso") | 🆕 |
 | R5 | Rubro o **categoría** de la obra (seis: en altura, albañilería, pintura interior, pintura exterior, impermeabilización, poliuretano…). Que sea **obligatorio para Cristian** en la cotización y llegue bloqueado a la compra. Hoy el desplegable está mal armado | ◐ |
-| R6 | Número de comprobante: al elegir el tipo, la **letra se pone sola y no se puede editar** (A, C o X), y después van **12 dígitos obligatorios: 4 antes del guion y 8 después**. Si sobra o falta alguno, no deja guardar | 🆕 |
-| R7 | Tipos **Factura / Nota de crédito / Nota de débito**. "Factura que corrige" aparece **solo en las notas**, con dos opciones: **con referencia**, que obliga a elegir la factura (y descuenta total o parcial), o **sin referencia**, que queda como crédito a favor | ◐ |
-| R8 | Poner la **fecha de emisión debajo del número** y la **fecha de vencimiento debajo del proveedor** | 🆕 |
+| R6 | Número de comprobante: al elegir el tipo, la **letra se pone sola y no se puede editar** (A, C o X), y después van **12 dígitos obligatorios: 4 antes del guion y 8 después**. Si sobra o falta alguno, no deja guardar | ✅ 16/11 |
+| R7 | Tipos **Factura / Nota de crédito / Nota de débito**. "Factura que corrige" aparece **solo en las notas**, con dos opciones: **con referencia**, que obliga a elegir la factura (y descuenta total o parcial), o **sin referencia**, que queda como crédito a favor | ✅ 16/11 |
+| R8 | Poner la **fecha de emisión debajo del número** y la **fecha de vencimiento debajo del proveedor** | ✅ 16/11 |
 | R9 | **Período** distinto de la fecha: por ejemplo, emitida el 2/11 pero del período octubre | ❓ revisar |
-| R10 | Cargar el **neto** y que el **IVA (único dato en %) y el total se calculen solos**. Las percepciones y los otros impuestos van como **importe**, no como porcentaje, y todo se detalla abajo | ◐ |
-| R11 | Cambiar "Descripción" por **"Leyenda"** | 🆕 |
-| R12 | **Sacar "Estado"** al cargar. Pagada o pendiente sale de la OP, y "anulada" no tiene sentido en una factura que recién se carga | 🆕 |
+| R10 | Cargar el **neto** y que el **IVA (único dato en %) y el total se calculen solos**. Las percepciones y los otros impuestos van como **importe**, no como porcentaje, y todo se detalla abajo | ✅ 16/11 |
+| R11 | Cambiar "Descripción" por **"Leyenda"** | ✅ 16/11 |
+| R12 | **Sacar "Estado"** al cargar. Pagada o pendiente sale de la OP, y "anulada" no tiene sentido en una factura que recién se carga | ✅ 16/11 |
 | R13 | **Edición:** si la factura **no tiene OP** se puede editar o borrar todo, incluida la fecha. Si **tiene OP**, solo se edita la leyenda; para cambiar el resto hay que anular la OP | ✅ 13/11 |
 | R14 | El usuario de Fer o Ricci solo **ve las órdenes de compra** (no las gestiona), y hay que poder **editar el nombre de usuario** | 🆕 |
 
@@ -86,14 +86,14 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 
 | # | Pedido | Estado |
 |---|---|---|
-| P1 | Pasar el botón **Órdenes de pago** a **Compras** | 🆕 |
+| P1 | Pasar el botón **Órdenes de pago** a **Compras** | ✅ 16/11 |
 | P2 | Poder emitir una **OP sin factura** y asociarle la factura después. Se aplica editando la OP | ✅ 13/11 |
 | P3 | Al elegir el proveedor, que aparezcan sus **facturas pendientes** para elegir cuáles pagar, total o en parte | ✅ |
-| P4 | Sacar **"Tipo de gasto"**, que sale de la factura, y la **obra**, que sale de la OC o cotización | 🆕 |
-| P5 | Sacar **"Pago"** y dejar solo la **fecha de pago con calendario**, para poder cargar pagos de días anteriores | 🆕 |
-| P6 | Medios: **sacar e-Cheq** (por el número saben si es electrónico) y, al elegir **Cheque**, mostrar **solo las cuentas que emiten cheques** (de la 40 en adelante) | ◐ |
+| P4 | Sacar **"Tipo de gasto"**, que sale de la factura, y la **obra**, que sale de la OC o cotización | ✅ 16/11 |
+| P5 | Sacar **"Pago"** y dejar solo la **fecha de pago con calendario**, para poder cargar pagos de días anteriores | ✅ 16/11 |
+| P6 | Medios: **sacar e-Cheq** (por el número saben si es electrónico) y, al elegir **Cheque**, mostrar **solo las cuentas que emiten cheques** (de la 40 en adelante) | ✅ 16/11 |
 | P7 | **Cheques de terceros con saldo**: si el cheque supera lo que se paga, la diferencia queda **a cuenta** y el cheque sigue en cartera con el saldo que le queda, con su historial. Esto vale solo para cheques de terceros | ✅ 13/11: el sobrante queda a cuenta en la OP |
-| P8 | Campos editables (**N° de cheque**, "Con qué se paga") en blanco y con placeholder, para que se note que son para escribir | 🆕 |
+| P8 | Campos editables (**N° de cheque**, "Con qué se paga") en blanco y con placeholder, para que se note que son para escribir | ✅ 16/11 |
 
 ### 4.4 Ventas: facturas emitidas, remitos y recibos
 
@@ -101,7 +101,7 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 |---|---|---|
 | V1 | Igual que en compras: **Factura** (servicios y mano de obra) y **Factura con remito** (productos del salón). El remito de venta es el que **descuenta el stock**, y se puede hacer antes o después de la factura | ◐ |
 | V2 | **Nota de crédito y nota de débito** con o sin referencia, como en compras | ◐ |
-| V3 | **Sacar "Estado"**: la factura está pendiente mientras no tenga recibo | 🆕 |
+| V3 | **Sacar "Estado"**: la factura está pendiente mientras no tenga recibo | ✅ 16/11 (al cargar; al editar queda para anular) |
 | V4 | **Recibo a cuenta** sin factura ni cotización, para anticipos (los arregla Seba). Después se le asocia la factura | ✅ 13/11 |
 | V5 | Indicadores de **cuánto se facturó de cada cotización** (parcial o total) y de **cuánto se cobró de cada factura** | ◐ |
 | V6 | **Cargar a mano facturas emitidas viejas** (antes del sistema) | ✅ 13/11: opción "Cargar una ya emitida" |
@@ -127,7 +127,7 @@ Ordené las etapas así: primero lo que **frena la carga diaria** de Fer, que ho
 4. **Recibo a cuenta** sin factura (V4).
 5. **Editar o borrar una factura recibida mientras no tenga OP**; si tiene OP, solo la leyenda (R13).
 
-### Etapa 2: limpiar formularios (P0, son chicos)
+### Etapa 2: limpiar formularios (P0, son chicos) ✅ hecha el 16/11, ver `docs/decisiones/2026-11-tesoreria-formularios.md`
 6. Número de comprobante con letra fija y 4 + 8 dígitos (R6).
 7. "Factura que corrige" solo en NC/ND, con o sin referencia (R7, V2).
 8. Sacar Estado de las facturas recibidas y emitidas (R12, V3).

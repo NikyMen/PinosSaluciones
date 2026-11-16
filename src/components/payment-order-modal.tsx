@@ -36,7 +36,9 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
   // `version` remonta los importes cuando cambian desde afuera (Total, Limpiar).
   const [version, setVersion] = useState(0);
   const [orderDate, setOrderDate] = useState(dayOf(payment?.date) || todayIso());
-  const [execute, setExecute] = useState(payment ? payment.status !== "emitida" : true);
+  // Ya no se elige "pagarla ahora o dejarla emitida": se pone la fecha en que se pagó (Tesorería, 10/11/2026).
+  // Una OP que ya estaba emitida sigue así al editarla.
+  const [execute] = useState(payment ? payment.status !== "emitida" : true);
   const [accountId, setAccountId] = useState(String(payment?.accountId || ""));
   const [workId, setWorkId] = useState(String(payment?.workId || ""));
   const [lines, setLines] = useState<EditableLine[]>(() => payment ? [] : [newLine()]);
@@ -52,8 +54,6 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
   const [error, setError] = useState("");
   const accounts = useLedgerAccounts("egreso");
   const codes = useLedgerAccountCodes();
-  const workless = WORKLESS.has(codes[accountId] || "");
-  const accountChanged = Boolean(payment?.accountId) && accountId !== String(payment?.accountId || "");
 
   // Los medios que ya tiene la OP, con sus cheques propios, para editarlos.
   useEffect(() => {
@@ -115,6 +115,12 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
   // Lo que cancela de los comprobantes más lo que queda a cuenta.
   const amountCents = debitCents - creditCents + onAccountCents;
   const over = (rows || []).find(row => cents(row) > row.balanceCents);
+  // El tipo de gasto y la obra salen de la factura elegida (Tesorería, 10/11/2026). Sin factura (a cuenta) se eligen.
+  const invoiceAccount = debits.find(row => picks[row._id] && row.accountId)?.accountId || "";
+  const effectiveAccount = invoiceAccount || accountId;
+  const invoiceWork = debits.find(row => picks[row._id] && row.workId);
+  const workless = WORKLESS.has(codes[effectiveAccount] || "");
+  const accountChanged = Boolean(payment?.accountId) && effectiveAccount !== String(payment?.accountId || "");
   // La empresa de la OP: la de los comprobantes elegidos o, toda a cuenta, la que se eligió.
   const voucherCompany = (rows || []).find(row => picks[row._id])?.company;
   const company = voucherCompany || payCompany || undefined;
@@ -170,7 +176,7 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
     if (debitCents <= 0 && onAccountCents <= 0) return setError("Elegí al menos una factura (o nota de débito) para pagar, o poné cuánto se paga a cuenta");
     if (creditCents > debitCents) return setError("Las notas de crédito no pueden pasar de lo que se paga");
     if (!company) return setError("Elegí qué empresa paga");
-    if (!accountId) return setError("Elegí el tipo de gasto");
+    if (!effectiveAccount) return setError("Elegí el tipo de gasto");
     const paying = execute && amountCents > 0;
     if (paying && lines.length > 1 && linesCents(lines) !== amountCents) return setError(`Los medios suman ${money(linesCents(lines))} y la orden de pago es de ${money(amountCents)}`);
     const problem = lines.map(line => lineProblem(line, "pago", paying)).find(Boolean);
@@ -183,7 +189,7 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
       method: payment ? "PUT" : "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
         supplierId, date: orderDate, dueDate: execute ? "" : String(form.get("dueDate") || ""), execute,
-        accountId, accountChangeReason: String(form.get("accountChangeReason") || ""), workId: workless ? "" : workId,
+        accountId: effectiveAccount, accountChangeReason: String(form.get("accountChangeReason") || ""), workId: workless ? "" : invoiceWork?.workId || workId,
         notes: String(form.get("notes") || ""), lines: payload, allocations, onAccountCents, company: voucherCompany ? undefined : company,
       }),
     });
@@ -209,15 +215,14 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
         <div className="modal-form-body">
           <div className="form-grid">
             <label><span>Proveedor *</span><SearchSelect name="supplierId" options={suppliers} value={supplierId} onChange={value => { setSupplierId(value); setRows(null); setPicks({}); }} required placeholder="Elegí el proveedor…" /></label>
-            <label><span>Fecha *</span><DateInput name="date" defaultValue={orderDate} required recent onValueChange={setOrderDate} /></label>
-            <label><span>Tipo de gasto *<em className="field-hint">La cuenta del plan: CC, GGD, GGI, bienes de uso…</em></span><SearchSelect name="accountId" options={accounts} value={accountId} onChange={value => { setAccountId(value); if (WORKLESS.has(codes[value] || "")) setWorkId(""); }} required placeholder="Elegí el tipo de gasto…" /></label>
+            <label><span>Fecha de pago *<em className="field-hint">El día que se pagó: puede ser de antes</em></span><DateInput name="date" defaultValue={orderDate} required recent onValueChange={setOrderDate} /></label>
+            {/* Sin factura elegida (una OP a cuenta) el tipo de gasto y la obra se eligen; con factura, vienen de ella. */}
+            {!invoiceAccount && <label><span>Tipo de gasto *<em className="field-hint">La cuenta del plan: CC, GGD, GGI, bienes de uso…</em></span><SearchSelect name="accountId" options={accounts} value={accountId} onChange={value => { setAccountId(value); if (WORKLESS.has(codes[value] || "")) setWorkId(""); }} required placeholder="Elegí el tipo de gasto…" /></label>}
             {accountChanged && <label><span>Motivo del cambio de cuenta *<em className="field-hint">Queda en el historial de la imputación</em></span><input name="accountChangeReason" required /></label>}
-            <label><span>Obra<em className="field-hint">{workless ? "Un GGI o un bien de uso no va a una obra" : "Para CC y GGD; vacía si es para el depósito"}</em></span>
-              {workless ? <input value="No va a una obra" disabled readOnly /> : <SearchSelect name="workId" options={works} value={workId} onChange={setWorkId} placeholder="Sin obra" />}</label>
-            <label><span>Pago *</span><select value={execute ? "ahora" : "emitida"} onChange={event => setExecute(event.target.value === "ahora")}>
-              <option value="ahora">Pagarla ahora</option><option value="emitida">Dejarla emitida, se paga al vencimiento</option>
-            </select></label>
-            {!execute && <label><span>Vencimiento</span><DateInput name="dueDate" defaultValue={dayOf(payment?.dueDate)} hideToday quickRanges={[7, 15, 30]} /></label>}
+            {!invoiceWork && !invoiceAccount && <label><span>Obra<em className="field-hint">{workless ? "Un GGI o un bien de uso no va a una obra" : "Para CC y GGD; vacía si es para el depósito"}</em></span>
+              {workless ? <input value="No va a una obra" disabled readOnly /> : <SearchSelect name="workId" options={works} value={workId} onChange={setWorkId} placeholder="Sin obra" />}</label>}
+            {(invoiceAccount || invoiceWork) && <p className="invoice-note wide">De la factura: {[accounts.find(option => option.value === effectiveAccount)?.label, !workless && invoiceWork?.workLabel].filter(Boolean).join(" · ") || "sin tipo de gasto ni obra"}.</p>}
+            {!execute && <label><span>Vencimiento<em className="field-hint">Esta OP está emitida: se paga desde la lista</em></span><DateInput name="dueDate" defaultValue={dayOf(payment?.dueDate)} hideToday quickRanges={[7, 15, 30]} /></label>}
           </div>
 
           {!supplierId ? <div className="empty-state compact"><p>Elegí el proveedor para ver sus facturas pendientes.</p></div>

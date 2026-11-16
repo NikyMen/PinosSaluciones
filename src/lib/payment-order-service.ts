@@ -87,6 +87,7 @@ export type PendingVoucher = {
   /** Lo que se puede pagar (o descontar, en una nota de crédito) en esta OP. */ balanceCents: number;
   /** Lo que le aplica la OP que se está editando. */ appliedCents: number;
   workId: string; workLabel: string; orderNumber: string;
+  /** El tipo de gasto (cuenta del plan) que se cargó en la factura: la OP lo toma de ahí. */ accountId: string;
   /** Otra OP emitida que va a pagarlo, para no pagarlo dos veces. */ notice: string;
 };
 
@@ -138,6 +139,7 @@ export async function pendingVouchers(supplierId: string, paymentId?: string): P
       balanceCents: Math.max(0, amountCents - paidCents - (other?.cents || 0)), appliedCents,
       workId: expense.workId ? String(expense.workId) : "", workLabel: workLabel.get(String(expense.workId)) || "",
       orderNumber: orderNumber.get(String(expense.purchaseId)) || "",
+      accountId: expense.accountId ? String(expense.accountId) : "",
       notice: other ? `En ${other.numbers.join(", ")} (emitida)` : advances ? `Su OC tiene ${advances.join(", ")} emitida` : "",
     };
   }).filter(voucher => voucher.balanceCents > 0 || voucher.appliedCents > 0);

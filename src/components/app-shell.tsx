@@ -50,6 +50,8 @@ const groups: NavGroup[] = [
     { href: "/app/remitos-compra", label: "Remitos de compra", icon: PackagePlus, permission: "purchases" },
     { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
     { href: "/app/expenses", label: "Facturas de compra", icon: ReceiptText, permission: "expenses" },
+    // Tesorería las busca junto a las facturas que pagan (reunión del 10/11/2026).
+    { href: "/app/payments", label: "Órdenes de pago y pagos", icon: CreditCard, permission: "payments" },
     { href: "/app/ruta-compras", label: "Ruta de compras", icon: Route, permission: "purchases" },
   ] },
   { id: "sales", label: "Ventas", icon: Store, items: [
@@ -75,7 +77,6 @@ const groups: NavGroup[] = [
     { href: "/app/cashAccounts", label: "Cajas y cuentas bancarias", icon: Landmark, permission: "cashAccounts" },
     { href: "/app/extracto", label: "Extracto por caja", icon: ScrollText, permission: "cashAccounts" },
     { href: "/app/checks", label: "Cheques", icon: Banknote, permission: "checks" },
-    { href: "/app/payments", label: "Órdenes de pago y pagos", icon: CreditCard, permission: "payments" },
   ] },
   { id: "accounting", label: "Contabilidad", icon: Library, items: [
     { href: "/app/libro-iva", label: "Libro IVA", icon: BookText, permission: "accounting" },

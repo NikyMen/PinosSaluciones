@@ -4,7 +4,7 @@ import { accountChange, checkLedgerAccount, checkWorkForAccount, worklessAccount
 import { accountDirection } from "./account-catalog";
 import { Expense, Invoice, Payment, Purchase, PurchaseReceipt, Work } from "./models";
 import { baseInvoiceType, isCreditNote, isNote, VOID_INVOICE_STATUSES, voucherLabels } from "./invoice-labels";
-import { PURCHASE_TAX_PCT_KEYS, storedPurchaseTaxes, voucherTaxFields } from "./purchase-taxes";
+import { PURCHASE_TAX_PCT_KEYS, storedPurchaseTaxes, VOUCHER_TAX_CENTS_KEYS, voucherTaxFields } from "./purchase-taxes";
 import { money } from "./format";
 import { checkVoucherEnabled, takeInternalNumber } from "./voucher-books";
 import { companyOf } from "./companies";
@@ -160,12 +160,26 @@ async function prepareExpense(data: Record<string, unknown>, before: Record<stri
     if (!company) data.company = "tvp";
     if ("voucherType" in data || "company" in data) await checkVoucherEnabled(companyOf(data.company ?? company).key, "compra", merged.voucherType);
   }
+  if (merged.voucherType && "number" in data && String(data.number ?? "") !== String(before.number ?? "")) data.number = purchaseVoucherNumber(data.number);
   const net = Number({ ...before, ...data }.netCents || 0);
-  if (["netCents", "voucherType", ...PURCHASE_TAX_PCT_KEYS].some(key => key in data) && net > 0) {
+  // El formulario manda las percepciones por importe; una carga por la API o de la OC, por porcentaje.
+  const byAmount = VOUCHER_TAX_CENTS_KEYS.some(key => key in data);
+  if (["netCents", "voucherType", ...PURCHASE_TAX_PCT_KEYS, ...VOUCHER_TAX_CENTS_KEYS].some(key => key in data) && net > 0) {
     // La C y la X no discriminan IVA; la A y sus notas, sí.
     const rates = { ...before, ...data } as Record<string, number | undefined>;
-    Object.assign(data, voucherTaxFields(net, rates, Boolean(rates.voucherType) && baseInvoiceType(rates.voucherType) === "factura_a"));
+    Object.assign(data, voucherTaxFields(net, rates, Boolean(rates.voucherType) && baseInvoiceType(rates.voucherType) === "factura_a", byAmount ? rates : undefined));
   }
+}
+
+/**
+ * El número de un comprobante del proveedor: 4 dígitos de punto de venta, guion
+ * y 8 de número, 12 en total (Tesorería, 10/11/2026). La letra la da el tipo.
+ * Se acepta tipeado con o sin guion, o con la letra adelante.
+ */
+export function purchaseVoucherNumber(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.length !== 12) throw new HttpError(`El número del comprobante lleva 4 números antes del guion y 8 después (12 en total), por ejemplo 0001-00012345. Tiene ${digits.length}.`);
+  return `${digits.slice(0, 4)}-${digits.slice(4)}`;
 }
 
 /** La OP (no anulada) que paga una factura de compra, si tiene. */

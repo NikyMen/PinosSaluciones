@@ -88,7 +88,9 @@ export function lineProblem(line: EditableLine, side: "pago" | "cobro", required
 export function CashLinesEditor({ side, lines, onChange, company, totalCents, cartera = [] }: {
   side: "pago" | "cobro"; lines: EditableLine[]; onChange: (lines: EditableLine[]) => void; company?: string; totalCents: number; cartera?: CarteraCheck[];
 }) {
-  const methods = side === "pago" ? PAYMENT_METHODS : COLLECTION_METHODS;
+  // En la OP no va el e-Cheq aparte: por el número se sabe si el cheque es electrónico (Tesorería, 10/11/2026).
+  // Una línea de antes que ya era e-Cheq lo sigue mostrando.
+  const methods = side === "pago" ? PAYMENT_METHODS.filter(method => method !== "echeq" || lines.some(line => line.method === "echeq")) : COLLECTION_METHODS;
   const single = lines.length === 1;
   const update = (key: number, patch: Partial<EditableLine>) => onChange(lines.map(line => line.key === key ? { ...line, ...patch } : line));
   // Los cheques de terceros que se pueden endosar: de la empresa y no elegidos en otra línea.
@@ -110,14 +112,15 @@ export function CashLinesEditor({ side, lines, onChange, company, totalCents, ca
           ? <label className="cash-line-wide"><span>Cheque de la cartera</span><SearchSelect name={`check-${line.key}`} value={line.checkId} placeholder="Elegí el cheque…"
             options={usable(line).map(check => ({ value: check._id, label: `${check.number} · ${money(check.amountCents)}`, hint: [check.bank, `cobro ${date(check.dueDate)}`, check.client || check.issuer].filter(Boolean).join(" · ") }))}
             onChange={value => { const check = cartera.find(row => row._id === value); update(line.key, { checkId: value, pesos: check ? check.amountCents / 100 : line.pesos }); }} /></label>
-          : <label className="cash-line-wide"><span>{side === "pago" ? (ownCheck ? "Banco o cuenta de cheques diferidos" : "Sale de") : "Entra en"}</span>
+          : <label className="cash-line-wide"><span>{side === "pago" ? (ownCheck ? "Cuenta de cheques diferidos" : "Sale de") : "Entra en"}</span>
+            {/* El cheque propio sólo sale de las cuentas que emiten cheques (cheques diferidos, códigos 20–29 y 40–49): no de un banco ni de una caja. */}
             <CashAccountSelect name={`account-${line.key}`} value={line.cashAccountId} onChange={value => update(line.key, { cashAccountId: value })} company={company}
-              types={side === "pago" && ownCheck ? ["cheques_diferidos", "cuenta_corriente", "caja_ahorro"] : types} /></label>}
+              types={side === "pago" && ownCheck ? ["cheques_diferidos"] : types} /></label>}
         <label><span>Importe</span>{single || line.method === "cheque_tercero"
           ? <output>{money(single ? totalCents : Math.round(line.pesos * 100))}</output>
           : <MoneyInput name={`amount-${line.key}`} defaultValue={line.pesos} onValueChange={value => update(line.key, { pesos: value })} />}</label>
         {ownCheck && <>
-          <label><span>N° de {line.method === "echeq" ? "e-Cheq" : "cheque"}</span><input value={line.check.number} onChange={event => update(line.key, { check: { ...line.check, number: event.target.value } })} /></label>
+          <label><span>N° de {line.method === "echeq" ? "e-Cheq" : "cheque"}</span><input value={line.check.number} placeholder="Escribí el número del cheque" onChange={event => update(line.key, { check: { ...line.check, number: event.target.value } })} /></label>
           <label><span>Banco del cheque</span><input value={line.check.bank} onChange={event => update(line.key, { check: { ...line.check, bank: event.target.value } })} placeholder="Banco de Corrientes…" /></label>
           <label><span>Fecha de cobro</span><input type="date" value={line.check.dueDate} onChange={event => update(line.key, { check: { ...line.check, dueDate: event.target.value } })} /></label>
           {side === "cobro" && <label><span>Emisor</span><input value={line.check.issuer} onChange={event => update(line.key, { check: { ...line.check, issuer: event.target.value } })} placeholder="Quién lo libró" /></label>}

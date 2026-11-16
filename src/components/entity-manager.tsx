@@ -80,7 +80,7 @@ function WorkerPeriods({ worker }: { worker: Item }) {
 const moduleOf: Record<Entity, string> = {
   clients: "MAESTROS", suppliers: "MAESTROS", accounts: "MAESTROS", quotes: "COMERCIAL", works: "OBRAS", tasks: "OBRAS",
   purchases: "COMPRAS", expenses: "COMPRAS", invoices: "VENTAS", collections: "VENTAS", stock: "STOCK Y LOGÍSTICA",
-  workers: "PERSONAL", assets: "ACTIVOS", cash: "TESORERÍA", checks: "TESORERÍA", payments: "TESORERÍA", cashAccounts: "TESORERÍA",
+  workers: "PERSONAL", assets: "ACTIVOS", cash: "TESORERÍA", checks: "TESORERÍA", payments: "COMPRAS", cashAccounts: "TESORERÍA",
 };
 
 const feminine = new Set(["factura", "obra", "cotización", "orden", "tarea", "orden de pago", "cuenta", "factura de compra", "caja o cuenta", "solicitud"]);

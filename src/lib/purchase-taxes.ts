@@ -24,6 +24,11 @@ export const PURCHASE_TAX_PCT_KEYS = ["vatPct", "perceptionVatPct", "perceptionI
 /** Lo que el sistema calcula y guarda: no se toca a mano. */
 export const PURCHASE_TAX_CENTS_KEYS = ["vatCents", "perceptionVatCents", "perceptionIibbCents", "perceptionIibbProvCents", "internalTaxCents", "amountCents"] as const;
 
+/** Los importes de percepciones e impuesto interno tal como figuran en el comprobante del proveedor. */
+export type VoucherTaxAmounts = { perceptionVatCents?: number; perceptionIibbCents?: number; perceptionIibbProvCents?: number; internalTaxCents?: number };
+/** Las claves de esos importes, para saber si un formulario los mandó. */
+export const VOUCHER_TAX_CENTS_KEYS = ["perceptionVatCents", "perceptionIibbCents", "perceptionIibbProvCents", "internalTaxCents"] as const;
+
 export type PurchaseTaxRates = { vatPct?: number; perceptionVatPct?: number; perceptionIibbPct?: number; perceptionIibbProvPct?: number; internalTaxPct?: number };
 export type TaxedLine = { totalCents: number; vatPct?: number | null };
 
@@ -114,18 +119,24 @@ export function purchaseTaxFields(lines: TaxedLine[], rates: PurchaseTaxRates) {
  * la X no), y las percepciones y el impuesto interno sobre el neto, en
  * cualquier comprobante. El total es la suma.
  */
-export function voucherTaxFields(netCents: number, rates: PurchaseTaxRates, discriminatesVat: boolean) {
+export function voucherTaxFields(netCents: number, rates: PurchaseTaxRates, discriminatesVat: boolean, amounts?: VoucherTaxAmounts) {
   const net = Math.round(Number(netCents || 0));
   // Sin alícuota, 21 %; una A exenta puede venir al 0 %.
   const vatPct = !discriminatesVat ? 0 : rates.vatPct === undefined || rates.vatPct === null || !Number.isFinite(Number(rates.vatPct)) ? DEFAULT_PURCHASE_VAT_PCT : pct(rates.vatPct);
   const vatCents = share(net, vatPct);
+  // Cada percepción: el importe que figura en el comprobante (y su porcentaje sobre el neto, para el libro IVA) o, sin importe, su porcentaje.
+  const tax = (key: "perceptionVat" | "perceptionIibb" | "perceptionIibbProv" | "internalTax") => {
+    if (amounts) {
+      const cents = Math.max(0, Math.round(Number(amounts[`${key}Cents`] || 0)));
+      return { [`${key}Pct`]: net > 0 ? Math.round(cents / net * 10000) / 100 : 0, [`${key}Cents`]: cents };
+    }
+    const percent = pct(rates[`${key}Pct`]);
+    return { [`${key}Pct`]: percent, [`${key}Cents`]: share(net, percent) };
+  };
   const fields = {
     netCents: net, vatPct, vatCents,
-    perceptionVatPct: pct(rates.perceptionVatPct), perceptionVatCents: share(net, pct(rates.perceptionVatPct)),
-    perceptionIibbPct: pct(rates.perceptionIibbPct), perceptionIibbCents: share(net, pct(rates.perceptionIibbPct)),
-    perceptionIibbProvPct: pct(rates.perceptionIibbProvPct), perceptionIibbProvCents: share(net, pct(rates.perceptionIibbProvPct)),
-    internalTaxPct: pct(rates.internalTaxPct), internalTaxCents: share(net, pct(rates.internalTaxPct)),
-  };
+    ...tax("perceptionVat"), ...tax("perceptionIibb"), ...tax("perceptionIibbProv"), ...tax("internalTax"),
+  } as { netCents: number; vatPct: number; vatCents: number; perceptionVatPct: number; perceptionVatCents: number; perceptionIibbPct: number; perceptionIibbCents: number; perceptionIibbProvPct: number; perceptionIibbProvCents: number; internalTaxPct: number; internalTaxCents: number };
   return { ...fields, amountCents: net + vatCents + fields.perceptionVatCents + fields.perceptionIibbCents + fields.perceptionIibbProvCents + fields.internalTaxCents };
 }
 

@@ -293,6 +293,30 @@ describe("libro IVA", () => {
   });
 });
 
+// Reunión con Tesorería del 10/11/2026, etapa 2: el comprobante del proveedor como figura en el papel.
+describe("factura de compra: número, percepciones por importe y sin estado", () => {
+  const create = async (body: Record<string, unknown>) => call(await recordsRoute.POST(json("POST", { company: "tvp", supplierId, voucherType: "factura_a", description: "Pinturería", category: "materiales", issueDate: "2026-11-10", ...body }), params({ entity: "expenses" })));
+
+  it("el número lleva 4 + 8 dígitos: se acepta sin guion o con la letra, y no con dígitos de más o de menos", async () => {
+    as("administracion", "Tesorería");
+    const ok = await create({ number: "A 000700000123", amountCents: 1_000_00 });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(201);
+    expect(ok.body).toMatchObject({ number: "0007-00000123", status: "pendiente" });
+    for (const bad of ["0007-0000012", "00007-00000123", "7-123"]) {
+      const rejected = await create({ number: bad, amountCents: 1_000_00 });
+      expect(rejected.status).toBe(400);
+      expect(rejected.body.error).toContain("4 números antes del guion y 8 después");
+    }
+  });
+
+  it("las percepciones y el impuesto interno van por importe; sólo el IVA es porcentaje", async () => {
+    as("administracion", "Tesorería");
+    const created = await create({ number: "0007-00000200", netCents: 100_000_00, vatPct: 21, perceptionVatCents: 3_000_00, perceptionIibbCents: 1_500_00, internalTaxCents: 0, amountCents: 0 });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body).toMatchObject({ vatCents: 21_000_00, perceptionVatCents: 3_000_00, perceptionVatPct: 3, perceptionIibbCents: 1_500_00, perceptionIibbPct: 1.5, amountCents: 125_500_00 });
+  });
+});
+
 // Reunión con Tesorería del 10/11/2026: pagar antes de que llegue la factura, y la factura recibida con OP queda como se pagó.
 describe("orden de pago a cuenta", () => {
   it("se paga sin factura, avisa la plata a cuenta y después se aplica a la factura sin cambiar el total", async () => {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cambios en Tesorería: pagos y cobros a cuenta | Pino Gestión</title>
-  <meta name="description" content="Qué cambió en Pino Gestión el 16/11/2026: órdenes de pago y recibos a cuenta, cheque de terceros con sobrante, facturas recibidas con orden de pago y carga de facturas emitidas viejas. Con capturas de cada pantalla.">
+  <meta name="description" content="Qué cambió en Pino Gestión el 16/11/2026: órdenes de pago y recibos a cuenta, cheque de terceros con sobrante, facturas de compra con número 4+8 y percepciones por importe, tipo de gasto desde la factura y precios con IVA incluido. Con capturas de cada pantalla.">
   <meta name="keywords" content="Pino Gestión, tesorería, orden de pago a cuenta, recibo a cuenta, cheque de terceros, factura de compra, ARCA, Tango">
   <meta name="author" content="Pino Soluciones Técnicas">
   <meta name="robots" content="index, follow">
@@ -111,6 +111,13 @@
         <li><a href="#recibo-a-cuenta">Recibo a cuenta</a></li>
         <li><a href="#factura-pagada">Factura de compra que ya tiene orden de pago</a></li>
         <li><a href="#factura-vieja">Cargar una factura emitida vieja</a></li>
+        <li><a href="#etapa-2">Etapa 2: formularios más simples</a></li>
+        <li><a href="#factura-numero">Factura de compra: número, fechas y estado</a></li>
+        <li><a href="#percepciones">Percepciones por importe y Leyenda</a></li>
+        <li><a href="#op-menu">Órdenes de pago en el menú Compras</a></li>
+        <li><a href="#op-tipo-gasto">Tipo de gasto y obra desde la factura</a></li>
+        <li><a href="#op-cheques">Cheques en la orden de pago</a></li>
+        <li><a href="#iva-incluido">Solicitud de compra con IVA incluido</a></li>
       </ol>
       <ul class="legend" aria-label="Referencias">
         <li><span class="tag add">Agregado</span> algo nuevo en la pantalla</li>
@@ -126,17 +133,31 @@
         <table class="summary">
           <thead><tr><th scope="col">Tipo</th><th scope="col">Sección</th><th scope="col">Qué parte</th><th scope="col">Qué cambió</th></tr></thead>
           <tbody>
-            <tr><td><span class="tag add">Agregado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Nueva orden de pago</td><td>Bloque «A cuenta, sin factura» con el importe y, si no hay facturas, la empresa que paga.</td></tr>
-            <tr><td><span class="tag add">Agregado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Nueva orden de pago</td><td>Aviso «Este proveedor ya tiene plata a cuenta» con las OP que la tienen.</td></tr>
-            <tr><td><span class="tag del">Quitado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Botón «Emitir la OP y bajar el PDF»</td><td>Ya no frena con «Elegí al menos una factura» si se paga a cuenta.</td></tr>
-            <tr><td><span class="tag mod">Modificado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Con qué se paga › Cheque de terceros</td><td>Si el cheque vale más que la factura, la diferencia queda sola a cuenta del proveedor.</td></tr>
-            <tr><td><span class="tag mod">Modificado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Lápiz (Editar) de una OP a cuenta</td><td>Abre la pantalla de la orden de pago: al elegir la factura se paga con la plata a cuenta.</td></tr>
-            <tr><td><span class="tag mod">Modificado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>PDF de la orden de pago</td><td>Muestra «De eso, a cuenta (sin factura)» o «Sin factura: a cuenta».</td></tr>
+            <tr><td><span class="tag add">Agregado</span></td><td>Compras › Órdenes de pago y pagos</td><td>Nueva orden de pago</td><td>Bloque «A cuenta, sin factura» con el importe y, si no hay facturas, la empresa que paga.</td></tr>
+            <tr><td><span class="tag add">Agregado</span></td><td>Compras › Órdenes de pago y pagos</td><td>Nueva orden de pago</td><td>Aviso «Este proveedor ya tiene plata a cuenta» con las OP que la tienen.</td></tr>
+            <tr><td><span class="tag del">Quitado</span></td><td>Compras › Órdenes de pago y pagos</td><td>Botón «Emitir la OP y bajar el PDF»</td><td>Ya no frena con «Elegí al menos una factura» si se paga a cuenta.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Órdenes de pago y pagos</td><td>Con qué se paga › Cheque de terceros</td><td>Si el cheque vale más que la factura, la diferencia queda sola a cuenta del proveedor.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Órdenes de pago y pagos</td><td>Lápiz (Editar) de una OP a cuenta</td><td>Abre la pantalla de la orden de pago: al elegir la factura se paga con la plata a cuenta.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Órdenes de pago y pagos</td><td>PDF de la orden de pago</td><td>Muestra «De eso, a cuenta (sin factura)» o «Sin factura: a cuenta».</td></tr>
             <tr><td><span class="tag add">Agregado</span></td><td>Ventas › Cobranzas y recibos</td><td>Nuevo recibo</td><td>Bloque «A cuenta, sin factura» siempre visible, con la empresa que cobra.</td></tr>
             <tr><td><span class="tag mod">Modificado</span></td><td>Ventas › Cobranzas y recibos</td><td>Botón «Todo» de cada factura</td><td>Editando un recibo a cuenta, cobra la factura con esa plata.</td></tr>
             <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Facturas de compra</td><td>Lápiz (Editar) y papelera</td><td>Con orden de pago solo se cambia la descripción y los adjuntos, y no se borra.</td></tr>
             <tr><td><span class="tag fix">Arreglo</span></td><td>Todos los formularios de registros</td><td>Mensaje de error</td><td>Ahora el mensaje se desplaza solo hasta quedar a la vista (antes quedaba tapado al final del formulario).</td></tr>
             <tr><td><span class="tag mod">Modificado</span></td><td>Ventas › Facturas de venta</td><td>«¿Cómo se emite?»</td><td>La opción pasa a «Cargar una ya emitida (Tango o vieja)» y libera el número.</td></tr>
+            <tr><th scope="rowgroup" colspan="4">Etapa 2</th></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Facturas de compra</td><td>Número</td><td>La letra queda fija según el comprobante (A, C o X) y el número lleva 4 dígitos, guion y 8. Si faltan o sobran, no guarda.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Facturas de compra</td><td>Fecha y Vencimiento</td><td>Van debajo del número y del proveedor.</td></tr>
+            <tr><td><span class="tag del">Quitado</span></td><td>Compras › Facturas de compra</td><td>Estado</td><td>Al cargar ya no se elige: sale de las órdenes de pago.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Facturas de compra</td><td>Factura que corrige</td><td>Aparece solo en notas de crédito y débito. Vacía es «sin referencia».</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Facturas de compra</td><td>Percepciones e impuesto interno</td><td>Se cargan por importe, como figuran en la factura. Solo el IVA es porcentaje.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Facturas de compra</td><td>Descripción</td><td>Ahora se llama «Leyenda».</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Menú</td><td>Órdenes de pago y pagos</td><td>Pasa de Tesorería a Compras, debajo de Facturas de compra.</td></tr>
+            <tr><td><span class="tag del">Quitado</span></td><td>Compras › Órdenes de pago y pagos</td><td>Tipo de gasto y Obra</td><td>Con una factura elegida vienen de ella. Solo se eligen en una OP a cuenta.</td></tr>
+            <tr><td><span class="tag del">Quitado</span></td><td>Compras › Órdenes de pago y pagos</td><td>«Pago» (pagarla ahora o dejarla emitida)</td><td>Queda solo «Fecha de pago», que puede ser de días anteriores.</td></tr>
+            <tr><td><span class="tag del">Quitado</span></td><td>Compras › Órdenes de pago y pagos</td><td>Medio «e-Cheq»</td><td>Va como «Cheque»: por el número se sabe si es electrónico.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Órdenes de pago y pagos</td><td>Medio «Cheque»</td><td>Solo deja elegir cuentas de cheques diferidos. Los campos van en blanco y con texto de ayuda.</td></tr>
+            <tr><td><span class="tag add">Agregado</span></td><td>Compras › Solicitudes y órdenes</td><td>«Los precios ya incluyen IVA»</td><td>Se escribe el precio final y el sistema guarda el neto, así el IVA no se suma dos veces.</td></tr>
+            <tr><td><span class="tag del">Quitado</span></td><td>Ventas › Facturas de venta</td><td>Estado</td><td>Al cargar ya no se elige: sale de los recibos. Al editar queda, para poder anularla.</td></tr>
           </tbody>
         </table>
       </div>
@@ -145,7 +166,7 @@
     <article class="change" id="op-a-cuenta" aria-labelledby="op-a-cuenta-title">
       <span class="tag add">Agregado</span> <span class="tag del">Quitado</span>
       <h2 id="op-a-cuenta-title">Orden de pago a cuenta (sin factura)</h2>
-      <p class="where">Sección: <b>Tesorería › Órdenes de pago y pagos</b> · Botón: <b>Nueva orden de pago</b></p>
+      <p class="where">Sección: <b>Compras › Órdenes de pago y pagos</b> · Botón: <b>Nueva orden de pago</b></p>
       <ul>
         <li>Se puede emitir una orden de pago <strong>sin elegir ninguna factura</strong>: se carga el importe en «Importe a cuenta». Sirve para un anticipo o para la factura que todavía no llegó.</li>
         <li>Si la OP no lleva facturas, aparece <strong>«Empresa que paga»</strong> para elegir Trabajos Verticales o Constructora.</li>
@@ -154,7 +175,7 @@
       </ul>
       <figure>
         <img src="img/01-op-seccion.webp" width="2160" height="1410" alt="Pantalla Órdenes de pago y pagos de Tesorería con el botón Nueva orden de pago y el menú Órdenes de pago y pagos resaltados" fetchpriority="high" decoding="async">
-        <figcaption><span class="box">Recuadros rojos:</span> dónde se entra, en el menú Tesorería › Órdenes de pago y pagos, botón «Nueva orden de pago».</figcaption>
+        <figcaption><span class="box">Recuadros rojos:</span> dónde se entra, en el menú Compras › Órdenes de pago y pagos, botón «Nueva orden de pago».</figcaption>
       </figure>
       <figure>
         <img src="img/02-op-a-cuenta.webp" width="1680" height="1297" alt="Formulario de nueva orden de pago con el aviso de plata a cuenta y el bloque A cuenta, sin factura resaltados" loading="lazy" decoding="async">
@@ -165,7 +186,7 @@
     <article class="change" id="cheque-terceros" aria-labelledby="cheque-terceros-title">
       <span class="tag mod">Modificado</span>
       <h2 id="cheque-terceros-title">Cheque de terceros que vale más que la factura</h2>
-      <p class="where">Sección: <b>Tesorería › Órdenes de pago y pagos</b> · Parte: <b>Con qué se paga › Medio «Cheque de terceros»</b></p>
+      <p class="where">Sección: <b>Compras › Órdenes de pago y pagos</b> · Parte: <b>Con qué se paga › Medio «Cheque de terceros»</b></p>
       <ul>
         <li>El cheque de terceros se sigue endosando entero. Antes, si valía más que la factura, la OP no dejaba seguir.</li>
         <li>Ahora, al elegir el cheque, <strong>la diferencia pasa sola a «Importe a cuenta»</strong>: queda como saldo a favor con ese proveedor.</li>
@@ -180,7 +201,7 @@
     <article class="change" id="aplicar-factura" aria-labelledby="aplicar-factura-title">
       <span class="tag mod">Modificado</span> <span class="tag fix">Arreglo</span>
       <h2 id="aplicar-factura-title">Aplicar la factura a una OP a cuenta</h2>
-      <p class="where">Sección: <b>Tesorería › Órdenes de pago y pagos</b> · Botón: <b>lápiz (Editar)</b> de la OP a cuenta</p>
+      <p class="where">Sección: <b>Compras › Órdenes de pago y pagos</b> · Botón: <b>lápiz (Editar)</b> de la OP a cuenta</p>
       <ul>
         <li>Cuando llega la factura, se edita la OP que estaba a cuenta y se tilda la factura.</li>
         <li>La factura <strong>se paga con la plata a cuenta</strong>: el importe a cuenta baja solo y <strong>el total de la OP no cambia</strong>.</li>
@@ -242,6 +263,101 @@
         <li>Si se intenta emitir en ARCA una factura con fecha de más de 5 días atrás (productos) o 10 (servicios), el sistema explica que ARCA no la acepta y que se cargue como ya emitida.</li>
       </ul>
       <p class="note">Esta opción solo aparece en las empresas conectadas a ARCA, y la copia de prueba no tiene los certificados. Por eso no hay captura: se ve en producción.</p>
+    </article>
+
+    <section id="etapa-2" aria-labelledby="etapa-2-title">
+      <h2 id="etapa-2-title">Etapa 2: formularios más simples</h2>
+      <p>Arreglos chicos que pidió Tesorería para cargar facturas y órdenes de pago igual que en el papel, y uno que pidió Compras para las solicitudes.</p>
+    </section>
+
+    <article class="change" id="factura-numero" aria-labelledby="factura-numero-title">
+      <span class="tag mod">Modificado</span> <span class="tag del">Quitado</span>
+      <h2 id="factura-numero-title">Factura de compra: número, fechas y estado</h2>
+      <p class="where">Sección: <b>Compras › Facturas de compra</b> · Botón: <b>Nueva factura de compra</b></p>
+      <ul>
+        <li>Al elegir el comprobante, <strong>la letra queda fija</strong> al lado del número (A, C o X) y no se escribe.</li>
+        <li>El número lleva <strong>4 dígitos, guion y 8 dígitos</strong>. El guion se pone solo, y si faltan o sobran números no deja guardar.</li>
+        <li><strong>Fecha de la factura</strong> va debajo del número y <strong>Vencimiento</strong> debajo del proveedor.</li>
+        <li>Al cargar ya no aparece <strong>Estado</strong>: si está pagada o pendiente lo dice la orden de pago.</li>
+        <li><strong>«Factura que corrige»</strong> aparece solo en notas de crédito y débito. Vacía significa «sin referencia».</li>
+      </ul>
+      <figure>
+        <img src="img/09-factura-numero-fechas.webp" width="1350" height="1297" alt="Nueva factura de compra con la letra A fija al lado del número 0003-00004567 y las fechas debajo del número y del proveedor" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> el número con la letra fija y las fechas en su lugar nuevo.</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="percepciones" aria-labelledby="percepciones-title">
+      <span class="tag mod">Modificado</span>
+      <h2 id="percepciones-title">Percepciones por importe y Leyenda</h2>
+      <p class="where">Sección: <b>Compras › Facturas de compra</b> · Parte: <b>Percepción de IVA, de IIBB, IIBB provincial e Impuesto interno</b></p>
+      <ul>
+        <li>Las percepciones y el impuesto interno se cargan <strong>por importe</strong>, como figuran en la factura. <strong>Solo el IVA va en porcentaje.</strong></li>
+        <li>Abajo se ve el detalle: neto, IVA, cada percepción y el total del comprobante.</li>
+        <li>«Descripción» ahora se llama <strong>«Leyenda»</strong>.</li>
+      </ul>
+      <figure>
+        <img src="img/10-factura-percepciones-importe.webp" width="1350" height="1297" alt="Factura de compra con una percepción de IVA de 3.000 pesos cargada por importe y el detalle del total abajo" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> los cuatro importes nuevos y el detalle: $ 100.000 + IVA $ 21.000 + percepción $ 3.000 = $ 124.000.</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="op-menu" aria-labelledby="op-menu-title">
+      <span class="tag mod">Modificado</span>
+      <h2 id="op-menu-title">Órdenes de pago en el menú Compras</h2>
+      <p class="where">Sección: <b>Menú › Compras</b></p>
+      <ul>
+        <li><strong>«Órdenes de pago y pagos»</strong> pasó del menú Tesorería a <strong>Compras</strong>, debajo de Facturas de compra.</li>
+      </ul>
+      <figure>
+        <img src="img/11-op-menu-compras.webp" width="2160" height="1410" alt="Menú lateral con Órdenes de pago y pagos dentro de Compras, debajo de Facturas de compra" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> Facturas de compra y, debajo, Órdenes de pago y pagos.</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="op-tipo-gasto" aria-labelledby="op-tipo-gasto-title">
+      <span class="tag del">Quitado</span> <span class="tag mod">Modificado</span>
+      <h2 id="op-tipo-gasto-title">Tipo de gasto y obra desde la factura</h2>
+      <p class="where">Sección: <b>Compras › Órdenes de pago y pagos</b> · Botón: <b>Nueva orden de pago</b></p>
+      <ul>
+        <li>Al elegir una factura, el <strong>tipo de gasto y la obra salen de ella</strong> y no se vuelven a pedir. Se ven en «De la factura: …».</li>
+        <li>Solo se eligen en una OP a cuenta (sin factura) o con facturas viejas que no los tienen.</li>
+        <li>Se quitó «Pago» (pagarla ahora o dejarla emitida). Queda <strong>«Fecha de pago»</strong>, con calendario, que puede ser de días anteriores.</li>
+      </ul>
+      <figure>
+        <img src="img/12-op-tipo-gasto-de-factura.webp" width="1680" height="1297" alt="Nueva orden de pago con Fecha de pago y la línea De la factura: CC - Materiales, sin los campos Tipo de gasto, Obra ni Pago" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> la fecha de pago y lo que viene de la factura.</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="op-cheques" aria-labelledby="op-cheques-title">
+      <span class="tag mod">Modificado</span> <span class="tag del">Quitado</span>
+      <h2 id="op-cheques-title">Cheques en la orden de pago</h2>
+      <p class="where">Sección: <b>Compras › Órdenes de pago y pagos</b> · Parte: <b>Con qué se paga</b></p>
+      <ul>
+        <li>Con el medio <strong>«Cheque»</strong> solo aparecen las <strong>cuentas de cheques diferidos</strong>: ya no se puede elegir un banco ni una caja.</li>
+        <li>Se quitó el medio <strong>«e-Cheq»</strong>: por el número se sabe si el cheque es electrónico. Las OP viejas con e-Cheq se siguen viendo igual.</li>
+        <li>Los campos (número de cheque, banco, fecha, referencia) van <strong>en blanco, con borde y con texto de ayuda</strong>, para que se note que son para escribir.</li>
+      </ul>
+      <figure>
+        <img src="img/13-op-cheque-cuentas.webp" width="1680" height="1297" alt="Medio de pago Cheque con Cuenta de cheques diferidos, número de cheque, banco y fecha de cobro en campos blancos" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadro rojo:</span> el medio Cheque con sus campos.</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="iva-incluido" aria-labelledby="iva-incluido-title">
+      <span class="tag add">Agregado</span>
+      <h2 id="iva-incluido-title">Solicitud de compra con IVA incluido</h2>
+      <p class="where">Sección: <b>Compras › Solicitudes y órdenes</b> · Botón: <b>Nueva solicitud</b> · Parte: <b>ítems</b></p>
+      <ul>
+        <li>Nueva casilla <strong>«Los precios ya incluyen IVA»</strong>, para cuando el presupuesto del proveedor viene con el precio final.</li>
+        <li>Con la casilla tildada se escribe el <strong>costo con IVA</strong> y el sistema guarda el neto. Así el IVA no se suma dos veces.</li>
+      </ul>
+      <figure>
+        <img src="img/14-solicitud-iva-incluido.webp" width="1350" height="1297" alt="Solicitud de compra con la casilla Los precios ya incluyen IVA tildada: costo con IVA de 12.100 pesos, neto de 10.000 y total de 12.100" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> la casilla, el costo con IVA ($ 12.100, neto $ 10.000) y el total, que queda en $ 12.100.</figcaption>
+      </figure>
+      <p class="note">Al pasar de un precio con IVA al neto puede haber un centavo de diferencia por redondeo.</p>
     </article>
   </main>
 

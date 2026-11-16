@@ -24,6 +24,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Tesorería: la OP y el recibo pueden ir a cuenta (`onAccountCents`, sin factura) y se aplican a la factura editándolos. El cheque de terceros que sobra queda a cuenta del proveedor. Una factura recibida con OP solo cambia la descripción y los adjuntos. Una factura emitida vieja se carga como "ya emitida", con su número. Ver `docs/decisiones/2026-11-tesoreria-a-cuenta.md`.
 
+- Formularios de Tesorería y Compras: factura de compra con número 4 + 8 (la letra la da el comprobante) y percepciones por importe (sólo el IVA en %); al cargar facturas no se elige el estado. La OP está en el menú Compras, toma el tipo de gasto y la obra de la factura, no tiene "Pago" y no ofrece e-Cheq (el cheque sale sólo de cuentas de cheques diferidos). La solicitud de compra permite cargar precios con IVA incluido. Ver `docs/decisiones/2026-11-tesoreria-formularios.md`.
+
 - Importación: botón Plantilla (`GET /api/import/[entity]`); las relaciones se resuelven por nombre, CUIT o código y las fechas en dd/mm/aaaa. Así se cargan las cotizaciones.
 
 Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en VPS", "Actualizar producción" y "Backups". En resumen:
