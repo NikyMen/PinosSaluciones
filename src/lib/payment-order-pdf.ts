@@ -27,7 +27,13 @@ export type PaymentOrderPdfData = {
   method: string; cashAccount?: string; ledgerAccount?: string; reference?: string; notes?: string;
   check?: { number: string; bank: string; dueDate?: string; electronic: boolean };
   /** Con qué se paga, cuando son varios medios: cada uno con su cuenta, su importe y el cheque si es uno. */
-  media?: Array<{ method: string; account: string; amountCents: number; detail?: string }>;
+  media?: Array<{
+    method: string; account: string; amountCents: number; detail?: string;
+    /** El número entero del cheque o de la transferencia, el banco (nombre corto) y la fecha de pago (la de cobro, en un cheque). */
+    number?: string; bank?: string; paidOn?: string; attachment?: string;
+  }>;
+  /** Los comprobantes de los medios: van detrás de la OP en el PDF que se baja. */
+  attachments?: Array<{ path: string; name?: string }>;
   paidAt?: string; paidByName?: string;
 };
 
@@ -36,6 +42,15 @@ const INNER = WIDTH - MARGIN * 2;
 export const paymentMethodLabels = cashMethodLabels;
 const methodLabels = paymentMethodLabels;
 const statusLabels: Record<string, string> = { emitida: "Emitida, pendiente de pago", pagada: "Pagada", anulada: "ANULADA" };
+
+/** Un medio en la línea de "Forma de pago": medio y número, banco, importe y fecha de pago. */
+function mediumLine(medium: NonNullable<PaymentOrderPdfData["media"]>[number], data: PaymentOrderPdfData) {
+  const label = methodLabels[medium.method] || medium.method;
+  const number = medium.method === "efectivo" ? "" : String(medium.number || "").trim();
+  const bank = medium.method === "efectivo" ? "" : String(medium.bank || "").trim();
+  const paidOn = medium.paidOn || data.date;
+  return [number ? `${label} N° ${number}` : label, bank, money(medium.amountCents), paidOn && `Fecha de pago: ${date(paidOn)}`].filter(Boolean).join(" - ");
+}
 
 export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta: { author: string; logo?: string }) {
   const setColor = ([r, g, b]: Rgb) => doc.setTextColor(r, g, b);
@@ -63,9 +78,11 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
     ["Orden de compra", data.orderNumber || "-"],
     ["Solicitud", data.requestNumber || "-"],
     ...(data.lines ? [] : [["Factura", data.invoiceLabel || (data.onAccountCents ? "Sin factura: a cuenta" : "Sin factura (contado o anticipo)")] as [string, string]]),
-    // Varios medios: uno por renglón, con su cuenta e importe.
-    ...(data.media && data.media.length > 1
-      ? data.media.map((medium, index) => [index ? "" : "Forma de pago", [methodLabels[medium.method] || medium.method, medium.account, money(medium.amountCents), medium.detail].filter(Boolean).join(" · ")] as [string, string])
+    // Cada medio en su renglón: "e-Cheq N° 12042030 - Banco Corrientes - $ 231.000,00 - Fecha de pago: 18/12/2026"
+    // (Administración, noviembre 2026). Lo que el medio no tiene (el efectivo no tiene número ni banco) no va.
+    ...(data.media?.length
+      // El nombre interno de la cuenta ("Cheques diferidos … Sub-Cuenta 2") no va: el proveedor ve el banco.
+      ? data.media.map((medium, index) => [index ? "" : "Forma de pago", mediumLine(medium, data)] as [string, string])
       : [
         ["Forma de pago", [methodLabels[data.method] || data.method, data.reference && `Ref. ${data.reference}`].filter(Boolean).join(" · ")] as [string, string],
         ...(data.check ? [[data.check.electronic ? "e-Cheq" : "Cheque", [`N° ${data.check.number}`, data.check.bank, data.check.dueDate && `cobro ${date(data.check.dueDate)}`].filter(Boolean).join(" · ")] as [string, string]] : []),
@@ -78,8 +95,10 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
     setColor(MUTED); doc.setFont("helvetica", "bold"); doc.setFontSize(7.4);
     doc.text(plain(label.toUpperCase()), MARGIN, y);
     setColor(INK); doc.setFont("helvetica", "normal"); doc.setFontSize(8.8);
-    doc.text(plain(value).slice(0, 90), MARGIN + 38, y);
-    y += 6.4;
+    // Lo largo baja de renglón: no se corta (el número del cheque tiene que ir entero).
+    const wrapped = doc.splitTextToSize(plain(value), INNER - 38) as string[];
+    wrapped.forEach((line, index) => doc.text(line, MARGIN + 38, y + index * 4.4));
+    y += 6.4 + (wrapped.length - 1) * 4.4;
   }
   y += 4;
 
@@ -166,9 +185,73 @@ export async function paymentOrderPdfBytes(data: PaymentOrderPdfData) {
   return { filename, bytes: new Uint8Array(doc.output("arraybuffer")) };
 }
 
-/** Arma el PDF de la orden de pago en el navegador y lo descarga. */
+const A4: [number, number] = [595.28, 841.89];
+
+/** Qué es un archivo por sus primeros bytes (una foto con la extensión cambiada sigue siendo lo que es). */
+function sniff(bytes: Uint8Array) {
+  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return "pdf";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return "jpg";
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
+  if (String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") return "webp";
+  return "";
+}
+
+/** Una foto que pdf-lib no lee (WebP) pasa a JPEG con el navegador. */
+async function toJpeg(bytes: Uint8Array, type: string) {
+  const bitmap = await createImageBitmap(new Blob([bytes as BlobPart], { type }));
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width; canvas.height = bitmap.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Sin canvas");
+  context.fillStyle = "#fff"; context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  if (!blob) throw new Error("No se pudo convertir la foto");
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/**
+ * La OP con los comprobantes de sus medios detrás (Administración, noviembre
+ * 2026): al proveedor le llega todo en un solo PDF. Los PDF van página por
+ * página y cada foto en su hoja, achicada para que entre. Un comprobante que no
+ * se puede leer se saltea: la OP sale igual.
+ */
+export async function paymentOrderPdfWithAttachments(data: PaymentOrderPdfData) {
+  const base = await paymentOrderPdfBytes(data);
+  const files = (data.attachments || []).filter(file => file.path);
+  if (!files.length) return base;
+  try {
+    const { PDFDocument } = await import("pdf-lib");
+    const merged = await PDFDocument.load(base.bytes);
+    let added = 0;
+    for (const file of files) {
+      try {
+        const response = await fetch(file.path);
+        if (!response.ok) continue;
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        const kind = sniff(bytes);
+        if (kind === "pdf") {
+          const source = await PDFDocument.load(bytes, { ignoreEncryption: true });
+          for (const page of await merged.copyPages(source, source.getPageIndices())) merged.addPage(page);
+          added++;
+        } else if (kind) {
+          const image = kind === "png" ? await merged.embedPng(bytes) : await merged.embedJpg(kind === "jpg" ? bytes : await toJpeg(bytes, `image/${kind}`));
+          const [width, height] = A4;
+          const page = merged.addPage(A4);
+          const scale = Math.min((width - 60) / image.width, (height - 60) / image.height, 1);
+          page.drawImage(image, { x: (width - image.width * scale) / 2, y: (height - image.height * scale) / 2, width: image.width * scale, height: image.height * scale });
+          added++;
+        }
+      } catch { /* este comprobante no se pudo leer: se saltea */ }
+    }
+    return added ? { filename: base.filename, bytes: await merged.save() } : base;
+  } catch { return base; }
+}
+
+/** Arma el PDF de la orden de pago en el navegador, con los comprobantes de los medios detrás, y lo descarga. */
 export async function downloadPaymentOrderPdf(data: PaymentOrderPdfData) {
-  const { filename, bytes } = await paymentOrderPdfBytes(data);
+  const { filename, bytes } = await paymentOrderPdfWithAttachments(data);
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
   link.download = filename;

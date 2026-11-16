@@ -8,7 +8,8 @@ import { money } from "./format";
 import { companyOf, type CompanyKey } from "./companies";
 import { accountChange, checkLedgerAccount, checkWorkForAccount } from "./account-service";
 import { prepareCashAccount, resolveCashAccount, type CashAccountDoc } from "./cash-accounts";
-import { accountTypesFor, cashMethodLabels, METHODS_NEEDING_ATTACHMENT, OWN_CHECK_METHODS, PAYMENT_METHODS, type PaymentMethod } from "./cash-methods";
+import { accountTypesFor, cashMethodLabels, OWN_CHECK_METHODS, PAYMENT_METHODS, type PaymentMethod } from "./cash-methods";
+import { paymentMediumProblem } from "./payment-order-media";
 import { availableThirdPartyCheck, syncPaymentChecks, type CheckLine, type OwnCheckData } from "./payment-checks";
 import { beforeCreate } from "./document-rules";
 import { afterPaymentChange } from "./purchase-flow";
@@ -269,6 +270,9 @@ async function resolveLines(input: SupplierPaymentInput, amountCents: number, co
     if (!paying.length) throw new HttpError("Elegí con qué se paga: al menos un medio con su importe");
     const total = paying.reduce((sum, line) => sum + line.amountCents, 0);
     if (total !== amountCents) throw new HttpError(`Los medios suman ${money(total)} y la orden de pago es de ${money(amountCents)}: la diferencia es ${money(amountCents - total)}`);
+    // Con varios medios, cada uno lleva su importe: uno en cero no se descarta callado.
+    const empty = raw.length > 1 ? raw.find(line => !(line.amountCents > 0)) : undefined;
+    if (empty) throw new HttpError(paymentMediumProblem({ method: empty.method, amountCents: 0, hasAccount: true, hasAttachment: true }, true) || "Poné el importe de cada medio");
   }
   const hasFiles = Boolean(before?.attachment) || Boolean(before?.files?.length);
   const resolved: ResolvedLine[] = [];
@@ -290,7 +294,6 @@ async function resolveLines(input: SupplierPaymentInput, amountCents: number, co
         if (!deferred) throw new HttpError(`${account.name} no tiene cuenta de cheques diferidos: dala de alta en Tesorería › Cajas y cuentas (con ese banco) o elegila`);
         account = deferred;
       }
-      if (input.execute && !line.check) throw new HttpError(`Poné el número, el banco y la fecha de cobro del ${label}`);
       if (line.check) ownCheck = { ...line.check, format: line.method === "echeq" ? "echeq" : "fisico" };
     } else if (line.method === "cheque_tercero") {
       if (!line.checkId) throw new HttpError("Elegí el cheque de terceros de la cartera");
@@ -299,10 +302,17 @@ async function resolveLines(input: SupplierPaymentInput, amountCents: number, co
       if (!account && check.cashAccountId) account = await resolveCashAccount(check.cashAccountId, { company, allowInactive: true });
       checkId = check._id;
     }
-    if (input.execute && amountCents > 0 && !account) throw new HttpError(`Elegí de qué caja o cuenta sale la ${label}`);
+    // Para pagarla, cada medio lleva todo lo que pide (Administración, noviembre 2026). Una OP de antes que ya
+    // tenía su comprobante en la OP (no en el medio) lo sigue teniendo.
+    if (input.execute && amountCents > 0) {
+      const problem = paymentMediumProblem({
+        method: line.method, amountCents: line.amountCents, hasAccount: Boolean(account), reference: line.reference,
+        check: line.check, checkId: line.checkId, hasAttachment: Boolean(line.attachment) || hasFiles,
+      }, false);
+      if (problem) throw new HttpError(problem);
+    }
     const types = accountTypesFor(line.method, "pago");
     if (account && types && !types.includes(account.type as never)) throw new HttpError(`${account.name} no sirve para pagar con ${label}`);
-    if (input.execute && amountCents > 0 && METHODS_NEEDING_ATTACHMENT.has(line.method) && !line.attachment && !hasFiles) throw new HttpError(`Adjuntá el comprobante de la ${label}`);
     resolved.push({ method: line.method, cashAccountId: account?._id, account: account?.name || "", amountCents: line.amountCents, reference: line.reference || "", attachment: line.attachment, ownCheck, checkId });
   }
   return resolved;
@@ -340,6 +350,20 @@ export async function paymentOrderPdfData(paymentId: string): Promise<PaymentOrd
   const media = paymentLines(payment);
   const checks = await Check.find({ _id: { $in: media.map(line => line.checkId).filter(Boolean) } }).select("number bank dueDate format direction").lean<Lean[]>();
   const checkById = new Map(checks.map(row => [String(row._id), row]));
+  // El banco de cada medio, por su nombre corto: el de la cuenta (o el del banco que debita los cheques diferidos), no el nombre interno de la cuenta.
+  const cashAccounts = await CashAccount.find({ _id: { $in: media.map(line => line.cashAccountId).filter(Boolean) } }).select("name bank type bankAccountId").lean<Lean[]>();
+  const linkedBanks = await CashAccount.find({ _id: { $in: cashAccounts.map(row => row.bankAccountId).filter(Boolean) } }).select("name bank").lean<Lean[]>();
+  const cashAccountById = new Map([...cashAccounts, ...linkedBanks].map(row => [String(row._id), row]));
+  const bankOf = (line: (typeof media)[number]) => {
+    const own = line.cashAccountId ? cashAccountById.get(String(line.cashAccountId)) : undefined;
+    const linked = own?.bankAccountId ? cashAccountById.get(String(own.bankAccountId)) : undefined;
+    if (own?.bank) return String(own.bank);
+    if (linked) return String(linked.bank || linked.name || "");
+    // Una caja de efectivo no es un banco; una cuenta sin el banco cargado, por su nombre.
+    return line.method === "efectivo" || own?.type === "caja" ? "" : String(own?.name || line.account || "");
+  };
+  const paidOn = iso(payment.date);
+  const fileNames = new Map(((payment.files as Array<{ path?: string; name?: string }> | undefined) || []).filter(file => file.path).map(file => [String(file.path), String(file.name || "")]));
   const byId = new Map(expenses.map(expense => [String(expense._id), expense]));
   const lines = allocations.map(allocation => {
     const expense = byId.get(String(allocation.expenseId));
@@ -363,8 +387,18 @@ export async function paymentOrderPdfData(paymentId: string): Promise<PaymentOrd
     media: media.map(line => {
       const row = line.checkId ? checkById.get(String(line.checkId)) : undefined;
       const detail = row ? [`N° ${String(row.number || "")}`, String(row.bank || ""), row.dueDate ? `cobro ${new Date(row.dueDate as Date).toISOString().slice(0, 10).split("-").reverse().join("/")}` : ""].filter(Boolean).join(" ") : line.reference ? `Ref. ${line.reference}` : undefined;
-      return { method: line.method, account: line.account, amountCents: line.amountCents, detail };
+      return {
+        method: line.method, account: line.account, amountCents: line.amountCents, detail,
+        // Para la línea de "Forma de pago": el número entero, el banco y la fecha de pago (la de cobro, si es un cheque).
+        number: row ? String(row.number || "") : line.reference || undefined,
+        bank: row ? String(row.bank || "") : bankOf(line) || undefined,
+        paidOn: row?.dueDate ? iso(row.dueDate) : paidOn,
+        attachment: line.attachment || undefined,
+      };
     }),
+    // Los comprobantes de los medios, para ir detrás de la OP en el PDF (y el de una OP de antes, guardado en la OP).
+    attachments: [...new Set([...media.map(line => line.attachment), typeof payment.attachment === "string" ? payment.attachment : ""].filter(Boolean))]
+      .map(path => ({ path, name: (fileNames.get(path) || "Comprobante") })),
     reference: payment.reference ? String(payment.reference) : undefined, notes: payment.notes ? String(payment.notes) : undefined,
     paidAt: iso(payment.paidAt), paidByName: payment.paidByName ? String(payment.paidByName) : undefined,
   };

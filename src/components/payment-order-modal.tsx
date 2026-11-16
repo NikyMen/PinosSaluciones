@@ -9,6 +9,7 @@ import { date, money, todayIso } from "@/lib/format";
 import { COMPANIES, COMPANY_KEYS, companyOf } from "@/lib/companies";
 import { downloadPaymentOrderPdf, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
 import type { OnAccountPayment, PendingVoucher } from "@/lib/payment-order-service";
+import { paymentMediumProblem } from "@/lib/payment-order-media";
 import type { CarteraCheck } from "@/lib/check-service";
 
 type Payment = Record<string, unknown> & { _id: string };
@@ -179,7 +180,18 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
     if (!effectiveAccount) return setError("Elegí el tipo de gasto");
     const paying = execute && amountCents > 0;
     if (paying && lines.length > 1 && linesCents(lines) !== amountCents) return setError(`Los medios suman ${money(linesCents(lines))} y la orden de pago es de ${money(amountCents)}`);
-    const problem = lines.map(line => lineProblem(line, "pago", paying)).find(Boolean);
+    // Para pagarla, cada medio lleva todo lo que muestra (Administración, noviembre 2026); lo mismo controla la API.
+    // Una OP de antes con el comprobante guardado en la OP (no en el medio) lo sigue teniendo.
+    const legacyFiles = Boolean(payment?.attachment) || (Array.isArray(payment?.files) && payment.files.length > 0);
+    const problem = paying
+      ? lines.map((line, index) => {
+        const missing = paymentMediumProblem({
+          method: line.method, amountCents: lines.length === 1 ? amountCents : Math.round(line.pesos * 100), hasAccount: Boolean(line.cashAccountId),
+          reference: line.reference, check: line.check, checkId: line.checkId, hasAttachment: Boolean(line.file || line.attachment) || legacyFiles,
+        }, lines.length > 1);
+        return missing && lines.length > 1 ? `Medio ${index + 1}: ${missing}` : missing;
+      }).find(Boolean)
+      : lines.map(line => lineProblem(line, "pago", false)).find(Boolean);
     if (problem) return setError(problem);
     setBusy(true); setError("");
     const allocations = (rows || []).map(row => ({ expenseId: row._id, amountCents: cents(row) })).filter(allocation => allocation.amountCents > 0);
@@ -297,6 +309,7 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
           </dl>}
 
           {amountCents > 0 && <CashLinesEditor side="pago" lines={lines} onChange={changeLines} company={company} totalCents={amountCents} cartera={cartera} />}
+          {amountCents > 0 && execute && <p className="invoice-note">Todo lo de cada medio es obligatorio: la cuenta, el importe, el N° de cheque o de transferencia, el banco, la fecha de cobro y el comprobante (el efectivo no lleva comprobante: firma quien lo recibe). Los comprobantes van detrás de la OP en el PDF.</p>}
 
           <label className="wide receipt-notes"><span>Observaciones</span><textarea name="notes" defaultValue={String(payment?.notes || "")} placeholder="Salen en el PDF de la orden de pago" /></label>
         </div>

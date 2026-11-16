@@ -814,7 +814,7 @@ const ExpenseSchema = new Schema({
   purchaseReceiptIds: { type: [{ type: Schema.Types.ObjectId, ref: "PurchaseReceipt" }], default: undefined },
   accountId: { type: Schema.Types.ObjectId, ref: "Account" },
   description: { type: String, required: true },
-  category: { type: String, enum: ["materiales", "transporte", "combustible", "servicios", "costo_indirecto", "gasto_fijo", "mano_obra"], required: true },
+  category: { type: String, enum: ["materiales", "transporte", "combustible", "servicios", "costo_indirecto", "gasto_fijo", "mano_obra"], required: true, default: "materiales" },
   amountCents: money, issueDate: { type: Date, required: true }, dueDate: Date,
   // El período ("2026-10") al que va la factura, también en el libro IVA: el mes de la factura salvo que se diga otro.
   period: { type: String, match: PERIOD_PATTERN },

@@ -266,7 +266,10 @@ export function ExpenseFields({ fields, fieldProps, editing, draft, orders }: {
         : "";
 
   // Al cargar no se elige el estado (sale de las órdenes de pago) y "Factura que corrige" es sólo de las notas.
-  const shown = fields.filter(field => field !== receiptsField && !(field.key === "status" && !editing) && !(field.key === "associatedExpenseId" && !isNote(voucherType)));
+  // En una factura tampoco van la obra ni la categoría: lo comprado entra al depósito y la obra la pone
+  // el remito con que sale (Administración, 12/11/2026). Un gasto sin comprobante las sigue pidiendo.
+  const shown = fields.filter(field => field !== receiptsField && !(field.key === "status" && !editing) && !(field.key === "associatedExpenseId" && !isNote(voucherType))
+    && !(voucherType && (field.key === "workId" || field.key === "category")));
 
   return <div className="form-grid" ref={wrap}>
     {modern && <input type="hidden" name="withRemito" value={String(mode)} />}
