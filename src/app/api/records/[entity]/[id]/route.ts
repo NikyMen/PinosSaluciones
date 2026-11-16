@@ -9,7 +9,7 @@ import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { canSeeTask, resolveTaskAssignee } from "@/lib/tasks";
 import { applyCollection, applyPayment } from "@/lib/balances";
-import { beforeUpdate } from "@/lib/document-rules";
+import { beforeUpdate, checkExpenseDelete } from "@/lib/document-rules";
 import { releaseRemitos } from "@/lib/sales-remitos";
 import { releaseForQuote, reserveForQuote } from "@/lib/reservations";
 import { invoiceLabel, VOID_INVOICE_STATUSES } from "@/lib/invoice-labels";
@@ -121,6 +121,8 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
     // Un recibo con un cheque ya endosado o depositado no se borra.
     if (entity === "collections") await releaseReceiptChecks(id, false);
     if (entity === "purchases") checkPurchaseDelete(before as Record<string, unknown>);
+    // Una factura recibida con orden de pago no se borra: primero se anula la OP.
+    if (entity === "expenses") await checkExpenseDelete(id);
     if (entity === "invoices" && (before as Record<string, unknown>).cae) throw new HttpError("La factura está emitida en ARCA con CAE: no se borra. Para anularla hace falta una nota de crédito.");
     if (entity === "invoices") {
       const { Invoice } = await import("@/lib/models");

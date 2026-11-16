@@ -69,6 +69,10 @@ export const receiptSchema = z.object({
   notes: z.string().trim().max(1000).optional().default(""),
   amountCents: z.coerce.number().int().min(0).optional(),
   allocations: z.array(z.object({ invoiceId: id, amountCents: z.coerce.number().int().min(0) })).max(200).default([]),
+  // Lo cobrado sin factura todavía (un anticipo): queda a cuenta del cliente hasta que se aplique a su factura.
+  onAccountCents: z.coerce.number().int().min(0).optional(),
+  // La empresa que cobra, cuando el recibo no aplica facturas (todo a cuenta).
+  company: z.enum(["tvp", "constructora"]).optional(),
 });
 
 export type ReceiptLineInput = z.infer<typeof lineSchema>;
@@ -80,6 +84,8 @@ export type ReceiptInput = {
   accountId: string; accountChangeReason?: string;
   /** Solo cuenta si no se aplica a ninguna factura (un pago a cuenta). */ amountCents?: number;
   allocations: Array<{ invoiceId: string; amountCents: number }>;
+  /** Lo que va a cuenta, además de lo aplicado a las facturas. */ onAccountCents?: number;
+  company?: CompanyKey;
 };
 
 type Lean = Record<string, unknown> & { _id: Types.ObjectId };
@@ -141,18 +147,24 @@ export async function saveReceipt(input: ReceiptInput, session: Session, receipt
   const companies = new Set([...byInvoice.keys()].map(invoiceId => pending.get(invoiceId)!.company));
   if (companies.size > 1) throw new ReceiptError("Un recibo es de una sola empresa: hacé uno para las facturas de Trabajos Verticales Pino y otro para las de Constructora Pino");
   const allocations = [...byInvoice].map(([invoiceId, amountCents]) => ({ invoiceId: new Types.ObjectId(invoiceId), amountCents }));
-  const company = [...companies][0] as CompanyKey | undefined;
   const retentions = (input.retentions || []).filter(retention => retention.amountCents > 0);
   const retainedCents = retentions.reduce((total, retention) => total + retention.amountCents, 0);
   const appliedCents = allocations.reduce((total, allocation) => total + allocation.amountCents, 0);
+  // El total del recibo: lo aplicado más lo que va a cuenta. La pantalla de antes mandaba `amountCents` solo en un pago a cuenta.
+  const declared = input.onAccountCents !== undefined ? appliedCents + input.onAccountCents
+    : allocations.length ? appliedCents : input.amountCents !== undefined ? Math.round(Number(input.amountCents)) : undefined;
   // Sin `lines`, el único medio de la pantalla de antes por lo cobrado.
-  const raw: RawLine[] = input.lines ?? (input.cashAccountId ? [{ method: input.method && input.method !== "retencion" ? input.method : "otro", cashAccountId: input.cashAccountId, amountCents: (allocations.length ? appliedCents : Math.round(Number(input.amountCents || 0))) - retainedCents, reference: input.reference }] : []);
+  const raw: RawLine[] = input.lines ?? (input.cashAccountId ? [{ method: input.method && input.method !== "retencion" ? input.method : "otro", cashAccountId: input.cashAccountId, amountCents: Number(declared || 0) - retainedCents, reference: input.reference }] : []);
   const lines = raw.filter(line => line.amountCents > 0);
   const linesCents = lines.reduce((total, line) => total + line.amountCents, 0);
-  const amountCents = allocations.length ? appliedCents : linesCents + retainedCents;
+  const amountCents = declared ?? linesCents + retainedCents;
+  const onAccountCents = Math.max(0, amountCents - appliedCents);
   if (amountCents <= 0) throw new ReceiptError("Poné cuánto se cobra");
   if (!lines.length && !retainedCents) throw new ReceiptError("Elegí con qué se cobró: al menos un medio con su importe y su caja o cuenta");
-  if (linesCents + retainedCents !== amountCents) throw new ReceiptError(`Lo cobrado (${money(linesCents)}) más las retenciones (${money(retainedCents)}) tiene que dar lo aplicado a las facturas (${money(amountCents)})`);
+  if (linesCents + retainedCents !== amountCents) throw new ReceiptError(`Lo cobrado (${money(linesCents)}) más las retenciones (${money(retainedCents)}) tiene que dar lo aplicado a las facturas${onAccountCents ? " más lo que va a cuenta" : ""} (${money(amountCents)})`);
+  // La empresa: la de las facturas o, todo a cuenta, la elegida (o la que ya tenía).
+  const company = ([...companies][0] || input.company || (before?.company ? companyOf(before.company).key : undefined)) as CompanyKey | undefined;
+  if (!company && onAccountCents > 0 && input.onAccountCents !== undefined) throw new ReceiptError("Elegí qué empresa cobra: el recibo a cuenta no tiene facturas de donde sacarla");
 
   const kept = new Set(before ? [String(before.cashAccountId || ""), ...collectionLines(before.toObject()).map(line => String(line.cashAccountId || ""))] : []);
   const resolved: Array<Omit<RawLine, "cashAccountId"> & { account: string; cashAccountId?: Types.ObjectId }> = [];
@@ -172,7 +184,7 @@ export async function saveReceipt(input: ReceiptInput, session: Session, receipt
   if (retainedCents && !retentionAccount) throw new ReceiptError(`Falta la cuenta de retenciones de ${companyOf(company).short}: dala de alta en Tesorería › Cajas y cuentas`);
 
   const payload = {
-    clientId: new Types.ObjectId(input.clientId), date: input.date, amountCents,
+    clientId: new Types.ObjectId(input.clientId), date: input.date, amountCents, onAccountCents, company,
     lines: resolved.map(line => ({ method: line.method, cashAccountId: line.cashAccountId, account: line.account, amountCents: line.amountCents, reference: line.reference || "", attachment: line.attachment })),
     retentions: retentions.map(retention => ({ ...retention, cashAccountId: retentionAccount?._id, account: retentionAccount?.name || "" })),
     // Arriba, el primer medio (las listas y lo de antes leen uno solo).
@@ -239,6 +251,8 @@ export type ReceiptPdfData = {
   client: { name: string; cuit: string; address: string };
   lines: Array<{ label: string; issueDate: string | null; invoiceCents: number; appliedCents: number; quoteNumber: string }>;
   totalCents: number;
+  /** Lo cobrado que no se aplicó a ninguna factura: queda a cuenta del cliente. */
+  onAccountCents?: number;
 };
 
 /** Lo que lleva el PDF de un recibo: el cliente, las facturas que cancela y cuánto a cada una. */
@@ -254,7 +268,8 @@ export async function receiptPdfData(receiptId: string): Promise<ReceiptPdfData 
   const byId = new Map(invoices.map(invoice => [String(invoice._id), invoice]));
   const quoteNumber = new Map(quotes.map(quote => [String(quote._id), String(quote.number || "")]));
   return {
-    company: companyOf(invoices[0]?.company).key,
+    company: companyOf(receipt.company || invoices[0]?.company).key,
+    onAccountCents: Number(receipt.amountCents || 0) - allocations.reduce((total, allocation) => total + allocation.amountCents, 0),
     number: String(receipt.number || String(receipt._id).slice(-6).toUpperCase()),
     date: new Date(receipt.date as Date).toISOString(),
     method: String(receipt.method || ""), account: String(receipt.account || ""), reference: String(receipt.reference || ""),

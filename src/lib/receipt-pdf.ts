@@ -60,7 +60,9 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
   doc.text("IMPORTE", 164, y, { align: "right" });
   doc.text("APLICADO", WIDTH - MARGIN - 3, y, { align: "right" });
   y += 8;
-  const lines = data.lines.length ? data.lines : [{ label: "Pago a cuenta", issueDate: null, invoiceCents: 0, appliedCents: data.totalCents, quoteNumber: "" }];
+  // Lo que no se aplicó a ninguna factura va en su propio renglón: queda a cuenta del cliente.
+  const onAccount = data.lines.length ? Math.max(0, Number(data.onAccountCents || 0)) : data.totalCents;
+  const lines = [...data.lines, ...(onAccount > 0 ? [{ label: "Pago a cuenta", issueDate: null, invoiceCents: 0, appliedCents: onAccount, quoteNumber: "" }] : [])];
   lines.forEach((line, index) => {
     if (y > BOTTOM - 70) { drawFooter(doc, { page, author: meta.author, company }); doc.addPage(); page += 1; y = header() + 6; }
     if (index % 2 === 1) { setFill([250, 251, 253]); doc.rect(MARGIN, y - 4.6, INNER, 7.4, "F"); }

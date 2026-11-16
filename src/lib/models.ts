@@ -855,7 +855,12 @@ const CollectionSchema = new Schema({
   number: { type: String, trim: true },
   clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true }, invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice" },
   allocations: { type: [{ _id: false, invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", required: true }, amountCents: { type: Number, min: 0, required: true } }], default: undefined },
+  // Qué empresa cobra: la de las facturas o, en un recibo a cuenta, la que se eligió.
+  company: { type: String, enum: ["tvp", "constructora"] },
   date: { type: Date, required: true }, amountCents: money,
+  // Lo cobrado sin factura todavía ("a cuenta"), por ejemplo un anticipo. `amountCents` lo incluye;
+  // editando el recibo se aplica a la factura cuando se emite (reunión con Tesorería, 10/11/2026).
+  onAccountCents: { type: Number, min: 0, default: 0 },
   userName: String,
   method: { type: String, enum: [...COLLECTION_METHODS, "retencion"], required: true },
   // `cashAccountId` es la caja o el banco donde entró (del maestro) y `account`, su nombre; `accountId`, la cuenta del plan (CI) a la que se imputa.
@@ -890,6 +895,9 @@ const PaymentSchema = new Schema({
   purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase", index: true }, requestId: { type: Schema.Types.ObjectId, ref: "Purchase" },
   status: { type: String, enum: ["emitida", "pagada", "anulada"], default: "pagada" },
   date: { type: Date, required: true }, dueDate: Date, amountCents: money, retentionsCents: money,
+  // Lo que se paga sin factura todavía ("a cuenta"): un anticipo, o lo que sobra de un cheque de terceros
+  // endosado entero. `amountCents` lo incluye; editando la OP se aplica a la factura cuando llega (reunión con Tesorería, 10/11/2026).
+  onAccountCents: { type: Number, min: 0, default: 0 },
   method: { type: String, enum: PAYMENT_METHODS, required: true },
   // El cheque o e-Cheq que se le dio al proveedor (en Tesorería › Cheques), en una OP de un solo medio.
   checkId: { type: Schema.Types.ObjectId, ref: "Check" },

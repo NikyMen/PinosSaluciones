@@ -22,6 +22,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Importes y descuentos: todo importe se muestra con centavos (`money()` en `src/lib/format.ts`) y el punto del teclado numérico escribe la coma en `MoneyInput`. Descuentos en pesos: por renglón en compras (`items[].discountCents`) y remitos de venta (`lines[].discountCents`), y por comprobante en facturas emitidas y recibidas (`discountCents`; `netCents` ya viene con el descuento restado). Ver `docs/decisiones/2026-11-decimales-descuentos.md`.
 
+- Tesorería: la OP y el recibo pueden ir a cuenta (`onAccountCents`, sin factura) y se aplican a la factura editándolos. El cheque de terceros que sobra queda a cuenta del proveedor. Una factura recibida con OP solo cambia la descripción y los adjuntos. Una factura emitida vieja se carga como "ya emitida", con su número. Ver `docs/decisiones/2026-11-tesoreria-a-cuenta.md`.
+
 - Importación: botón Plantilla (`GET /api/import/[entity]`); las relaciones se resuelven por nombre, CUIT o código y las fechas en dd/mm/aaaa. Así se cargan las cotizaciones.
 
 Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en VPS", "Actualizar producción" y "Backups". En resumen:

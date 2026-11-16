@@ -8,11 +8,20 @@ import { date, money, todayIso } from "@/lib/format";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
 import { RETENTION_TYPES, retentionLabels } from "@/lib/cash-methods";
 import type { PendingInvoice, ReceiptPdfData } from "@/lib/receipt-service";
-import { companyOf } from "@/lib/companies";
+import { COMPANIES, COMPANY_KEYS, companyOf } from "@/lib/companies";
 import { DEFAULT_ACCOUNTS } from "@/lib/account-catalog";
 import { useLedgerAccounts } from "@/components/ledger-account";
 
 type Receipt = Record<string, unknown> & { _id: string };
+
+/** Lo que un recibo guardado tiene a cuenta (sin aplicar a facturas). */
+function onAccountStart(receipt?: Receipt | null) {
+  if (!receipt) return 0;
+  const allocated = Array.isArray(receipt.allocations) && receipt.allocations.length
+    ? (receipt.allocations as Array<Record<string, unknown>>).reduce((total, row) => total + Number(row.amountCents || 0), 0)
+    : receipt.invoiceId ? Number(receipt.amountCents || 0) : 0;
+  return Math.max(0, Number(receipt.amountCents || 0) - allocated);
+}
 type Retention = { key: number; type: string; jurisdiction: string; certificateNumber: string; pesos: number };
 let retentionKey = 1;
 
@@ -31,7 +40,11 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
   // Lo aplicado a cada factura, en pesos. `version` remonta los importes cuando se tocan con "Todo".
   const [applied, setApplied] = useState<Record<string, number>>({});
   const [version, setVersion] = useState(0);
-  const [onAccount, setOnAccount] = useState(() => receipt && !Array.isArray(receipt.allocations) && !receipt.invoiceId ? Number(receipt.amountCents || 0) / 100 : 0);
+  // Lo cobrado sin factura (a cuenta): lo que el recibo no aplicó a ninguna factura.
+  const [onAccount, setOnAccount] = useState(() => onAccountStart(receipt) / 100);
+  // Editando un recibo con plata a cuenta, "Todo" cobra la factura con eso: el total no cambia.
+  const applyingOnAccount = onAccountStart(receipt) > 0;
+  const [receiptCompany, setReceiptCompany] = useState(() => String(receipt?.company || ""));
   const [lines, setLines] = useState<EditableLine[]>(() => receipt ? [] : [newLine()]);
   const [retentions, setRetentions] = useState<Retention[]>(() => Array.isArray(receipt?.retentions) ? (receipt.retentions as Array<Record<string, unknown>>).map(row => ({ key: retentionKey++, type: String(row.type || "ganancias"), jurisdiction: String(row.jurisdiction || ""), certificateNumber: String(row.certificateNumber || ""), pesos: Number(row.amountCents || 0) / 100 })) : []);
   const [receiptDate, setReceiptDate] = useState(receipt?.date ? new Date(String(receipt.date)).toISOString().slice(0, 10) : todayIso());
@@ -79,12 +92,28 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
   }, [onClose]);
 
   const allocations = useMemo(() => Object.entries(applied).map(([invoiceId, pesos]) => ({ invoiceId, amountCents: Math.round(pesos * 100) })).filter(allocation => allocation.amountCents > 0), [applied]);
-  const totalCents = allocations.length ? allocations.reduce((total, allocation) => total + allocation.amountCents, 0) : Math.round(onAccount * 100);
+  const onAccountCents = Math.max(0, Math.round(onAccount * 100));
+  const appliedCents = allocations.reduce((total, allocation) => total + allocation.amountCents, 0);
+  // El total del recibo: lo aplicado a las facturas más lo que queda a cuenta.
+  const totalCents = appliedCents + onAccountCents;
   const over = rows?.find(row => Math.round((applied[row._id] || 0) * 100) > row.balanceCents);
   const retainedCents = retentions.reduce((total, row) => total + Math.round(row.pesos * 100), 0);
   // Lo que entró por los medios: lo aplicado menos lo que retuvo el cliente.
   const receivedCents = totalCents - retainedCents;
-  const company = rows?.find(row => applied[row._id])?.company;
+  const invoiceCompany = rows?.find(row => applied[row._id])?.company;
+  const company = invoiceCompany || receiptCompany || undefined;
+
+  /** Cobrar el saldo de una factura; editando un recibo con plata a cuenta, se cobra con eso. */
+  function applyAll(row: PendingInvoice) {
+    const current = Math.round((applied[row._id] || 0) * 100);
+    if (applyingOnAccount) {
+      const taken = Math.min(row.balanceCents - current, onAccountCents);
+      if (taken <= 0) return;
+      setApplied(previous => ({ ...previous, [row._id]: (current + taken) / 100 }));
+      setOnAccount((onAccountCents - taken) / 100);
+    } else setApplied(previous => ({ ...previous, [row._id]: row.balanceCents / 100 }));
+    setVersion(value => value + 1);
+  }
   const updateRetention = (key: number, patch: Partial<Retention>) => setRetentions(current => current.map(row => row.key === key ? { ...row, ...patch } : row));
 
   function setAll(pay: boolean) {
@@ -98,6 +127,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
     if (over) return setError(`A la ${over.label} le quedan ${money(over.balanceCents)} por cobrar`);
     if (totalCents <= 0) return setError("Poné cuánto se cobra de cada factura, o el importe si es un pago a cuenta");
     if (!chosenAccount) return setError("Elegí la cuenta del plan a la que se imputa el cobro");
+    if (!company) return setError("Elegí qué empresa cobra");
     if (receivedCents < 0) return setError("Las retenciones no pueden pasar de lo que se cobra");
     if (lines.length > 1 && linesCents(lines) !== receivedCents) return setError(`Los medios suman ${money(linesCents(lines))} y lo cobrado (sin retenciones) es ${money(receivedCents)}`);
     const problem = receivedCents > 0 ? lines.map(line => lineProblem(line, "cobro", true)).find(Boolean) : "";
@@ -109,7 +139,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
     const response = await fetch(receipt ? `/api/receipts/${receipt._id}` : "/api/receipts", {
       method: receipt ? "PUT" : "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        clientId, date: receiptDate, allocations, amountCents: allocations.length ? undefined : totalCents,
+        clientId, date: receiptDate, allocations, onAccountCents, company: invoiceCompany ? undefined : company,
         lines: payload, retentions: retentions.map(row => ({ type: row.type, jurisdiction: row.jurisdiction, certificateNumber: row.certificateNumber, amountCents: Math.round(row.pesos * 100) })).filter(row => row.amountCents > 0),
         notes: String(form.get("notes") || ""), accountId: chosenAccount, accountChangeReason: String(form.get("accountChangeReason") || ""),
       }),
@@ -139,10 +169,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
 
           {!clientId ? <div className="empty-state compact"><p>Elegí el cliente para ver sus facturas por cobrar.</p></div>
             : rows === null ? <div className="loading-state">Buscando sus facturas…</div>
-              : !rows.length ? <div className="receipt-on-account">
-                <p>Este cliente no tiene facturas por cobrar. Se puede registrar como pago a cuenta.</p>
-                <label><span>Importe a cuenta *</span><MoneyInput key={`account-${version}`} name="onAccount" defaultValue={onAccount} onValueChange={setOnAccount} /></label>
-              </div>
+              : !rows.length ? <div className="empty-state compact"><p>Este cliente no tiene facturas por cobrar. Se puede registrar como pago a cuenta.</p></div>
                 : <>
                   <div className="receipt-table-head"><b>Facturas por cobrar</b><span>
                     <button type="button" className="link-btn" onClick={() => setAll(true)}>Cobrar todo</button>
@@ -157,11 +184,23 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
                       <td data-label="Saldo">{money(row.balanceCents)}</td>
                       <td data-label="Se cobra"><div className="receipt-apply">
                         <MoneyInput key={`${row._id}-${version}`} name={`apply-${row._id}`} defaultValue={applied[row._id] || 0} onValueChange={value => setApplied(current => ({ ...current, [row._id]: value }))} />
-                        <button type="button" className="link-btn" onClick={() => { setApplied(current => ({ ...current, [row._id]: row.balanceCents / 100 })); setVersion(current => current + 1); }}>Todo</button>
+                        <button type="button" className="link-btn" onClick={() => applyAll(row)}>Todo</button>
                       </div></td>
                     </tr>)}
                   </tbody></table></div>
                 </>}
+
+          {clientId && rows !== null && <>
+            <div className="receipt-table-head"><b>A cuenta, sin factura</b></div>
+            <div className="form-grid">
+              <label><span>Importe a cuenta<em className="field-hint">{applyingOnAccount ? "\"Todo\" en una factura la cobra con esto" : "Un anticipo sin factura ni cotización. Después se aplica a la factura editando este recibo"}</em></span>
+                <MoneyInput key={`account-${version}`} name="onAccount" defaultValue={onAccount} onValueChange={setOnAccount} /></label>
+              {!invoiceCompany && onAccountCents > 0 && <label><span>Empresa que cobra *</span><select value={receiptCompany} onChange={event => setReceiptCompany(event.target.value)} required>
+                <option value="">Elegí la empresa…</option>
+                {COMPANY_KEYS.map(key => <option key={key} value={key}>{COMPANIES[key].legalName}</option>)}
+              </select></label>}
+            </div>
+          </>}
 
           {totalCents > 0 && <>
             <div className="receipt-table-head"><b>Retenciones que hizo el cliente</b><span>
@@ -178,7 +217,8 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
             </div>)}
             {receivedCents > 0 && <CashLinesEditor side="cobro" lines={lines} onChange={setLines} company={company} totalCents={receivedCents} />}
             <dl className="payment-order-totals">
-              <div><dt>Aplicado a las facturas</dt><dd>{money(totalCents)}</dd></div>
+              {appliedCents > 0 && <div><dt>Aplicado a las facturas</dt><dd>{money(appliedCents)}</dd></div>}
+              {onAccountCents > 0 && <div><dt>A cuenta, sin factura</dt><dd>{money(onAccountCents)}</dd></div>}
               {retainedCents > 0 && <div><dt>Retenciones</dt><dd>- {money(retainedCents)}</dd></div>}
               <div className="total"><dt>Recibido neto</dt><dd>{money(receivedCents)}</dd></div>
             </dl>

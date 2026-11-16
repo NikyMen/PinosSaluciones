@@ -100,6 +100,15 @@ export async function emitInvoiceInArca(data: Record<string, unknown>) {
   const book = await arcaBookFor(company, baseType, enabled);
   if (!book) throw new HttpError(`${COMPANIES[company].short} no tiene un talonario de ${voucherLabels[baseType]} en un punto de venta de web services de ARCA (${enabled.map(number => String(number).padStart(4, "0")).join(", ") || "ninguno"}). Se agrega en Configuración > Empresas y comprobantes.`);
 
+  // ARCA autoriza con fecha de hasta 5 días antes (productos) o 10 (servicios). Una factura vieja
+  // ya se emitió: se carga a mano con su número (reunión con Tesorería, 10/11/2026).
+  const concept = Array.isArray(data.remitoIds) && data.remitoIds.length ? 1 : 2;
+  const windowDays = concept === 1 ? 5 : 10;
+  const issue = new Date(data.issueDate as string | Date);
+  if (Number.isFinite(issue.getTime()) && Date.now() - issue.getTime() > (windowDays + 1) * 86_400_000) {
+    throw new HttpError(`ARCA no autoriza una factura con fecha de más de ${windowDays} días atrás. Si ya la emitiste (en Tango o antes), elegí "Cargar una ya emitida" y escribí su número.`);
+  }
+
   const pointOfSale = Number(book.pointOfSale);
   // Una nota va con la factura a la que corresponde (checkNote ya la validó).
   const associated = isNote(voucherType) ? await Invoice.findById(data.associatedInvoiceId).lean<Record<string, unknown>>() : null;
@@ -113,7 +122,7 @@ export async function emitInvoiceInArca(data: Record<string, unknown>) {
       voucherCode: ARCA_VOUCHER_CODE[associated.voucherType as ArcaVoucherType] ?? 1, pointOfSale: Number(associatedNumber[1]), number: Number(associatedNumber[2]),
       cuit: COMPANIES[company].cuit, date: new Date(associated.issueDate as Date),
     } : undefined,
-    concept: Array.isArray(data.remitoIds) && data.remitoIds.length ? 1 : 2,
+    concept,
     clientCuit: String(client.cuit || ""), vatCondition: vatConditionFor(voucherType, client.vatCondition),
     issueDate: new Date(data.issueDate as string | Date), dueDate: data.dueDate ? new Date(data.dueDate as string | Date) : undefined,
     netCents: Number(data.netCents || 0), vatPct: Number(data.vatPct ?? 21), vatCents: Number(data.vatCents || 0), amountCents: Number(data.amountCents || 0),

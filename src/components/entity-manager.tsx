@@ -128,6 +128,9 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [saving, setSaving] = useState(false);
   const [statusBusy, setStatusBusy] = useState("");
   const [error, setError] = useState("");
+  // El error queda al final de un formulario largo, tapado por el pie: al aparecer, se lo trae a la vista.
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => { if (error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }, [error]);
   // Valor elegido en cada select de relación, para poder cambiarlo desde el alta rápida.
   const [relationValues, setRelationValues] = useState<Record<string, string>>({});
   const [quickCreate, setQuickCreate] = useState<{ fieldKey: string; entity: Entity } | null>(null);
@@ -281,7 +284,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     // Un cobro es un recibo: tiene su propia ventana, con las facturas del cliente.
     if (entity === "collections") { setReceiptFor({ receipt: item || null }); return; }
     // Una OP que paga facturas tiene su propia ventana. La de contado o anticipo contra una OC sigue en el formulario.
-    if (entity === "payments" && (!item || item.expenseId || (Array.isArray(item.allocations) && item.allocations.length)) && item?.status !== "anulada") { setPaymentFor({ payment: item || null }); return; }
+    // La OP de facturas o la que tiene plata a cuenta (sin factura todavía) se edita en su pantalla: ahí se le aplica la factura.
+    if (entity === "payments" && (!item || item.expenseId || (Array.isArray(item.allocations) && item.allocations.length) || Number(item.onAccountCents || 0) > 0) && item?.status !== "anulada") { setPaymentFor({ payment: item || null }); return; }
     setEditing(item || null);
     setDraft(item ? {} : defaults);
     setRelationValues(Object.fromEntries(config.fields.filter(field => field.relation || field.type === "user").map(field => [field.key, String(item?.[field.key] ?? defaults[field.key] ?? "")])));
@@ -660,7 +664,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
                 ? <ExpenseFields fields={formFields} fieldProps={fieldProps} editing={editing} />
                 : <div className="form-grid">{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
         </div>
-        {error && <p className="form-error modal-error">{error}</p>}
+        {error && <p ref={errorRef} className="form-error modal-error" role="alert">{error}</p>}
         <footer><span>Los cambios quedan registrados automáticamente.</span><button type="button" className="secondary-btn" onClick={() => setModal(false)}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></footer>
       </form>
       {editing && entity === "workers" && <WorkerPeriods worker={editing} />}

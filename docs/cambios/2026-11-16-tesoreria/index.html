@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cambios en Tesorería: pagos y cobros a cuenta | Pino Gestión</title>
+  <meta name="description" content="Qué cambió en Pino Gestión el 16/11/2026: órdenes de pago y recibos a cuenta, cheque de terceros con sobrante, facturas recibidas con orden de pago y carga de facturas emitidas viejas. Con capturas de cada pantalla.">
+  <meta name="keywords" content="Pino Gestión, tesorería, orden de pago a cuenta, recibo a cuenta, cheque de terceros, factura de compra, ARCA, Tango">
+  <meta name="author" content="Pino Soluciones Técnicas">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#0b2a4a">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="es_AR">
+  <meta property="og:site_name" content="Pino Gestión">
+  <meta property="og:title" content="Cambios en Tesorería: pagos y cobros a cuenta">
+  <meta property="og:description" content="Órdenes de pago y recibos a cuenta, cheque de terceros con sobrante, facturas recibidas con OP y facturas emitidas viejas. Con capturas de cada pantalla.">
+  <meta property="og:image" content="img/02-op-a-cuenta.webp">
+  <meta property="og:image:alt" content="Orden de pago con el bloque nuevo «A cuenta, sin factura»">
+  <meta property="article:published_time" content="2026-11-16">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cambios en Tesorería: pagos y cobros a cuenta">
+  <meta name="twitter:description" content="Qué se agregó, qué se modificó y qué se quitó en Tesorería, con capturas.">
+  <meta name="twitter:image" content="img/02-op-a-cuenta.webp">
+  <link rel="preload" as="image" href="img/01-op-seccion.webp" type="image/webp">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Cambios en Tesorería: pagos y cobros a cuenta",
+    "description": "Órdenes de pago y recibos a cuenta, cheque de terceros con sobrante, facturas recibidas con orden de pago y carga de facturas emitidas viejas en Pino Gestión.",
+    "inLanguage": "es-AR",
+    "datePublished": "2026-11-16",
+    "dateModified": "2026-11-16",
+    "author": { "@type": "Organization", "name": "Pino Soluciones Técnicas" },
+    "publisher": { "@type": "Organization", "name": "Pino Soluciones Técnicas" },
+    "image": ["img/02-op-a-cuenta.webp", "img/03-op-cheque-terceros.webp", "img/06-recibo-a-cuenta.webp"],
+    "about": ["Tesorería", "Orden de pago", "Recibo", "Cheque de terceros", "Factura de compra"]
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #f3f6f9; --surface: #ffffff; --ink: #0f1f30; --muted: #5b6b7c; --line: #dde4ec;
+      --navy: #0b2a4a; --red: #c8102e; --mark: #e11d48;
+      --add-bg: #e6f6ec; --add: #157347; --mod-bg: #e8f0fb; --mod: #1d4f91; --del-bg: #fdecee; --del: #a31a2c; --fix-bg: #fff4e0; --fix: #8a5a00;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0d1520; --surface: #152131; --ink: #e8eef5; --muted: #9fb0c2; --line: #263548;
+        --navy: #8fb6e3; --red: #ff6b7f;
+        --add-bg: #12301f; --add: #7ad3a0; --mod-bg: #13263f; --mod: #8fb6e3; --del-bg: #351620; --del: #ff8c9b; --fix-bg: #33270f; --fix: #f2c46b;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    a { color: var(--navy); }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+    header.top { background: var(--navy); color: #fff; padding: 40px 0 32px; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) header.top { background: #0a1e35; } }
+    header.top p.eyebrow { margin: 0 0 6px; font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #ffb3bf; }
+    header.top h1 { margin: 0 0 10px; font-size: clamp(1.7rem, 4vw, 2.5rem); line-height: 1.15; }
+    header.top .lead { margin: 0; max-width: 760px; color: #d5e2f0; }
+    header.top time { color: #fff; font-weight: 600; }
+    nav.toc { margin: 28px 0 8px; padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+    nav.toc h2 { margin: 0 0 8px; font-size: 1rem; }
+    nav.toc ol { margin: 0; padding-left: 20px; columns: 2 300px; }
+    nav.toc li { margin: 3px 0; break-inside: avoid; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 18px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .9rem; }
+    .tag { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .74rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; vertical-align: middle; }
+    .tag.add { background: var(--add-bg); color: var(--add); }
+    .tag.mod { background: var(--mod-bg); color: var(--mod); }
+    .tag.del { background: var(--del-bg); color: var(--del); }
+    .tag.fix { background: var(--fix-bg); color: var(--fix); }
+    .summary { width: 100%; margin: 24px 0 8px; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; font-size: .93rem; }
+    .summary th, .summary td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .summary thead th { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    .summary tr:last-child td { border-bottom: 0; }
+    .table-scroll { overflow-x: auto; }
+    article.change { margin: 36px 0; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+    article.change h2 { margin: 6px 0 6px; font-size: 1.4rem; line-height: 1.25; }
+    .where { margin: 0 0 14px; color: var(--muted); font-size: .92rem; }
+    .where b { color: var(--ink); }
+    article.change ul { margin: 10px 0 0; padding-left: 20px; }
+    article.change li { margin: 4px 0; }
+    figure { margin: 18px 0 0; }
+    figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    figcaption { margin-top: 8px; color: var(--muted); font-size: .88rem; }
+    figcaption .box { color: var(--mark); font-weight: 700; }
+    .note { margin-top: 14px; padding: 12px 14px; border-left: 4px solid var(--navy); background: var(--bg); border-radius: 8px; font-size: .93rem; }
+    footer.bottom { padding: 32px 0 48px; color: var(--muted); font-size: .88rem; }
+    @media (max-width: 640px) { article.change { padding: 18px 14px; } nav.toc ol { columns: 1; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="eyebrow">Pino Gestión · Tesorería</p>
+      <h1>Cambios en Tesorería: pagos y cobros a cuenta</h1>
+      <p class="lead">Lo que se agregó, se modificó y se quitó en el sistema a partir de la reunión con Tesorería del 10/11/2026, pantalla por pantalla. En cada captura, <strong>el recuadro rojo marca la parte que cambió</strong>. Actualizado el <time datetime="2026-11-16">16 de noviembre de 2026</time>.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <nav class="toc" aria-labelledby="toc-title">
+      <h2 id="toc-title">Contenido</h2>
+      <ol>
+        <li><a href="#resumen">Resumen de cambios</a></li>
+        <li><a href="#op-a-cuenta">Orden de pago a cuenta (sin factura)</a></li>
+        <li><a href="#cheque-terceros">Cheque de terceros que vale más que la factura</a></li>
+        <li><a href="#aplicar-factura">Aplicar la factura a una OP a cuenta</a></li>
+        <li><a href="#recibo-a-cuenta">Recibo a cuenta</a></li>
+        <li><a href="#factura-pagada">Factura de compra que ya tiene orden de pago</a></li>
+        <li><a href="#factura-vieja">Cargar una factura emitida vieja</a></li>
+      </ol>
+      <ul class="legend" aria-label="Referencias">
+        <li><span class="tag add">Agregado</span> algo nuevo en la pantalla</li>
+        <li><span class="tag mod">Modificado</span> algo que ya estaba y cambió</li>
+        <li><span class="tag del">Quitado</span> algo que ya no está o ya no frena</li>
+        <li><span class="tag fix">Arreglo</span> un error corregido</li>
+      </ul>
+    </nav>
+
+    <section id="resumen" aria-labelledby="resumen-title">
+      <h2 id="resumen-title">Resumen de cambios</h2>
+      <div class="table-scroll">
+        <table class="summary">
+          <thead><tr><th scope="col">Tipo</th><th scope="col">Sección</th><th scope="col">Qué parte</th><th scope="col">Qué cambió</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag add">Agregado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Nueva orden de pago</td><td>Bloque «A cuenta, sin factura» con el importe y, si no hay facturas, la empresa que paga.</td></tr>
+            <tr><td><span class="tag add">Agregado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Nueva orden de pago</td><td>Aviso «Este proveedor ya tiene plata a cuenta» con las OP que la tienen.</td></tr>
+            <tr><td><span class="tag del">Quitado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Botón «Emitir la OP y bajar el PDF»</td><td>Ya no frena con «Elegí al menos una factura» si se paga a cuenta.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Con qué se paga › Cheque de terceros</td><td>Si el cheque vale más que la factura, la diferencia queda sola a cuenta del proveedor.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>Lápiz (Editar) de una OP a cuenta</td><td>Abre la pantalla de la orden de pago: al elegir la factura se paga con la plata a cuenta.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Tesorería › Órdenes de pago y pagos</td><td>PDF de la orden de pago</td><td>Muestra «De eso, a cuenta (sin factura)» o «Sin factura: a cuenta».</td></tr>
+            <tr><td><span class="tag add">Agregado</span></td><td>Ventas › Cobranzas y recibos</td><td>Nuevo recibo</td><td>Bloque «A cuenta, sin factura» siempre visible, con la empresa que cobra.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Ventas › Cobranzas y recibos</td><td>Botón «Todo» de cada factura</td><td>Editando un recibo a cuenta, cobra la factura con esa plata.</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Compras › Facturas de compra</td><td>Lápiz (Editar) y papelera</td><td>Con orden de pago solo se cambia la descripción y los adjuntos, y no se borra.</td></tr>
+            <tr><td><span class="tag fix">Arreglo</span></td><td>Todos los formularios de registros</td><td>Mensaje de error</td><td>Ahora el mensaje se desplaza solo hasta quedar a la vista (antes quedaba tapado al final del formulario).</td></tr>
+            <tr><td><span class="tag mod">Modificado</span></td><td>Ventas › Facturas de venta</td><td>«¿Cómo se emite?»</td><td>La opción pasa a «Cargar una ya emitida (Tango o vieja)» y libera el número.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <article class="change" id="op-a-cuenta" aria-labelledby="op-a-cuenta-title">
+      <span class="tag add">Agregado</span> <span class="tag del">Quitado</span>
+      <h2 id="op-a-cuenta-title">Orden de pago a cuenta (sin factura)</h2>
+      <p class="where">Sección: <b>Tesorería › Órdenes de pago y pagos</b> · Botón: <b>Nueva orden de pago</b></p>
+      <ul>
+        <li>Se puede emitir una orden de pago <strong>sin elegir ninguna factura</strong>: se carga el importe en «Importe a cuenta». Sirve para un anticipo o para la factura que todavía no llegó.</li>
+        <li>Si la OP no lleva facturas, aparece <strong>«Empresa que paga»</strong> para elegir Trabajos Verticales o Constructora.</li>
+        <li>Si el proveedor ya tiene plata a cuenta en otra OP, aparece un <strong>aviso</strong> con el número y el importe, para no pagar dos veces.</li>
+        <li>Se quitó el freno «Elegí al menos una factura» cuando se paga a cuenta.</li>
+      </ul>
+      <figure>
+        <img src="img/01-op-seccion.webp" width="2160" height="1410" alt="Pantalla Órdenes de pago y pagos de Tesorería con el botón Nueva orden de pago y el menú Órdenes de pago y pagos resaltados" fetchpriority="high" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> dónde se entra, en el menú Tesorería › Órdenes de pago y pagos, botón «Nueva orden de pago».</figcaption>
+      </figure>
+      <figure>
+        <img src="img/02-op-a-cuenta.webp" width="1680" height="1297" alt="Formulario de nueva orden de pago con el aviso de plata a cuenta y el bloque A cuenta, sin factura resaltados" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> el aviso de la plata que ya está a cuenta (en OP-9) y el bloque nuevo «A cuenta, sin factura».</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="cheque-terceros" aria-labelledby="cheque-terceros-title">
+      <span class="tag mod">Modificado</span>
+      <h2 id="cheque-terceros-title">Cheque de terceros que vale más que la factura</h2>
+      <p class="where">Sección: <b>Tesorería › Órdenes de pago y pagos</b> · Parte: <b>Con qué se paga › Medio «Cheque de terceros»</b></p>
+      <ul>
+        <li>El cheque de terceros se sigue endosando entero. Antes, si valía más que la factura, la OP no dejaba seguir.</li>
+        <li>Ahora, al elegir el cheque, <strong>la diferencia pasa sola a «Importe a cuenta»</strong>: queda como saldo a favor con ese proveedor.</li>
+        <li>En el ejemplo: factura de $ 1.000.000, cheque de $ 1.500.000, quedan $ 500.000 a cuenta.</li>
+      </ul>
+      <figure>
+        <img src="img/03-op-cheque-terceros.webp" width="1680" height="1297" alt="Orden de pago pagada con un cheque de terceros de 1.500.000 pesos: la diferencia de 500.000 pesos aparece a cuenta" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> el importe a cuenta que se completó solo, los totales con la línea «A cuenta, sin factura» y el cheque de la cartera.</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="aplicar-factura" aria-labelledby="aplicar-factura-title">
+      <span class="tag mod">Modificado</span> <span class="tag fix">Arreglo</span>
+      <h2 id="aplicar-factura-title">Aplicar la factura a una OP a cuenta</h2>
+      <p class="where">Sección: <b>Tesorería › Órdenes de pago y pagos</b> · Botón: <b>lápiz (Editar)</b> de la OP a cuenta</p>
+      <ul>
+        <li>Cuando llega la factura, se edita la OP que estaba a cuenta y se tilda la factura.</li>
+        <li>La factura <strong>se paga con la plata a cuenta</strong>: el importe a cuenta baja solo y <strong>el total de la OP no cambia</strong>.</li>
+        <li>Arreglo: el lápiz de una OP que era toda a cuenta abría el formulario genérico. Ahora abre la pantalla de la orden de pago.</li>
+      </ul>
+      <figure>
+        <img src="img/04-op-aplicar-factura.webp" width="1680" height="1297" alt="Edición de la orden de pago OP-9: la factura tildada se paga con la plata a cuenta y el total sigue en 800.000 pesos" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> la factura elegida, el importe a cuenta que bajó y los totales (sigue en $ 800.000).</figcaption>
+      </figure>
+      <p class="note">La OP de ejemplo tenía $ 800.000 a cuenta. Al elegir la factura de $ 299.999,99 quedan $ 500.000,01 a cuenta. Los centavos salen de los datos de prueba.</p>
+    </article>
+
+    <article class="change" id="recibo-a-cuenta" aria-labelledby="recibo-a-cuenta-title">
+      <span class="tag add">Agregado</span> <span class="tag mod">Modificado</span>
+      <h2 id="recibo-a-cuenta-title">Recibo a cuenta</h2>
+      <p class="where">Sección: <b>Ventas › Cobranzas y recibos</b> · Botón: <b>Nuevo recibo</b></p>
+      <ul>
+        <li>El bloque <strong>«A cuenta, sin factura»</strong> está siempre, aunque el cliente tenga facturas pendientes. Antes solo aparecía si no tenía ninguna.</li>
+        <li>Si el recibo no cobra facturas, aparece <strong>«Empresa que cobra»</strong>.</li>
+        <li>Cuando se emite la factura, se edita el recibo y el botón <strong>«Todo»</strong> de la factura la cobra con la plata a cuenta.</li>
+        <li>El PDF del recibo muestra el renglón «Pago a cuenta».</li>
+      </ul>
+      <figure>
+        <img src="img/05-recibo-seccion.webp" width="2160" height="1410" alt="Pantalla Cobranzas y recibos con el botón Nuevo recibo y el menú resaltados" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> dónde se entra, en el menú Cobranzas y recibos, botón «Nuevo recibo».</figcaption>
+      </figure>
+      <figure>
+        <img src="img/06-recibo-a-cuenta.webp" width="1470" height="1297" alt="Formulario de nuevo recibo con un importe a cuenta de 250.000 pesos y el campo Empresa que cobra" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> el bloque «A cuenta, sin factura» con el importe y la empresa que cobra.</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="factura-pagada" aria-labelledby="factura-pagada-title">
+      <span class="tag mod">Modificado</span> <span class="tag fix">Arreglo</span>
+      <h2 id="factura-pagada-title">Factura de compra que ya tiene orden de pago</h2>
+      <p class="where">Sección: <b>Compras › Facturas de compra</b> · Botones: <b>lápiz (Editar)</b> y <b>papelera</b></p>
+      <ul>
+        <li><strong>Sin orden de pago</strong>: la factura se corrige entera, incluida la fecha, y se puede borrar.</li>
+        <li><strong>Con orden de pago</strong>: solo se cambian la descripción y los adjuntos. Si se toca otra cosa, el sistema dice qué OP la pagó. Tampoco se borra. Para corregir el resto, primero se anula la OP.</li>
+        <li>Arreglo: el mensaje de error ahora se desplaza solo hasta quedar a la vista. Antes quedaba tapado al final del formulario y parecía que «no pasaba nada».</li>
+      </ul>
+      <figure>
+        <img src="img/07-factura-compra-seccion.webp" width="2160" height="1410" alt="Listado de facturas de compra con el lápiz de editar de una factura pagada resaltado" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadros rojos:</span> el menú Compras › Facturas de compra y el lápiz de una factura que ya tiene OP.</figcaption>
+      </figure>
+      <figure>
+        <img src="img/08-factura-pagada-bloqueada.webp" width="1350" height="1297" alt="Formulario de factura de compra con el mensaje: la factura ya tiene la orden de pago OP-6, solo se cambia la descripción y los adjuntos" loading="lazy" decoding="async">
+        <figcaption><span class="box">Recuadro rojo:</span> el aviso al intentar cambiar el número de una factura pagada con la OP-6.</figcaption>
+      </figure>
+    </article>
+
+    <article class="change" id="factura-vieja" aria-labelledby="factura-vieja-title">
+      <span class="tag mod">Modificado</span>
+      <h2 id="factura-vieja-title">Cargar una factura emitida vieja</h2>
+      <p class="where">Sección: <b>Ventas › Facturas de venta</b> · Botón: <b>Nueva factura</b> · Parte: <b>«¿Cómo se emite?»</b></p>
+      <ul>
+        <li>La opción «Ya la emití en Tango: cargo el número» ahora se llama <strong>«Cargar una ya emitida (Tango o vieja): escribo el número»</strong>.</li>
+        <li>Al elegirla, el campo <strong>Número queda libre</strong> para escribirlo, sin tener que tocar «Editar».</li>
+        <li>Si se intenta emitir en ARCA una factura con fecha de más de 5 días atrás (productos) o 10 (servicios), el sistema explica que ARCA no la acepta y que se cargue como ya emitida.</li>
+      </ul>
+      <p class="note">Esta opción solo aparece en las empresas conectadas a ARCA, y la copia de prueba no tiene los certificados. Por eso no hay captura: se ve en producción.</p>
+    </article>
+  </main>
+
+  <footer class="bottom">
+    <div class="wrap">
+      <p>Pino Gestión · Cambios del 16/11/2026 en Tesorería. Las capturas son de una copia de prueba, con datos de ejemplo.</p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -70,6 +70,10 @@ export const supplierPaymentSchema = z.object({
   notes: z.string().trim().max(1000).optional().default(""),
   check: ownCheck.optional(),
   allocations: z.array(z.object({ expenseId: id, amountCents: z.coerce.number().int().min(0) })).max(200).default([]),
+  // Lo que se paga sin factura todavía: queda a cuenta del proveedor hasta que se aplique a su factura.
+  onAccountCents: z.coerce.number().int().min(0).default(0),
+  // La empresa que paga, cuando la OP no lleva comprobantes (todo a cuenta): sin facturas no hay de dónde sacarla.
+  company: z.enum(["tvp", "constructora"]).optional(),
 });
 export type SupplierPaymentInput = z.infer<typeof supplierPaymentSchema>;
 
@@ -139,6 +143,19 @@ export async function pendingVouchers(supplierId: string, paymentId?: string): P
   }).filter(voucher => voucher.balanceCents > 0 || voucher.appliedCents > 0);
 }
 
+export type OnAccountPayment = { _id: string; number: string; date: string; onAccountCents: number; status: string };
+
+/**
+ * Las OP del proveedor que tienen plata a cuenta (pagada sin factura). Se avisan
+ * al armar otra OP: lo que ya está a cuenta se aplica editando esa OP, no se paga
+ * de nuevo.
+ */
+export async function onAccountPayments(supplierId: string, paymentId?: string): Promise<OnAccountPayment[]> {
+  const rows = await Payment.find({ supplierId, onAccountCents: { $gt: 0 }, status: { $ne: "anulada" }, ...(paymentId ? { _id: { $ne: paymentId } } : {}) })
+    .sort({ date: 1 }).select("number date onAccountCents status").lean<Lean[]>();
+  return rows.map(row => ({ _id: String(row._id), number: String(row.number || ""), date: new Date(row.date as Date).toISOString(), onAccountCents: Number(row.onAccountCents || 0), status: String(row.status || "pagada") }));
+}
+
 /** Crea la orden de pago (o la cambia, con `paymentId`) y mueve el saldo de cada comprobante. */
 export async function saveSupplierPayment(input: SupplierPaymentInput, session: Session, paymentId?: string) {
   const before = paymentId ? await Payment.findById(paymentId) : null;
@@ -165,13 +182,16 @@ export async function saveSupplierPayment(input: SupplierPaymentInput, session: 
     }
     if (voucher.credit) creditCents += amountCents; else debitCents += amountCents;
   }
-  if (debitCents <= 0) throw new HttpError("Elegí al menos una factura (o nota de débito) para pagar");
+  const onAccountCents = input.onAccountCents;
+  if (debitCents <= 0 && onAccountCents <= 0) throw new HttpError("Elegí al menos una factura (o nota de débito) para pagar, o poné cuánto se paga a cuenta si la factura todavía no llegó");
   if (creditCents > debitCents) throw new HttpError(`Las notas de crédito (${money(creditCents)}) no pueden pasar de lo que se paga (${money(debitCents)})`);
-  // Una OP la paga una sola empresa: la de los comprobantes.
+  // Una OP la paga una sola empresa: la de los comprobantes o, toda a cuenta, la elegida.
   const companies = new Set([...byExpense.keys()].map(expenseId => pending.get(expenseId)!.company));
   if (companies.size > 1) throw new HttpError("Una orden de pago es de una sola empresa: hacé una para los comprobantes de cada empresa");
-  const company = [...companies][0];
-  const amountCents = debitCents - creditCents;
+  const company = [...companies][0] || input.company || (before?.company ? companyOf(before.company).key : undefined);
+  if (!company) throw new HttpError("Elegí qué empresa paga: la OP a cuenta no tiene facturas de donde sacarla");
+  // Lo que cancela de los comprobantes más lo que queda a cuenta.
+  const amountCents = debitCents - creditCents + onAccountCents;
   // La empresa no es agente de retención (Administración, encuesta del 31/10/2026): las percepciones del proveedor van en su factura.
   if (input.retentionsCents > 0) throw new HttpError("La orden de pago no lleva retenciones: la empresa no es agente de retención. Las percepciones del proveedor van en su factura");
   const lines = await resolveLines(input, amountCents, company, before);
@@ -185,7 +205,7 @@ export async function saveSupplierPayment(input: SupplierPaymentInput, session: 
   const wasPaid = Boolean(before && before.status !== "emitida");
 
   const data: Record<string, unknown> = {
-    company, supplierId: new Types.ObjectId(input.supplierId), expenseId: new Types.ObjectId(debitIds[0]), allocations, purchaseId,
+    company, supplierId: new Types.ObjectId(input.supplierId), expenseId: debitIds[0] ? new Types.ObjectId(debitIds[0]) : undefined, allocations, purchaseId, onAccountCents,
     workId: input.workId ? new Types.ObjectId(input.workId) : undefined,
     status: input.execute ? "pagada" : "emitida", date: day(input.date), dueDate: input.dueDate ? day(input.dueDate) : undefined,
     amountCents, retentionsCents: 0,
@@ -214,7 +234,7 @@ export async function saveSupplierPayment(input: SupplierPaymentInput, session: 
   await applyPayment(previous, -1);
   before.set(data);
   // Lo que quedó vacío se borra.
-  for (const key of ["purchaseId", "workId", "dueDate", "cashAccountId", "attachment"]) if (data[key] === undefined) before.set(key, undefined);
+  for (const key of ["expenseId", "purchaseId", "workId", "dueDate", "cashAccountId", "attachment"]) if (data[key] === undefined) before.set(key, undefined);
   if (history) before.set("accountHistory", [...(before.accountHistory || []), history]);
   await before.save();
   await attachChecks(before._id, input.supplierId, lines);
@@ -328,7 +348,9 @@ export async function paymentOrderPdfData(paymentId: string): Promise<PaymentOrd
     status: String(payment.status || "pagada"),
     supplier: { name: String(supplier?.name || "Proveedor"), cuit: supplier?.cuit ? String(supplier.cuit) : undefined },
     orderNumber: order ? String(order.number) : undefined, requestNumber: request ? String(request.number) : undefined,
-    invoiceLabel: lines.length === 1 ? lines[0].label : undefined, lines: lines.length > 1 || lines.some(line => line.appliedCents !== line.totalCents) ? lines : undefined,
+    invoiceLabel: lines.length === 1 ? lines[0].label : undefined,
+    lines: lines.length > 1 || (lines.length && Number(payment.onAccountCents || 0) > 0) || lines.some(line => line.appliedCents !== line.totalCents) ? lines : undefined,
+    onAccountCents: Number(payment.onAccountCents || 0),
     workLabel: work ? [work.code, work.name].filter(Boolean).join(" · ") : undefined,
     amountCents: Number(payment.amountCents || 0), retentionsCents: Number(payment.retentionsCents || 0),
     method: String(payment.method || ""), cashAccount: payment.account ? String(payment.account) : undefined, ledgerAccount: account ? String(account.name) : undefined,

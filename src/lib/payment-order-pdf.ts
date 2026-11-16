@@ -20,6 +20,8 @@ export type PaymentOrderPdfData = {
   lines?: Array<{ label: string; issueDate?: string; totalCents: number; appliedCents: number; credit: boolean }>;
   workLabel?: string;
   amountCents: number; retentionsCents: number;
+  /** Lo que se paga sin factura: queda a cuenta del proveedor. */
+  onAccountCents?: number;
   method: string; cashAccount?: string; ledgerAccount?: string; reference?: string; notes?: string;
   check?: { number: string; bank: string; dueDate?: string; electronic: boolean };
   /** Con qué se paga, cuando son varios medios: cada uno con su cuenta, su importe y el cheque si es uno. */
@@ -58,7 +60,7 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
   const rows: Array<[string, string]> = [
     ["Orden de compra", data.orderNumber || "-"],
     ["Solicitud", data.requestNumber || "-"],
-    ...(data.lines ? [] : [["Factura", data.invoiceLabel || "Sin factura (contado o anticipo)"] as [string, string]]),
+    ...(data.lines ? [] : [["Factura", data.invoiceLabel || (data.onAccountCents ? "Sin factura: a cuenta" : "Sin factura (contado o anticipo)")] as [string, string]]),
     // Varios medios: uno por renglón, con su cuenta e importe.
     ...(data.media && data.media.length > 1
       ? data.media.map((medium, index) => [index ? "" : "Forma de pago", [methodLabels[medium.method] || medium.method, medium.account, money(medium.amountCents), medium.detail].filter(Boolean).join(" · ")] as [string, string])
@@ -102,10 +104,16 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
 
   // Los importes.
   setFill([248, 250, 252]);
-  doc.roundedRect(MARGIN, y - 6, INNER, data.retentionsCents ? 30 : 22, 2, 2, "F");
+  const onAccount = Number(data.onAccountCents || 0);
+  doc.roundedRect(MARGIN, y - 6, INNER, 22 + (data.retentionsCents ? 8 : 0) + (onAccount ? 6 : 0), 2, 2, "F");
   setColor(MUTED); doc.setFont("helvetica", "normal"); doc.setFontSize(8.4);
   doc.text("Importe de la orden", MARGIN + 5, y);
   doc.text(plain(money(data.amountCents)), WIDTH - MARGIN - 5, y, { align: "right" });
+  if (onAccount) {
+    y += 6;
+    doc.text("De eso, a cuenta (sin factura)", MARGIN + 5, y);
+    doc.text(plain(money(onAccount)), WIDTH - MARGIN - 5, y, { align: "right" });
+  }
   if (data.retentionsCents) {
     y += 6;
     doc.text("Retenciones", MARGIN + 5, y);

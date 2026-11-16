@@ -6,9 +6,9 @@ import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/f
 import { CashLinesEditor, lineProblem, linesCents, linesFrom, linesPayload, newLine, type EditableLine } from "@/components/cash-lines-editor";
 import { useLedgerAccountCodes, useLedgerAccounts } from "@/components/ledger-account";
 import { date, money, todayIso } from "@/lib/format";
-import { companyOf } from "@/lib/companies";
+import { COMPANIES, COMPANY_KEYS, companyOf } from "@/lib/companies";
 import { downloadPaymentOrderPdf, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
-import type { PendingVoucher } from "@/lib/payment-order-service";
+import type { OnAccountPayment, PendingVoucher } from "@/lib/payment-order-service";
 import type { CarteraCheck } from "@/lib/check-service";
 
 type Payment = Record<string, unknown> & { _id: string };
@@ -41,6 +41,13 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
   const [workId, setWorkId] = useState(String(payment?.workId || ""));
   const [lines, setLines] = useState<EditableLine[]>(() => payment ? [] : [newLine()]);
   const [cartera, setCartera] = useState<CarteraCheck[]>([]);
+  // Lo que se paga sin factura (a cuenta) y, si no hay facturas elegidas, qué empresa paga.
+  const [onAccount, setOnAccount] = useState(() => Number(payment?.onAccountCents || 0) / 100);
+  const [payCompany, setPayCompany] = useState(() => String(payment?.company || ""));
+  // Las otras OP del proveedor con plata a cuenta, para no pagar dos veces.
+  const [otherOnAccount, setOtherOnAccount] = useState<OnAccountPayment[]>([]);
+  // Al editar una OP que tiene plata a cuenta, elegir una factura la paga con eso: el total no cambia.
+  const applyingOnAccount = Number(payment?.onAccountCents || 0) > 0;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const accounts = useLedgerAccounts("egreso");
@@ -69,7 +76,12 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
     const controller = new AbortController();
     const query = new URLSearchParams({ supplierId, ...(payment ? { payment: payment._id } : {}) });
     fetch(`/api/payment-orders?${query.toString()}`, { signal: controller.signal })
-      .then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "No se pudieron traer los comprobantes"); return body.items as PendingVoucher[]; })
+      .then(async response => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "No se pudieron traer los comprobantes");
+        setOtherOnAccount(Array.isArray(body.onAccount) ? body.onAccount : []);
+        return body.items as PendingVoucher[];
+      })
       .then(items => {
         setRows(items);
         // Al editar vuelve lo que la OP ya había aplicado; desde una factura, se propone pagarla entera.
@@ -99,12 +111,28 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
   };
   const debitCents = debits.reduce((total, row) => total + cents(row), 0);
   const creditCents = credits.reduce((total, row) => total + cents(row), 0);
-  const amountCents = debitCents - creditCents;
+  const onAccountCents = Math.max(0, Math.round(onAccount * 100));
+  // Lo que cancela de los comprobantes más lo que queda a cuenta.
+  const amountCents = debitCents - creditCents + onAccountCents;
   const over = (rows || []).find(row => cents(row) > row.balanceCents);
-  // La empresa de la OP: la de los comprobantes elegidos (o, al editar, la que tenía).
-  const company = (rows || []).find(row => picks[row._id])?.company || (payment?.company ? String(payment.company) : undefined);
+  // La empresa de la OP: la de los comprobantes elegidos o, toda a cuenta, la que se eligió.
+  const voucherCompany = (rows || []).find(row => picks[row._id])?.company;
+  const company = voucherCompany || payCompany || undefined;
 
   function toggle(row: PendingVoucher, on: boolean) {
+    // Editando una OP con plata a cuenta, la factura se paga con eso (y al sacarla, vuelve a cuenta).
+    if (applyingOnAccount && !row.credit) {
+      const taken = on ? Math.min(row.balanceCents, onAccountCents) : cents(row);
+      if (taken > 0) setOnAccount(Math.max(0, onAccountCents + (on ? -taken : taken)) / 100);
+      setPicks(current => {
+        const next = { ...current };
+        if (on) next[row._id] = taken > 0 && taken < row.balanceCents ? { mode: "parcial", pesos: taken / 100 } : { mode: "total", pesos: row.balanceCents / 100 }; else delete next[row._id];
+        return next;
+      });
+      if (on && row.workId && !workless) setWorkId(current => current || row.workId);
+      setVersion(current => current + 1);
+      return;
+    }
     setPicks(current => {
       const next = { ...current };
       if (on) next[row._id] = { mode: row.credit ? "parcial" : "total", pesos: row.balanceCents / 100 }; else delete next[row._id];
@@ -113,6 +141,20 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
     // Elegir una factura de obra completa la obra, si el gasto puede ir a una.
     if (on && row.workId && !workless) setWorkId(current => current || row.workId);
     setVersion(current => current + 1);
+  }
+
+  /**
+   * Un cheque de terceros se endosa entero: si vale más de lo que se paga, la
+   * diferencia queda a cuenta del proveedor (reunión con Tesorería, 10/11/2026).
+   */
+  function changeLines(next: EditableLine[]) {
+    const chosen = (list: EditableLine[]) => list.filter(line => line.method === "cheque_tercero" && line.checkId).map(line => line.checkId).join(",");
+    if (chosen(next) && chosen(next) !== chosen(lines)) {
+      const inLines = next.length === 1 ? Math.round(next[0].pesos * 100) : linesCents(next);
+      const excess = inLines - (debitCents - creditCents);
+      if (excess > 0) { setOnAccount(excess / 100); setVersion(current => current + 1); }
+    }
+    setLines(next);
   }
 
   function setMode(row: PendingVoucher, mode: Pick["mode"]) {
@@ -125,8 +167,9 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
     const form = new FormData(event.currentTarget);
     if (!orderDate) return setError("Poné la fecha de la orden de pago");
     if (over) return setError(over.credit ? `La ${over.label} tiene ${money(over.balanceCents)} para descontar` : `A la ${over.label} le quedan ${money(over.balanceCents)} por pagar`);
-    if (debitCents <= 0) return setError("Elegí al menos una factura (o nota de débito) para pagar");
+    if (debitCents <= 0 && onAccountCents <= 0) return setError("Elegí al menos una factura (o nota de débito) para pagar, o poné cuánto se paga a cuenta");
     if (creditCents > debitCents) return setError("Las notas de crédito no pueden pasar de lo que se paga");
+    if (!company) return setError("Elegí qué empresa paga");
     if (!accountId) return setError("Elegí el tipo de gasto");
     const paying = execute && amountCents > 0;
     if (paying && lines.length > 1 && linesCents(lines) !== amountCents) return setError(`Los medios suman ${money(linesCents(lines))} y la orden de pago es de ${money(amountCents)}`);
@@ -141,7 +184,7 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
       body: JSON.stringify({
         supplierId, date: orderDate, dueDate: execute ? "" : String(form.get("dueDate") || ""), execute,
         accountId, accountChangeReason: String(form.get("accountChangeReason") || ""), workId: workless ? "" : workId,
-        notes: String(form.get("notes") || ""), lines: payload, allocations,
+        notes: String(form.get("notes") || ""), lines: payload, allocations, onAccountCents, company: voucherCompany ? undefined : company,
       }),
     });
     const result = await response.json();
@@ -160,7 +203,7 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
       <header><div className="modal-title-wrap"><span className="modal-heading-icon"><CreditCard /></span><div>
         <p className="eyebrow">{payment ? `ORDEN DE PAGO ${String(payment.number || "")}` : "NUEVA ORDEN DE PAGO"}</p>
         <h2 id="payment-order-title">{payment ? "Editar orden de pago" : "Pagar a un proveedor"}</h2>
-        <small>Elegí el proveedor, qué facturas pagás (todo o una parte) y qué notas de crédito descontás. Al guardar se baja la OP en PDF.</small>
+        <small>Elegí el proveedor, qué facturas pagás (todo o una parte) y qué notas de crédito descontás. Sin factura todavía, se paga a cuenta. Al guardar se baja la OP en PDF.</small>
       </div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
       <form onSubmit={event => { void save(event); }}>
         <div className="modal-form-body">
@@ -179,7 +222,7 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
 
           {!supplierId ? <div className="empty-state compact"><p>Elegí el proveedor para ver sus facturas pendientes.</p></div>
             : rows === null ? <div className="loading-state">Buscando sus comprobantes…</div>
-              : !debits.length ? <div className="empty-state compact"><p>Este proveedor no tiene facturas pendientes de pago.</p></div>
+              : !debits.length ? <div className="empty-state compact"><p>Este proveedor no tiene facturas pendientes de pago. Si la factura todavía no llegó, se puede pagar a cuenta.</p></div>
                 : <>
                   <div className="receipt-table-head"><b>Facturas y notas de débito pendientes</b><span>
                     <button type="button" className="link-btn" onClick={() => { setPicks(current => ({ ...Object.fromEntries(Object.entries(current).filter(([key]) => credits.some(row => row._id === key))), ...Object.fromEntries(debits.map(row => [row._id, { mode: "total", pesos: row.balanceCents / 100 } satisfies Pick])) })); setVersion(current => current + 1); }}>Pagar todas</button>
@@ -228,13 +271,27 @@ export function PaymentOrderModal({ payment, suppliers, works, initialSupplierId
                   </>}
                 </>}
 
-          {debitCents > 0 && <dl className="payment-order-totals">
-            <div><dt>Facturas y notas de débito</dt><dd>{money(debitCents)}</dd></div>
+          {supplierId && rows !== null && <>
+            {otherOnAccount.length > 0 && <p className="invoice-note">Este proveedor ya tiene plata a cuenta: {otherOnAccount.map(other => `${money(other.onAccountCents)} en ${other.number} (${date(other.date)})`).join(", ")}. Para aplicarla a una factura, editá esa OP y elegí la factura.</p>}
+            <div className="receipt-table-head"><b>A cuenta, sin factura</b></div>
+            <div className="form-grid">
+              <label><span>Importe a cuenta<em className="field-hint">{applyingOnAccount ? "Al elegir una factura se paga con esto" : "Un anticipo, o lo que sobra de un cheque de terceros. Después se aplica a la factura editando esta OP"}</em></span>
+                <MoneyInput key={`on-account-${version}`} name="onAccount" defaultValue={onAccount} onValueChange={setOnAccount} /></label>
+              {!voucherCompany && onAccountCents > 0 && <label><span>Empresa que paga *</span><select value={payCompany} onChange={event => setPayCompany(event.target.value)} required>
+                <option value="">Elegí la empresa…</option>
+                {COMPANY_KEYS.map(key => <option key={key} value={key}>{COMPANIES[key].legalName}</option>)}
+              </select></label>}
+            </div>
+          </>}
+
+          {amountCents > 0 && <dl className="payment-order-totals">
+            {debitCents > 0 && <div><dt>Facturas y notas de débito</dt><dd>{money(debitCents)}</dd></div>}
             {creditCents > 0 && <div><dt>Menos notas de crédito</dt><dd>- {money(creditCents)}</dd></div>}
+            {onAccountCents > 0 && <div><dt>A cuenta, sin factura</dt><dd>{money(onAccountCents)}</dd></div>}
             <div className="total"><dt>A pagar</dt><dd>{money(amountCents)}</dd></div>
           </dl>}
 
-          {debitCents > 0 && amountCents > 0 && <CashLinesEditor side="pago" lines={lines} onChange={setLines} company={company} totalCents={amountCents} cartera={cartera} />}
+          {amountCents > 0 && <CashLinesEditor side="pago" lines={lines} onChange={changeLines} company={company} totalCents={amountCents} cartera={cartera} />}
 
           <label className="wide receipt-notes"><span>Observaciones</span><textarea name="notes" defaultValue={String(payment?.notes || "")} placeholder="Salen en el PDF de la orden de pago" /></label>
         </div>

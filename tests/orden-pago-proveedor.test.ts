@@ -293,3 +293,57 @@ describe("libro IVA", () => {
   });
 });
 
+// Reunión con Tesorería del 10/11/2026: pagar antes de que llegue la factura, y la factura recibida con OP queda como se pagó.
+describe("orden de pago a cuenta", () => {
+  it("se paga sin factura, avisa la plata a cuenta y después se aplica a la factura sin cambiar el total", async () => {
+    as("administracion", "Tesorería");
+    const supplier = String((await Supplier.create({ name: "Pinturería a cuenta" }))._id);
+    const base = { supplierId: supplier, allocations: [], onAccountCents: 200_000_00, amountCents: 200_000_00 };
+    // Sin facturas no hay de dónde sacar la empresa: hay que elegirla.
+    expect((await pay(base)).body.error).toContain("Elegí qué empresa paga");
+    const created = await pay({ ...base, company: "tvp" });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body.payment).toMatchObject({ status: "pagada", amountCents: 200_000_00, onAccountCents: 200_000_00, company: "tvp" });
+    expect(created.body.payment.expenseId).toBeUndefined();
+    expect(created.body.pdf).toMatchObject({ onAccountCents: 200_000_00 });
+
+    // Llega la factura: la próxima OP avisa que hay plata a cuenta.
+    const invoice = await voucher({ supplierId: supplier, number: "0009-00000001", amountCents: 150_000_00 });
+    const listed = await call(await ordersRoute.GET(new Request(`http://test/api/payment-orders?supplierId=${supplier}`)));
+    expect(listed.body.onAccount).toEqual([expect.objectContaining({ _id: created.body.payment._id, onAccountCents: 200_000_00 })]);
+
+    // Editando la OP se aplica a la factura: el total sigue igual y le queda el resto a cuenta.
+    const applied = await call(await orderRoute.PUT(json("PUT", {
+      supplierId: supplier, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, attachment: receipt,
+      allocations: [{ expenseId: invoice._id, amountCents: 150_000_00 }], onAccountCents: 50_000_00,
+    }), params({ id: created.body.payment._id })));
+    expect(applied.status, JSON.stringify(applied.body)).toBe(200);
+    expect(applied.body.payment).toMatchObject({ amountCents: 200_000_00, onAccountCents: 50_000_00, expenseId: invoice._id });
+    expect(await expense(invoice._id)).toMatchObject({ status: "pagado", paidCents: 150_000_00 });
+  });
+
+  it("la factura recibida sin OP se corrige entera; con OP solo la descripción, y no se borra", async () => {
+    as("administracion", "Tesorería");
+    const free = await voucher({ number: "0009-00000010", amountCents: 10_000_00 });
+    const edit = (id: string, body: Record<string, unknown>) => recordRoute.PATCH(json("PATCH", body), params({ entity: "expenses", id })).then(call);
+    expect((await edit(free._id, { issueDate: "2026-09-30", amountCents: 12_000_00 })).status).toBe(200);
+
+    const paid = await voucher({ number: "0009-00000011", amountCents: 10_000_00 });
+    const op = await pay({ allocations: [{ expenseId: paid._id, amountCents: 10_000_00 }] });
+    expect(op.status, JSON.stringify(op.body)).toBe(201);
+    // El formulario reenvía todo: lo que no cambió (o llega vacío) no cuenta.
+    expect((await edit(paid._id, { description: "Leyenda nueva", issueDate: "2026-10-01", purchaseReceiptIds: [], discountCents: 0 })).status).toBe(200);
+    const blocked = await edit(paid._id, { issueDate: "2026-09-01" });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error).toContain(`orden de pago ${op.body.payment.number}`);
+    as("gerencia", "Gerencia");
+    const removed = await call(await recordRoute.DELETE(json("DELETE", {}), params({ entity: "expenses", id: paid._id })));
+    expect(removed.status).toBe(409);
+
+    // Con la OP anulada, vuelve a corregirse.
+    const voided = await call(await recordRoute.PATCH(json("PATCH", { status: "anulada" }), params({ entity: "payments", id: op.body.payment._id })));
+    expect(voided.status, JSON.stringify(voided.body)).toBe(200);
+    expect((await edit(paid._id, { issueDate: "2026-09-01" })).status).toBe(200);
+  });
+});
+

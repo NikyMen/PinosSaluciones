@@ -4,7 +4,7 @@ import { canRead, canWrite } from "@/lib/permissions";
 import { connectDB } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
-import { paymentOrderPdfData, pendingVouchers, saveSupplierPayment, supplierPaymentSchema } from "@/lib/payment-order-service";
+import { onAccountPayments, paymentOrderPdfData, pendingVouchers, saveSupplierPayment, supplierPaymentSchema } from "@/lib/payment-order-service";
 
 /** Los comprobantes del proveedor con saldo, para armar la orden de pago (?supplierId=, y ?payment= al editar una). */
 export async function GET(request: Request) {
@@ -16,7 +16,8 @@ export async function GET(request: Request) {
     const payment = params.get("payment") || undefined;
     if (!isValidObjectId(supplierId) || (payment && !isValidObjectId(payment))) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB();
-    return Response.json({ items: await pendingVouchers(supplierId, payment) });
+    const [items, onAccount] = await Promise.all([pendingVouchers(supplierId, payment), onAccountPayments(supplierId, payment)]);
+    return Response.json({ items, onAccount });
   } catch (error) { return apiError(error); }
 }
 

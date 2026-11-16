@@ -2,7 +2,7 @@ import { HttpError } from "./api";
 import { periodOf } from "./period";
 import { accountChange, checkLedgerAccount, checkWorkForAccount, worklessAccount } from "./account-service";
 import { accountDirection } from "./account-catalog";
-import { Expense, Invoice, Purchase, PurchaseReceipt, Work } from "./models";
+import { Expense, Invoice, Payment, Purchase, PurchaseReceipt, Work } from "./models";
 import { baseInvoiceType, isCreditNote, isNote, VOID_INVOICE_STATUSES, voucherLabels } from "./invoice-labels";
 import { PURCHASE_TAX_PCT_KEYS, storedPurchaseTaxes, voucherTaxFields } from "./purchase-taxes";
 import { money } from "./format";
@@ -81,6 +81,7 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
 
   // Si cambia la fecha y el período era el de la fecha, el período la sigue; uno puesto a mano queda.
   if ((entity === "expenses" || entity === "invoices") && "issueDate" in changes && !changes.period && (!before.period || before.period === periodOf(before.issueDate))) changes.period = periodOf(changes.issueDate);
+  if (entity === "expenses") await checkPaidExpenseChanges(before, changes);
   if (entity === "expenses") await prepareExpense(changes, before);
   if (entity === "expenses") await checkExpenseLimit(changes, before, session.role);
   // Una solicitud emitida queda en sólo lectura; una orden, salvo la entrega y las notas.
@@ -90,7 +91,7 @@ export async function beforeUpdate(entity: Entity, before: Record<string, unknow
   if (entity === "payments") await preparePaymentOrder(changes, before);
   if (entity === "payments") {
     // Una OP de varias facturas se cambia desde su pantalla: acá sólo el estado, la caja, la cuenta y los datos sueltos.
-    if (Array.isArray(before.allocations) && before.allocations.length && ["amountCents", "expenseId", "supplierId", "company"].some(key => key in changes && String(changes[key] ?? "") !== String(before[key] ?? ""))) {
+    if (((Array.isArray(before.allocations) && before.allocations.length) || Number(before.onAccountCents || 0) > 0) && ["amountCents", "expenseId", "supplierId", "company", "onAccountCents"].some(key => key in changes && String(changes[key] ?? "") !== String(before[key] ?? ""))) {
       throw new HttpError("Esta orden de pago aplica varios comprobantes: el importe, el proveedor y las facturas se cambian desde Editar");
     }
     if ("accountId" in changes || "workId" in changes) await checkWorkForAccount(merged.accountId, merged.workId);
@@ -165,6 +166,42 @@ async function prepareExpense(data: Record<string, unknown>, before: Record<stri
     const rates = { ...before, ...data } as Record<string, number | undefined>;
     Object.assign(data, voucherTaxFields(net, rates, Boolean(rates.voucherType) && baseInvoiceType(rates.voucherType) === "factura_a"));
   }
+}
+
+/** La OP (no anulada) que paga una factura de compra, si tiene. */
+export async function expensePaymentOrder(expenseId: unknown) {
+  return Payment.findOne({ status: { $ne: "anulada" }, $or: [{ expenseId }, { "allocations.expenseId": expenseId }] }).select("number").lean<{ number?: string }>();
+}
+
+/** Lo que se compara de un campo: la fecha por el día, el id por su texto. */
+function comparable(value: unknown) {
+  // Un cero, un "no" o un campo vacío que reenvía el formulario es lo mismo que no tenerlo.
+  if (value === 0 || value === "0" || value === false || value === null || value === undefined || value === "" || (Array.isArray(value) && !value.length)) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}(T|$)/.test(value)) return value.slice(0, 10);
+  if (Array.isArray(value) || (value && typeof value === "object" && !("toHexString" in value))) return JSON.stringify(value);
+  return String(value ?? "");
+}
+
+/** Lo que se puede cambiar de una factura de compra que ya tiene orden de pago. */
+const EDITABLE_WITH_PAYMENT = new Set(["description", "attachment", "files"]);
+
+/**
+ * Una factura recibida sin orden de pago se corrige entera, incluida la fecha.
+ * Con OP queda como se pagó: solo se cambia la descripción y los adjuntos. Para
+ * cambiar el resto, primero se anula la OP (reunión con Tesorería, 10/11/2026).
+ */
+async function checkPaidExpenseChanges(before: Record<string, unknown>, changes: Record<string, unknown>) {
+  const changed = Object.keys(changes).filter(key => !EDITABLE_WITH_PAYMENT.has(key) && comparable(changes[key]) !== comparable(before[key]));
+  if (!changed.length) return;
+  const payment = await expensePaymentOrder(before._id);
+  if (payment) throw new HttpError(`La factura ya tiene la orden de pago ${String(payment.number || "")}: solo se cambia la descripción y los adjuntos. Para cambiar el resto, primero anulá la OP.`, 409);
+}
+
+/** Una factura recibida con orden de pago no se borra: primero se anula la OP. */
+export async function checkExpenseDelete(expenseId: unknown) {
+  const payment = await expensePaymentOrder(expenseId);
+  if (payment) throw new HttpError(`La factura tiene la orden de pago ${String(payment.number || "")}: para borrarla, primero anulá la OP.`, 409);
 }
 
 /**

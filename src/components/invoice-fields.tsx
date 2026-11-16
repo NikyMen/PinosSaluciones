@@ -165,11 +165,17 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
     if (key === "number" && editing?.cae) return <label key={key} className="readonly-field"><span>Número<em className="field-hint">Emitida en ARCA</em></span>
       <output>{number} · CAE {String(editing.cae)}</output><input type="hidden" name="number" value={number} /><input type="hidden" name="pointOfSale" value={String(editing.pointOfSale || "")} /></label>;
     if (key === "number" && canEmit) return <div key={key} className="invoice-arca-choice">
-      <label><span>¿Cómo se emite? *</span><select name="arcaEmit" value={emit ? "1" : ""} onChange={event => setEmit(event.target.value === "1")}>
+      <label><span>¿Cómo se emite? *<em className="field-hint">Una factura vieja ya está emitida: se carga con su número</em></span><select name="arcaEmit" value={emit ? "1" : ""} onChange={event => {
+        const now = event.target.value === "1";
+        setEmit(now);
+        // Una ya emitida se carga con su número: el campo queda libre para escribirlo.
+        setNumberLocked(now);
+        if (!now) { setNumber(""); setNumberError(""); }
+      }}>
         <option value="1">Emitir ahora en ARCA (con CAE)</option>
-        <option value="">Ya la emití en Tango: cargo el número</option>
+        <option value="">Cargar una ya emitida (Tango o vieja): escribo el número</option>
       </select></label>
-      {numberInput(emitting ? numberHint || "Consultando el que sigue en ARCA…" : "El que sigue en lo cargado de Tango")}
+      {numberInput(emitting ? numberHint || "Consultando el que sigue en ARCA…" : "Punto de venta y número, como figura en la factura")}
     </div>;
     if (key === "number") return <div key={key} className="invoice-arca-choice">{numberInput(editing ? "Punto de venta y número" : `El que sigue en ${companyOf(company).short}`)}</div>;
     if (key === "associatedInvoiceId") {
