@@ -8,6 +8,7 @@ import { INVOICE_STATUSES, PURCHASE_VOUCHER_TYPES, SALES_VOUCHER_TYPES, VOUCHER_
 import { VAT_CONDITION_KEYS } from "./fiscal";
 import { CASH_ACCOUNT_COMPANIES, CASH_ACCOUNT_TYPES, CASH_CURRENCIES } from "./cash-account-kinds";
 import { PERIOD_PATTERN, periodOf } from "./period";
+import { COMPANY_KEYS } from "./companies";
 import { COLLECTION_METHODS, PAYMENT_METHODS, RETENTION_TYPES } from "./cash-methods";
 
 const options = { timestamps: true, strict: true } as const;
@@ -109,6 +110,11 @@ const CascadeSchema = new Schema({
   ivaBase: { type: String, enum: ["st2", "st3"], default: "st2" },
   chequePct: { type: Number, default: 0 },
 }, { _id: false });
+
+const DocumentSignatureSchema = new Schema({
+  company: { type: String, enum: COMPANY_KEYS, required: true, unique: true },
+  name: { type: String, required: true }, title: { type: String, required: true },
+}, options);
 
 const WorkCategorySchema = new Schema({
   key: { type: String, required: true, unique: true },
@@ -1110,6 +1116,7 @@ const NotificationSettingsSchema = new Schema({ _id: String, hours: { type: Map,
 
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
 export const Client = mongoose.models.Client || mongoose.model("Client", ClientSchema);
+export const DocumentSignature = mongoose.models.DocumentSignature || mongoose.model("DocumentSignature", DocumentSignatureSchema);
 export const WorkCategory = mongoose.models.WorkCategory || mongoose.model("WorkCategory", WorkCategorySchema);
 export const Quote = mongoose.models.Quote || mongoose.model("Quote", QuoteSchema);
 export const Work = mongoose.models.Work || mongoose.model("Work", WorkSchema);

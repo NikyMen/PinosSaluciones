@@ -1,4 +1,5 @@
 import type { jsPDF } from "jspdf";
+import type { Signature } from "./document-signatures";
 import { date, money } from "./format";
 import { amountInWords, drawFooter, drawLetterhead, INK, LINE, MUTED, NAVY, PAGE, plain, RED, readPdfLogo, type Rgb } from "./pdf-brand";
 import { companyOf, type CompanyKey } from "./companies";
@@ -13,6 +14,7 @@ import { cashMethodLabels } from "./cash-methods";
  */
 
 export type PaymentOrderPdfData = {
+  signature?: Signature;
   company: CompanyKey; number: string; date: string; dueDate?: string; status: string;
   supplier: { name: string; cuit?: string; bank?: string; cbu?: string; alias?: string };
   orderNumber?: string; requestNumber?: string; invoiceLabel?: string;
@@ -141,7 +143,8 @@ export function buildPaymentOrderPdf(doc: jsPDF, data: PaymentOrderPdfData, meta
   setStroke([150, 160, 172]); doc.setLineWidth(0.3);
   doc.line(MARGIN, signY, MARGIN + 70, signY);
   setColor(MUTED); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
-  doc.text("Autorizó (Tesorería)", MARGIN + 35, signY + 4.5, { align: "center" });
+  doc.text(plain(data.signature?.name || "Autorizó (Tesorería)"), MARGIN + 35, signY + 4.5, { align: "center", maxWidth: 70 });
+  if (data.signature) doc.text(plain(data.signature.title), MARGIN + 35, signY + 9, { align: "center", maxWidth: 70 });
   if (data.method === "efectivo" || data.media?.some(medium => medium.method === "efectivo")) {
     doc.line(WIDTH - MARGIN - 80, signY, WIDTH - MARGIN, signY);
     doc.text("Recibí conforme el efectivo: firma", WIDTH - MARGIN - 40, signY + 4.5, { align: "center" });

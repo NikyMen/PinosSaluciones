@@ -10,6 +10,7 @@ import { WorkLabor, type AssignedWorker, type LaborEntry } from "@/components/wo
 import { InvoiceWorkModal } from "@/components/work-invoice";
 import { downloadHref, extensionOf, UPLOAD_ACCEPT } from "@/lib/upload-types";
 import { WorkInspections } from "@/components/work-inspections";
+import { QuoteBillingPanel } from "@/components/quote-billing";
 
 type Checklist = { _id: string; title: string; done: boolean; completedAt?: string; createdAt?: string; updatedAt?: string };
 type Activity = { _id: string; detail: string; photos: string[]; authorName: string; createdAt: string };
@@ -37,9 +38,9 @@ async function uploadFiles(files: File[]) {
 }
 type WorkExpense = { _id: string; number?: string; description: string; category: string; amountCents: number; issueDate: string; status: string };
 
-type Work = { _id: string; name: string; code: string; progress: number; startDate?: string; endDate?: string; actualStartDate?: string; actualEndDate?: string; budgetCents?: number; budgetNetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
+type Work = { _id: string; quoteId?: string; name: string; code: string; progress: number; startDate?: string; endDate?: string; actualStartDate?: string; actualEndDate?: string; budgetCents?: number; budgetNetCents?: number; createdAt?: string; updatedAt?: string; checklist: Checklist[]; activity: Activity[]; certificates: Certificate[]; labor: LaborEntry[]; assignedWorkers: AssignedWorker[] };
 
-export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false }: { id: string; canEdit: boolean; canCreateWorker: boolean; canSeeStock?: boolean }) {
+export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false, canSeeBilling = false }: { id: string; canEdit: boolean; canCreateWorker: boolean; canSeeStock?: boolean; canSeeBilling?: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
   const [error, setError] = useState("");
   const [expenses, setExpenses] = useState<WorkExpense[]>([]);
@@ -179,6 +180,7 @@ export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false }
     </div>
     {error && <div className="notice error">{error}</div>}
 
+    {canSeeBilling && work.quoteId && <QuoteBillingPanel quoteId={work.quoteId} canEdit={false} canRemove={false} summaryOnly />}
     <WorkInspections workId={id} canEdit={canEdit} />
 
     <WorkLabor work={{ _id: id, code: work.code, name: work.name }} assigned={work.assignedWorkers || []} labor={work.labor || []} canEdit={canEdit} canCreateWorker={canCreateWorker}

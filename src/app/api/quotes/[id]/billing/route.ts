@@ -18,9 +18,9 @@ export async function GET(_request: Request, context: RouteContext<"/api/quotes/
     await connectDB();
     const loaded = await loadQuoteBilling(id);
     if (!loaded) return Response.json({ error: "Cotización no encontrada" }, { status: 404 });
-    const { quote, works, invoices, remitos, billing } = loaded;
+    const { quote, works, invoices, remitos, billing, collection } = loaded;
     return Response.json({
-      billing,
+      billing, collection,
       adjustments: (quote.adjustments || []).map(item => ({ ...item, _id: String(item._id) })),
       invoices: invoices.map(invoice => ({
         _id: String(invoice._id), label: invoiceLabel(invoice), issueDate: invoice.issueDate, status: invoice.status,

@@ -8,6 +8,7 @@ import { BOOK_VOUCHER_TYPES, formatVoucherNumber, voucherLabels } from "@/lib/in
 import type { VoucherBookRow } from "@/lib/voucher-books";
 import type { ArcaStatus } from "@/lib/arca";
 import { WorkCategorySettings } from "@/components/work-category-settings";
+import { DocumentSignatureSettings } from "@/components/document-signature-settings";
 
 /**
  * Configuración de las dos empresas: sus datos, los talonarios de comprobantes
@@ -109,6 +110,7 @@ export function CompanyConfig() {
       <header><h2><Warehouse size={17} /> Depósitos</h2><small>Lo que compra TV Pino entra al Galpón y lo que compra Constructora Pino, al Salón de Ventas (la orden de compra puede pedir otro depósito). Entre los dos el material pasa por transferencia, y desde el Salón sale el remito al cliente.</small></header>
       <ul>{WAREHOUSES.map(warehouse => <li key={warehouse.key}><b>{warehouse.label}</b><span>{warehouse.key === "central" ? "Recibe las compras, guarda y prepara lo que va a obra o al salón" : "Recibe transferencias del Galpón y despacha al cliente con remito"}</span></li>)}</ul>
     </section>
+    <DocumentSignatureSettings />
     <WorkCategorySettings />
   </>;
 }

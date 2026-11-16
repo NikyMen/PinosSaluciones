@@ -9,7 +9,7 @@ import { remitoPendingCents, invoiceLinesNetCents } from "../src/lib/remito-bill
 const session = { userId: new Types.ObjectId().toHexString(), name: "Gerencia de prueba", email: "gerencia@test.local", role: "gerencia" as "gerencia" | "administracion", permissions: defaultPermissionsForRole("gerencia") };
 vi.mock("@/lib/auth", () => ({ requireSession: async () => session, getSession: async () => session, isOwnerEmail: () => false }));
 
-const { Client, Quote, Work, Invoice, SalesRemito, StockItem } = await import("../src/lib/models");
+const { Client, Collection, Expense, Quote, Work, Invoice, SalesRemito, StockItem } = await import("../src/lib/models");
 const recordsRoute = await import("../src/app/api/records/[entity]/route");
 const recordRoute = await import("../src/app/api/records/[entity]/[id]/route");
 const billingRoute = await import("../src/app/api/quotes/[id]/billing/route");
@@ -40,6 +40,57 @@ function asRole(role: "gerencia" | "administracion") {
   session.role = role;
   session.permissions = defaultPermissionsForRole(role);
 }
+
+describe("resumen de facturas y recibos", () => {
+  it("cuenta saldos por pagar o cobrar y excluye comprobantes anulados o sustituidos", async () => {
+    asRole("administracion");
+    const client = await Client.create({ name: "Cliente para saldos" });
+    const issueDate = new Date("2026-11-12");
+    const invoice = { clientId: client._id, voucherType: "factura_a", amountCents: 500, issueDate };
+    await Invoice.create([
+      { ...invoice, number: nextNumber(), status: "parcial", collectedCents: 400 },
+      { ...invoice, number: nextNumber(), status: "cobrada", collectedCents: 500 },
+      { ...invoice, number: nextNumber(), status: "sustituida" },
+    ]);
+    const expense = { voucherType: "factura_a", description: "Compra", category: "servicios", amountCents: 800, issueDate };
+    await Expense.create([{ ...expense, paidCents: 550 }, { ...expense, status: "anulado" }, { ...expense, voucherType: undefined }]);
+    const sales = await call(await recordsRoute.GET(new Request("http://test?summary=1&pending=1"), params({ entity: "invoices" })));
+    expect(sales.body.summary).toMatchObject({ count: 2, pendingCount: 1, pendingCents: 100 });
+    expect(sales.body.items).toHaveLength(1);
+    const purchases = await call(await recordsRoute.GET(new Request("http://test?summary=1&pending=1"), params({ entity: "expenses" })));
+    expect(purchases.body.summary).toMatchObject({ count: 1, pendingCount: 1, pendingCents: 250 });
+    expect(purchases.body.items).toHaveLength(1);
+    expect(session.permissions.edit).not.toContain("purchases");
+    expect(session.permissions.view).toContain("purchases");
+    expect(session.permissions.edit).toEqual(expect.arrayContaining(["expenses", "payments"]));
+    await Promise.all([Invoice.deleteMany({ clientId: client._id }), Expense.deleteMany({ description: expense.description })]);
+  });
+
+  it("imprime el total aplicado más el pago a cuenta y la firma de la empresa", async () => {
+    asRole("gerencia");
+    const { receiptPdfData } = await import("../src/lib/receipt-service");
+    const { DocumentSignature } = await import("../src/lib/models");
+    const client = await Client.create({ name: "Cliente para recibo" });
+    const issueDate = new Date("2026-11-12");
+    const invoice = await Invoice.create({ clientId: client._id, voucherType: "factura_a", number: nextNumber(), amountCents: 50000, issueDate });
+    const receipt = await Collection.create({
+      company: "tvp", number: "R-PRUEBA", date: issueDate, clientId: client._id, method: "transferencia",
+      amountCents: 65000, onAccountCents: 15000, account: "Mercado Pago", allocations: [{ invoiceId: invoice._id, amountCents: 50000 }],
+    });
+    await DocumentSignature.create({ company: "tvp", name: "Responsable de prueba", title: "Tesorería" });
+    const data = await receiptPdfData(String(receipt._id));
+    expect(data).toMatchObject({
+      totalCents: 65000, onAccountCents: 15000, lines: [{ appliedCents: 50000 }],
+      media: [{ amountCents: 65000, account: "Mercado Pago" }], signature: { name: "Responsable de prueba", title: "Tesorería" },
+    });
+    const { jsPDF } = await import("jspdf");
+    const { buildReceiptPdf } = await import("../src/lib/receipt-pdf");
+    const pdf = new jsPDF({ compress: false });
+    buildReceiptPdf(pdf, data!, { author: "Prueba" });
+    expect(pdf.output()).toContain("Responsable de prueba");
+    expect(pdf.output()).toContain("TOTAL RECIBIDO");
+  });
+});
 
 describe("cuánto se facturó de una cotización (cálculo)", () => {
   it("vigente con adicionales y reducciones, notas de crédito y débito, y las anuladas no cuentan", () => {

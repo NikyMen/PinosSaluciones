@@ -28,6 +28,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Remitos y vínculos: Compras y Ventas tienen altas de factura con y sin remito. El remito de compra sin OC pide proveedor, cotización u obra y materiales. La factura de compra calcula el neto a partir de los remitos pendientes y los precios, puede asociar la OC o cotización después y reúne todos los comprobantes en Vinculado. La cotización requiere un rubro editable desde Configuración. Ver `docs/decisiones/2026-11-remitos-y-vinculos.md`.
 
+- Indicadores y documentos: las listas de facturas muestran pendientes y saldos. La cotización y su obra muestran facturación y cobranza. Gerencia configura la firma del recibo y la OP por empresa. Administración tiene Compras en solo lectura por defecto y puede cargar facturas y OP. Ver `docs/decisiones/2026-11-indicadores-y-recibos.md`.
+
 - Importación: botón Plantilla (`GET /api/import/[entity]`); las relaciones se resuelven por nombre, CUIT o código y las fechas en dd/mm/aaaa. Así se cargan las cotizaciones.
 
 Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en VPS", "Actualizar producción" y "Backups". En resumen:

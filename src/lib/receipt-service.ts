@@ -1,9 +1,10 @@
 import { Types } from "mongoose";
 import { z } from "zod";
+import { companySignature, type Signature } from "./document-signatures";
 import { CashAccount, Check, Client, Collection, Invoice, Quote, Work, nextReceiptNumber } from "./models";
 import { applyCollection, collectionAllocations, collectionLines, collectionRetentions } from "./balances";
 import { invoiceLabel } from "./invoice-service";
-import { money } from "./format";
+import { date, money } from "./format";
 import { companyOf, type CompanyKey } from "./companies";
 import { accountChange, checkLedgerAccount } from "./account-service";
 import { VOID_INVOICE_STATUSES } from "./invoice-labels";
@@ -243,6 +244,7 @@ export async function releaseReceiptChecks(collectionId: unknown, apply: boolean
 }
 
 export type ReceiptPdfData = {
+  signature?: Signature;
   company: CompanyKey;
   number: string; date: string; method: string; account: string; reference: string; notes: string; userName: string;
   /** Con qué se cobró (uno o varios medios) y lo que retuvo el cliente. */
@@ -267,9 +269,12 @@ export async function receiptPdfData(receiptId: string): Promise<ReceiptPdfData 
   const quotes = await Quote.find({ _id: { $in: invoices.map(invoice => invoice.quoteId).filter(Boolean) } }).select("number").lean() as Lean[];
   const byId = new Map(invoices.map(invoice => [String(invoice._id), invoice]));
   const quoteNumber = new Map(quotes.map(quote => [String(quote._id), String(quote.number || "")]));
+  const company = companyOf(receipt.company || invoices[0]?.company).key;
+  const appliedCents = allocations.reduce((total, allocation) => total + allocation.amountCents, 0);
+  const onAccountCents = Number(receipt.onAccountCents ?? Math.max(0, Number(receipt.amountCents || 0) - appliedCents));
+  const [media, signature] = await Promise.all([receiptMedia(receipt), companySignature(company)]);
   return {
-    company: companyOf(receipt.company || invoices[0]?.company).key,
-    onAccountCents: Number(receipt.amountCents || 0) - allocations.reduce((total, allocation) => total + allocation.amountCents, 0),
+    company, signature, onAccountCents,
     number: String(receipt.number || String(receipt._id).slice(-6).toUpperCase()),
     date: new Date(receipt.date as Date).toISOString(),
     method: String(receipt.method || ""), account: String(receipt.account || ""), reference: String(receipt.reference || ""),
@@ -283,8 +288,8 @@ export async function receiptPdfData(receiptId: string): Promise<ReceiptPdfData 
         quoteNumber: quoteNumber.get(String(invoice?.quoteId)) || "",
       };
     }),
-    totalCents: Number(receipt.amountCents || 0),
-    media: await receiptMedia(receipt),
+    totalCents: appliedCents + onAccountCents,
+    media,
     retentions: collectionRetentions(receipt).map(retention => ({
       label: [retentionLabels[retention.type as keyof typeof retentionLabels] || retention.type, retention.jurisdiction, retention.certificateNumber && `cert. ${retention.certificateNumber}`].filter(Boolean).join(" · "),
       amountCents: retention.amountCents,
@@ -294,10 +299,10 @@ export async function receiptPdfData(receiptId: string): Promise<ReceiptPdfData 
 
 async function receiptMedia(receipt: Lean) {
   const lines = collectionLines(receipt);
-  const checks = await Check.find({ _id: { $in: lines.map(line => line.checkId).filter(Boolean) } }).select("number bank").lean<Lean[]>();
+  const checks = await Check.find({ _id: { $in: lines.map(line => line.checkId).filter(Boolean) } }).select("number bank dueDate").lean<Lean[]>();
   const byId = new Map(checks.map(check => [String(check._id), check]));
   return lines.map(line => {
     const check = line.checkId ? byId.get(String(line.checkId)) : undefined;
-    return { method: line.method, account: line.account, amountCents: line.amountCents, detail: check ? `N° ${String(check.number)} ${String(check.bank || "")}`.trim() : line.reference ? `Ref. ${line.reference}` : undefined };
+    return { method: line.method, account: line.account, amountCents: line.amountCents, detail: check ? [`N° ${String(check.number)}`, check.bank, check.dueDate ? `Cobro ${date(check.dueDate as Date)}` : ""].filter(Boolean).join(" · ") : line.reference ? `Ref. ${line.reference}` : undefined };
   });
 }

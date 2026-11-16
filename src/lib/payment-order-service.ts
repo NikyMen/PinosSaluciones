@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { z } from "zod";
+import { companySignature } from "./document-signatures";
 import { Account, CashAccount, Check, Expense, Payment, Purchase, Supplier, Work } from "./models";
 import { applyPayment, paymentAllocations, paymentLines } from "./balances";
 import { invoiceLabel, isCreditNote } from "./invoice-labels";
@@ -325,7 +326,8 @@ export async function paymentOrderPdfData(paymentId: string): Promise<PaymentOrd
   const payment = await Payment.findById(paymentId).lean<Lean>();
   if (!payment) return null;
   const allocations = paymentAllocations(payment);
-  const [supplier, order, request, expenses, account, work, check] = await Promise.all([
+  const company = companyOf(payment.company).key;
+  const [supplier, order, request, expenses, account, work, check, signature] = await Promise.all([
     payment.supplierId ? Supplier.findById(payment.supplierId).select("name cuit").lean<Lean>() : null,
     payment.purchaseId ? Purchase.findById(payment.purchaseId).select("number").lean<Lean>() : null,
     payment.requestId ? Purchase.findById(payment.requestId).select("number").lean<Lean>() : null,
@@ -333,6 +335,7 @@ export async function paymentOrderPdfData(paymentId: string): Promise<PaymentOrd
     payment.accountId ? Account.findById(payment.accountId).select("name").lean<Lean>() : null,
     payment.workId ? Work.findById(payment.workId).select("code name").lean<Lean>() : null,
     payment.checkId ? Check.findById(payment.checkId).select("number bank dueDate format").lean<Lean>() : null,
+    companySignature(company),
   ]);
   const media = paymentLines(payment);
   const checks = await Check.find({ _id: { $in: media.map(line => line.checkId).filter(Boolean) } }).select("number bank dueDate format direction").lean<Lean[]>();
@@ -346,7 +349,7 @@ export async function paymentOrderPdfData(paymentId: string): Promise<PaymentOrd
     };
   });
   return {
-    company: companyOf(payment.company).key, number: String(payment.number || ""), date: iso(payment.date) || new Date().toISOString(), dueDate: iso(payment.dueDate),
+    company, signature, number: String(payment.number || ""), date: iso(payment.date) || new Date().toISOString(), dueDate: iso(payment.dueDate),
     status: String(payment.status || "pagada"),
     supplier: { name: String(supplier?.name || "Proveedor"), cuit: supplier?.cuit ? String(supplier.cuit) : undefined },
     orderNumber: order ? String(order.number) : undefined, requestNumber: request ? String(request.number) : undefined,

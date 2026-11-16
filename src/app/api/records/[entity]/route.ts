@@ -19,6 +19,7 @@ import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
 import { closeCertificate } from "@/lib/certificate-billing";
 import { cashAccountBalances, type CashAccountDoc } from "@/lib/cash-accounts";
+import { invoiceListSummary, pendingInvoiceFilter } from "@/lib/invoice-summary";
 import { DEFAULT_WAREHOUSE, isWarehouse } from "@/lib/warehouses";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
@@ -61,13 +62,17 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     // Los materiales de antes (sin cantidad por depósito) tienen todo en el Galpón, como lee levelsOf.
     const legacy = warehouse === DEFAULT_WAREHOUSE ? [{ qty_central: { $exists: false }, qty_salon: { $exists: false }, $or: [{ quantity: { $gt: 0 } }, { minQuantity: { $gt: 0 } }] }] : [];
     const warehouseFilter = entity === "stock" && isWarehouse(warehouse) ? { $or: [{ [`qty_${warehouse}`]: { $gt: 0 } }, { [`min_${warehouse}`]: { $gt: 0 } }, ...legacy] } : null;
-    const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] } : warehouseFilter ? { $and: [searchFilter, warehouseFilter] } : searchFilter;
+    const invoiceEntity = entity === "expenses" || entity === "invoices" ? entity : null;
+    const pending = invoiceEntity && url.searchParams.get("pending") === "1" ? pendingInvoiceFilter(invoiceEntity) : null;
+    const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] }
+      : warehouseFilter || pending ? { $and: [searchFilter, warehouseFilter || pending!] } : searchFilter;
     const model = modelByEntity[entity];
     // En ventas interesa lo que se movio recien, no lo que se creo primero. El plan de cuentas y las cajas van por código.
     const sort: Record<string, 1 | -1> = entity === "quotes" ? { updatedAt: -1 } : entity === "accounts" || entity === "cashAccounts" ? { code: 1, name: 1 } : { createdAt: -1 };
-    const [items, total] = await Promise.all([
+    const [items, total, summary] = await Promise.all([
       model.find(filter, listProjection[entity] || {}).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
       model.countDocuments(filter),
+      invoiceEntity && url.searchParams.get("summary") === "1" ? invoiceListSummary(invoiceEntity) : undefined,
     ]);
     // El maestro de cajas muestra el saldo de cada cuenta.
     if (entity === "cashAccounts") {
@@ -76,7 +81,7 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     }
     // El stock muestra el último precio de cada material, con su fecha.
     if (entity === "purchases") for (const item of items as Array<Record<string, unknown>>) item.canApprovePurchase = canApprovePurchases(session, Number(item.amountCents || 0));
-    return Response.json({ items: entity === "stock" ? await withLastPrices(items as Record<string, unknown>[]) : items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+    return Response.json({ items: entity === "stock" ? await withLastPrices(items as Record<string, unknown>[]) : items, summary, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) { return apiError(error); }
 }
 

@@ -151,6 +151,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   const [attachmentsFor, setAttachmentsFor] = useState<{ entity: AttachmentEntity; id: string; label: string } | null>(null);
   // Compras: solicitudes, órdenes o todas.
   const [purchaseView, setPurchaseView] = useState<"" | "solicitud" | "orden">("");
+  const [pendingInvoicesOnly, setPendingInvoicesOnly] = useState(false);
+  const [invoiceSummary, setInvoiceSummary] = useState<{ count: number; pendingCount: number; pendingCents: number } | null>(null);
   const [convertFor, setConvertFor] = useState<Item | null>(null);
   const [invoiceFor, setInvoiceFor] = useState<Item | null>(null);
   const [salesReceiptPicker, setSalesReceiptPicker] = useState(false);
@@ -193,12 +195,13 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
     setLoading(true);
     // En Stock, la pestaña de un depósito trae solo lo que tiene existencia (o un mínimo) ahí.
     const warehouseQuery = entity === "stock" && warehouseView ? `&warehouse=${warehouseView}` : "";
-    const response = await fetch(`/api/records/${entity}?limit=100&search=${encodeURIComponent(search)}${taskQuery ? `&${taskQuery}` : ""}${warehouseQuery}`);
+    const invoiceQuery = entity === "expenses" || entity === "invoices" ? `&summary=1${pendingInvoicesOnly ? "&pending=1" : ""}` : "";
+    const response = await fetch(`/api/records/${entity}?limit=100&search=${encodeURIComponent(search)}${taskQuery ? `&${taskQuery}` : ""}${warehouseQuery}${invoiceQuery}`);
     const result = await response.json();
-    if (response.ok) { setItems(result.items); setError(""); }
+    if (response.ok) { setItems(result.items); setInvoiceSummary(result.summary || null); setError(""); }
     else setError(result.error || "No se pudieron cargar los registros");
     setLoading(false);
-  }, [entity, search, taskQuery, warehouseView]);
+  }, [entity, search, taskQuery, warehouseView, pendingInvoicesOnly]);
 
   // La espera es sólo mientras se tipea en el buscador: al entrar a la sección la lista se pide de una.
   useEffect(() => { const timer = setTimeout(load, search ? 250 : 0); return () => clearTimeout(timer); }, [load, search]);
@@ -238,6 +241,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   }
 
   function display(key: string, value: unknown, item: Item) {
+    if (key === "balanceCents" && (entity === "expenses" || entity === "invoices")) return money(Math.max(0, Number(item.amountCents || 0) - Number(item[entity === "expenses" ? "paidCents" : "collectedCents"] || 0)));
     if (entity === "works" && key === "progress") { const progress = displayedProgress(item); return progress === null ? "Sin avance cargado" : `${qty(progress)} %`; }
     if (entity === "purchases" && key === "amountCents") {
       const taxes = purchaseTaxRows(item);
@@ -564,7 +568,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
   });
 
   // Con un depósito elegido se ve solo su cantidad; con los dos, cada uno y el total.
-  const columns = entity === "stock" && warehouseView ? config.columns.filter(column => column === `qty_${warehouseView}` || !(column.startsWith("qty_") || column === "quantity")) : config.columns;
+  const columns = entity === "stock" && warehouseView ? config.columns.filter(column => column === `qty_${warehouseView}` || !(column.startsWith("qty_") || column === "quantity"))
+    : entity === "expenses" && pendingInvoicesOnly || entity === "invoices" ? [...config.columns, "balanceCents"] : config.columns;
 
   return <>
     <div className="page-heading"><div><p className="eyebrow">{moduleOf[entity]}</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && entity !== "stock" && (entity === "expenses" || entity === "invoices"
@@ -574,6 +579,14 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       </div>
       : <button className="primary-btn" onClick={() => { void openCreate(); }}><Plus size={18} /> {newLabel}</button>)}</div>
     <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()} title="Excel (.xlsx) o CSV con los encabezados de la plantilla"><Upload size={17} /> Importar</button><a className="secondary-btn" href={`/api/import/${entity}`} title="Planilla con las columnas que entiende la importación: el cliente, la obra o el proveedor van por su nombre y las fechas en dd/mm/aaaa"><Download size={17} /> Plantilla</a></>}{hasTrash && <button className="secondary-btn" onClick={() => setTrashOpen(true)}><Trash2 size={17} /> Papelera</button>}{entity === "workers" && <button className="secondary-btn" onClick={() => setRatesOpen(true)}><Tags size={17} /> Tarifas</button>}{entity === "cash" && canEdit && <button className="secondary-btn" onClick={() => setTransferOpen(true)}><ArrowRightLeft size={17} /> Movimiento entre cuentas</button>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
+    {invoiceSummary && (entity === "expenses" || entity === "invoices") && <div className="price-kpis tracking-kpis">
+      <button className="stock-kpi invoice-kpi" aria-pressed={!pendingInvoicesOnly} onClick={() => setPendingInvoicesOnly(false)}>
+        <span>Facturas {entity === "expenses" ? "recibidas" : "emitidas"}</span><strong>{invoiceSummary.count}</strong>
+      </button>
+      <button className="stock-kpi invoice-kpi alert" aria-pressed={pendingInvoicesOnly} onClick={() => setPendingInvoicesOnly(current => !current)}>
+        <span>Pendientes</span><strong>{invoiceSummary.pendingCount}</strong><small>{money(invoiceSummary.pendingCents)}</small>
+      </button>
+    </div>}
     {entity === "tasks" && <TaskFilters viewer={viewer} people={people} scope={taskScope} role={taskRole} person={taskPerson}
       onScope={value => { setTaskScope(value); setTaskRole(""); setTaskPerson(""); }}
       onRole={value => { setTaskRole(value); setTaskScope(""); }}

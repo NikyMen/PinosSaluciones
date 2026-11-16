@@ -80,7 +80,7 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 | R11 | Cambiar "Descripción" por **"Leyenda"** | ✅ 16/11 |
 | R12 | **Sacar "Estado"** al cargar. Pagada o pendiente sale de la OP, y "anulada" no tiene sentido en una factura que recién se carga | ✅ 16/11 |
 | R13 | **Edición:** si la factura **no tiene OP** se puede editar o borrar todo, incluida la fecha. Si **tiene OP**, solo se edita la leyenda; para cambiar el resto hay que anular la OP | ✅ 13/11 |
-| R14 | El usuario de Fer o Ricci solo **ve las órdenes de compra** (no las gestiona), y hay que poder **editar el nombre de usuario** | 🆕 |
+| R14 | El usuario de Fer o Ricci solo **ve las órdenes de compra** (no las gestiona), y Gerencia puede **editar el nombre de usuario** y ajustar los permisos existentes | ✅ 16/11 |
 
 ### 4.3 Órdenes de pago
 
@@ -103,16 +103,16 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 | V2 | **Nota de crédito y nota de débito** con o sin referencia, como en compras | ◐ |
 | V3 | **Sacar "Estado"**: la factura está pendiente mientras no tenga recibo | ✅ 16/11 (al cargar; al editar queda para anular) |
 | V4 | **Recibo a cuenta** sin factura ni cotización, para anticipos (los arregla Seba). Después se le asocia la factura | ✅ 13/11 |
-| V5 | Indicadores de **cuánto se facturó de cada cotización** (parcial o total) y de **cuánto se cobró de cada factura** | ◐ |
+| V5 | Indicadores de **cuánto se facturó de cada cotización** (parcial o total) y de **cuánto se cobró de cada factura** | ✅ 16/11 |
 | V6 | **Cargar a mano facturas emitidas viejas** (antes del sistema) | ✅ 13/11: opción "Cargar una ya emitida" |
-| V7 | **PDF del recibo**: número, fecha de cobro, datos del cliente y factura asociada. Después, un renglón por medio con su caja o cuenta ("Transferencia Mercado Pago", "Banco de Corrientes"), los cheques con número y fecha de cobro, las retenciones y, abajo, **el total, que tiene que dar igual al de la factura**. Lleva una **firma digital**: "Flores Fernando – Responsable de Tesorería" | 🆕 |
+| V7 | **PDF del recibo**: número, fecha de cobro, datos del cliente y factura asociada. Después, un renglón por medio con su caja o cuenta ("Transferencia Mercado Pago", "Banco de Corrientes"), los cheques con número y fecha de cobro, las retenciones y, abajo, **el total de lo aplicado más el pago a cuenta**. Lleva línea de firma con **nombre y cargo impresos**, configurables por empresa | ✅ 16/11 |
 
 ### 4.5 Contadores de facturas pendientes (en compras y en ventas)
 
 | # | Pedido | Estado |
 |---|---|---|
-| T1 | Recuadros con **Facturas recibidas** (en compras) o **Facturas emitidas** (en ventas) y **Pendientes en rojo** | 🆕 |
-| T2 | Al hacer clic en Pendientes, la **lista con el saldo de cada factura** y el total. La factura queda pendiente **hasta el último peso**, aunque la diferencia sea por un error de carga | 🆕 |
+| T1 | Recuadros con **Facturas recibidas** (en compras) o **Facturas emitidas** (en ventas) y **Pendientes en rojo** | ✅ 16/11 |
+| T2 | Al hacer clic en Pendientes, la **lista con el saldo de cada factura** y el total. La factura queda pendiente **hasta el último peso**, aunque la diferencia sea por un error de carga | ✅ 16/11 |
 
 ---
 

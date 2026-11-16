@@ -91,6 +91,8 @@ Implementada el 16/11. Ver [Remitos y vínculos entre documentos](decisiones/202
 
 ## Etapa 4: indicadores y documentos (prioridad P1)
 
+Implementada el 16/11. Ver [Indicadores de facturas y documentos de Tesorería](decisiones/2026-11-indicadores-y-recibos.md).
+
 ### 4.1 Contadores de facturas (T1, T2)
 
 - En **Compras › Facturas de compra** y en **Ventas › Facturas de venta**, arriba de la lista, dos recuadros: **"Facturas recibidas"** (o "emitidas") con la cantidad y **"Pendientes"** en rojo, con la cantidad y el total.

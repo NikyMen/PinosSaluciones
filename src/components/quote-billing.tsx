@@ -10,6 +10,7 @@ import { billingStateLabels, type QuoteBilling } from "@/lib/quote-billing";
 type Adjustment = { _id: string; kind: "adicional" | "reduccion"; netCents: number; reason: string; date?: string; userName?: string };
 type BillingData = {
   billing: QuoteBilling;
+  collection: { collectedCents: number; pendingCents: number };
   adjustments: Adjustment[];
   invoices: Array<{ _id: string; label: string; issueDate?: string; status: string; netCents: number; amountCents: number; workId: string | null; certificateNumber: string | null; remitos: number }>;
   certificates: Array<{ _id: string; workId: string; workCode?: string; number?: string; amountCents: number }>;
@@ -24,7 +25,7 @@ const pct = (value: number | null) => value === null ? "—" : `${String(value).
  * vigente (con adicionales y reducciones), lo facturado, el pendiente total y lo
  * que ya está habilitado para facturar. Requerimiento integral v4, punto 4.3.
  */
-export function QuoteBillingPanel({ quoteId, canEdit, canRemove }: { quoteId: string; canEdit: boolean; canRemove: boolean }) {
+export function QuoteBillingPanel({ quoteId, canEdit, canRemove, summaryOnly = false }: { quoteId: string; canEdit: boolean; canRemove: boolean; summaryOnly?: boolean }) {
   const [data, setData] = useState<BillingData | null>(null);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
@@ -67,7 +68,7 @@ export function QuoteBillingPanel({ quoteId, canEdit, canRemove }: { quoteId: st
 
   return <section className="panel quote-billing">
     <div className="panel-head"><h2 className="section-title"><ReceiptText size={17} /> Facturación</h2>
-      <small>En neto, sin IVA. El pendiente total no es lo habilitado para facturar ya: eso lo dan los certificados aprobados y los remitos sin facturar.</small></div>
+      <small>Facturación en neto. Cobros y saldos con IVA. Los certificados aprobados y los remitos pendientes habilitan la próxima factura.</small></div>
 
     <div className="price-kpis tracking-kpis">
       <div className="stock-kpi"><span>Cotizado vigente</span><strong>{money(billing.currentCents)}</strong>
@@ -77,10 +78,12 @@ export function QuoteBillingPanel({ quoteId, canEdit, canRemove }: { quoteId: st
       <div className="stock-kpi"><span>Pendiente total</span><strong>{money(billing.pendingCents)}</strong><small>Vigente menos facturado</small></div>
       <div className="stock-kpi"><span>Habilitado para facturar</span><strong>{money(billing.enabledCents)}</strong>
         <small>{data.certificates.length} certificado{data.certificates.length === 1 ? "" : "s"} y {data.remitos.length} remito{data.remitos.length === 1 ? "" : "s"} sin facturar</small></div>
+      <div className="stock-kpi"><span>Cobrado</span><strong>{money(data.collection.collectedCents)}</strong><small>Recibos aplicados</small></div>
+      <div className="stock-kpi"><span>Pendiente de cobro</span><strong>{money(data.collection.pendingCents)}</strong><small>Saldo de facturas, con IVA</small></div>
     </div>
     {error && <p className="form-error">{error}</p>}
 
-    <div className="quote-billing-grid">
+    {!summaryOnly && <div className="quote-billing-grid">
       <div>
         <h3>Facturas que la aplican</h3>
         {!data.invoices.length ? <p className="muted">Todavía no tiene facturas.</p>
@@ -121,6 +124,6 @@ export function QuoteBillingPanel({ quoteId, canEdit, canRemove }: { quoteId: st
           <div className="wide"><button type="button" className="secondary-btn" onClick={() => setAdding(false)}>Cancelar</button> <button className="primary-btn" disabled={saving}>{saving ? "Guardando…" : "Guardar"}</button></div>
         </form>}
       </div>
-    </div>
+    </div>}
   </section>;
 }

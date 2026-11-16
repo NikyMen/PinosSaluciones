@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-11-16 · 29 colecciones.
+Generado el 2026-11-16 · 30 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -1190,5 +1190,17 @@ Rubros de obra administrables. Se asignan en la cotización y se copian a la obr
 | `key` | texto | sí | único |
 | `name` | texto | sí | — |
 | `allowed` | sí/no | — | por defecto `true` |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### DocumentSignature
+
+Firma impresa por empresa para el recibo de cobro y la orden de pago. Colección `documentsignatures`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `company` | texto | sí | valores: `tvp` · `constructora` · único |
+| `name` | texto | sí | — |
+| `title` | texto | sí | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |

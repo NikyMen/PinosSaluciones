@@ -168,6 +168,8 @@ Requerimiento integral v4, con lo acordado en el grupo de PINO (`src/lib/purchas
 
 **Importes con decimales y descuentos** (pedido de Administración, noviembre de 2026; `docs/decisiones/2026-11-decimales-descuentos.md`): todo importe se ve con sus centavos, en compras y en ventas, y en los campos de importe el punto del teclado numérico escribe la coma decimal. Los descuentos van en pesos: por renglón en la solicitud de compra y en el remito de venta, y por comprobante en la factura emitida y en la factura recibida (subtotal − descuento = neto gravado, que es lo que va a ARCA y al libro IVA).
 
+**Indicadores de facturas y cobranzas.** Compras y Ventas muestran la cantidad de comprobantes vigentes y el importe pendiente. El indicador Pendientes filtra por saldo en todo el listado. La cotización y su obra muestran el facturado neto, los recibos aplicados y el saldo por cobrar. Configuración › Empresas y comprobantes guarda el nombre y cargo impresos en los recibos y órdenes de pago. Ver `docs/decisiones/2026-11-indicadores-y-recibos.md`.
+
 ## Papeles de compras y adjuntos
 
 - **Adjuntos con historial** (`src/lib/attachments.ts`, `/api/files/[entity]/[id]`): en solicitudes y órdenes de compra, órdenes de pago, facturas de compra, movimientos de caja y remitos de compra. Cada archivo guarda su nombre original, quién lo subió y cuándo. No se borra: reemplazarlo deja el anterior en el historial, con quién y cuándo lo reemplazó. El archivo único de antes (`attachment`) se muestra como el primero.

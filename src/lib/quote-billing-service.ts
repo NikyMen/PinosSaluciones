@@ -1,5 +1,5 @@
 import type { Types } from "mongoose";
-import { Invoice, Quote, SalesRemito, Work } from "./models";
+import { Collection, Invoice, Quote, SalesRemito, Work } from "./models";
 import { HttpError } from "./api";
 import { money } from "./format";
 import { isCreditNote, invoiceLabel, VOID_INVOICE_STATUSES } from "./invoice-labels";
@@ -7,6 +7,7 @@ import { quoteNetCents } from "./net-amounts";
 import { billingTolerance, invoiceNetCents, quoteBilling, type BillingInvoice, type QuoteAdjustment } from "./quote-billing";
 import { invoiceLinesNetCents, remitoPendingCents, type RemitoLike } from "./remito-billing";
 import { invoiceRemitoLines } from "./sales-remitos";
+import { collectionAllocations } from "./balances";
 import type { Session } from "./auth";
 
 /*
@@ -43,7 +44,17 @@ export async function loadQuoteBilling(quoteId: unknown, options: { excludeInvoi
     SalesRemito.find({ quoteId: quote._id, kind: "salida", status: { $in: ["pendiente", "parcial"] } }).lean<Lean[]>(),
   ]);
   const billing = quoteBilling({ netCents: quoteNetCents(quote as never), adjustments: quote.adjustments, invoices: invoices as BillingInvoice[], enabledSourcesCents: enabledSources(works, remitos) });
-  return { quote, works, invoices, remitos, billing };
+  const receivable = invoices.filter(invoice => !isCreditNote(invoice.voucherType));
+  const invoiceIds = receivable.map(invoice => invoice._id);
+  const validIds = new Set(invoiceIds.map(String));
+  const receipts = invoiceIds.length ? await Collection.find({
+    $or: [{ invoiceId: { $in: invoiceIds } }, { "allocations.invoiceId": { $in: invoiceIds } }],
+  }).select("invoiceId amountCents allocations").lean<Lean[]>() : [];
+  const collection = {
+    collectedCents: receipts.flatMap(collectionAllocations).reduce((sum, allocation) => sum + (validIds.has(String(allocation.invoiceId)) ? allocation.amountCents : 0), 0),
+    pendingCents: receivable.reduce((sum, invoice) => sum + Math.max(0, Number(invoice.amountCents || 0) - Number(invoice.collectedCents || 0)), 0),
+  };
+  return { quote, works, invoices, remitos, billing, collection };
 }
 
 /**

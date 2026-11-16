@@ -18,7 +18,7 @@ const writeAccess: Record<Entity, Role[]> = {
   workers: ["gerencia", "arquitecto", "administracion"],
   suppliers: ["gerencia", "compras", "administracion"],
   stock: ["gerencia", "compras", "administracion"],
-  purchases: ["gerencia", "compras", "administracion"],
+  purchases: ["gerencia", "compras"],
   expenses: ["gerencia", "compras", "administracion"],
   invoices: ["gerencia", "administracion"],
   collections: ["gerencia", "administracion"],

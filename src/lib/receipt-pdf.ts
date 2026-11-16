@@ -26,6 +26,11 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
     lines: [`Fecha: ${date(data.date)}`, "Documento no válido como factura"],
   });
   let y = header();
+  const ensureSpace = (height: number) => {
+    if (y + height <= BOTTOM) return;
+    drawFooter(doc, { page, author: meta.author, company });
+    doc.addPage(); page += 1; y = header() + 6;
+  };
 
   // De quién se recibe.
   setStroke(LINE);
@@ -64,7 +69,7 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
   const onAccount = data.lines.length ? Math.max(0, Number(data.onAccountCents || 0)) : data.totalCents;
   const lines = [...data.lines, ...(onAccount > 0 ? [{ label: "Pago a cuenta", issueDate: null, invoiceCents: 0, appliedCents: onAccount, quoteNumber: "" }] : [])];
   lines.forEach((line, index) => {
-    if (y > BOTTOM - 70) { drawFooter(doc, { page, author: meta.author, company }); doc.addPage(); page += 1; y = header() + 6; }
+    ensureSpace(18);
     if (index % 2 === 1) { setFill([250, 251, 253]); doc.rect(MARGIN, y - 4.6, INNER, 7.4, "F"); }
     setColor(INK); doc.setFont("helvetica", "bold"); doc.setFontSize(8.4);
     doc.text(plain(line.label).slice(0, 44), MARGIN + 3, y);
@@ -76,46 +81,52 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
     doc.text(plain(money(line.appliedCents)), WIDTH - MARGIN - 3, y, { align: "right" });
     y += 7.4;
   });
+  const media = data.media?.length ? data.media : [{ method: data.method, account: data.account, amountCents: data.totalCents, detail: data.reference ? `Ref. ${data.reference}` : undefined }];
+  ensureSpace(15);
+  y += 4;
+  setColor(INK); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+  doc.text("Medios de cobro", MARGIN, y);
+  y += 7;
+  const mediumRow = (label: string, amount: number) => {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    const parts = doc.splitTextToSize(plain(label), INNER - 38) as string[];
+    ensureSpace(parts.length * 4.5 + 3);
+    setColor(INK); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(parts, MARGIN, y, { lineHeightFactor: 1.4 });
+    doc.text(plain(money(amount)), WIDTH - MARGIN, y, { align: "right" });
+    y += parts.length * 4.5 + 2;
+  };
+  for (const medium of media) mediumRow([methodLabels[medium.method] || medium.method, medium.account, medium.detail].filter(Boolean).join(" · "), medium.amountCents);
+  for (const retention of data.retentions || []) mediumRow(`Retención ${retention.label}`, retention.amountCents);
+  ensureSpace(15);
   setFill(LINE);
   doc.rect(MARGIN, y - 2, INNER, 0.4, "F");
   y += 5;
   setColor(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
   doc.text("TOTAL RECIBIDO", 120, y);
-  doc.text(plain(money(data.totalCents)), WIDTH - MARGIN - 3, y, { align: "right" });
+  doc.text(plain(money(data.totalCents)), WIDTH - MARGIN, y, { align: "right" });
   y += 12;
-
-  // Con qué se pagó: cada medio con su importe y, aparte, lo que retuvo el cliente.
-  const media = data.media?.length ? data.media : [{ method: data.method, account: data.account, amountCents: data.totalCents, detail: data.reference ? `Ref. ${data.reference}` : undefined }];
-  const several = media.length > 1 || Boolean(data.retentions?.length);
-  setColor(INK); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-  doc.text("Forma de pago:", MARGIN, y);
-  doc.setFont("helvetica", "normal");
-  for (const medium of media) {
-    doc.text(plain([methodLabels[medium.method] || medium.method, medium.account, several && money(medium.amountCents), medium.detail].filter(Boolean).join(" · ")).slice(0, 110), MARGIN + 25, y);
-    y += 5;
-  }
-  for (const retention of data.retentions || []) {
-    doc.text(plain(`Retención ${retention.label} · ${money(retention.amountCents)}`).slice(0, 110), MARGIN + 25, y);
-    y += 5;
-  }
-  y += 1;
   if (data.notes.trim()) {
+    ensureSpace(22);
     setColor(MUTED); doc.setFontSize(7.8);
     for (const line of (doc.splitTextToSize(plain(`Observaciones: ${data.notes.trim()}`), INNER) as string[]).slice(0, 4)) { doc.text(line, MARGIN, y); y += 4.4; }
   }
 
   for (const line of bankLines(company)) {
+    ensureSpace(12);
     setColor(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(7.8);
     for (const part of (doc.splitTextToSize(plain(line), INNER) as string[]).slice(0, 2)) { doc.text(part, MARGIN, y); y += 4.4; }
   }
 
   // La firma de quien recibe, al pie.
-  const signY = Math.max(y + 24, 258);
+  ensureSpace(38);
+  const signY = Math.max(y + 20, 248);
   setStroke([150, 160, 172]);
   doc.setLineWidth(0.3);
   doc.line(WIDTH - MARGIN - 75, signY, WIDTH - MARGIN, signY);
   setColor(MUTED); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
-  doc.text("Recibí conforme (firma y aclaración)", WIDTH - MARGIN - 37.5, signY + 4.5, { align: "center" });
+  doc.text(plain(data.signature?.name || "Recibí conforme"), WIDTH - MARGIN - 37.5, signY + 4.5, { align: "center", maxWidth: 75 });
+  if (data.signature) doc.text(plain(data.signature.title), WIDTH - MARGIN - 37.5, signY + 9, { align: "center", maxWidth: 75 });
   doc.text(plain(`Emitió: ${data.userName || meta.author}`), MARGIN, signY + 4.5);
 
   drawFooter(doc, { page, author: meta.author, note: "Recibo de cobro", company });
