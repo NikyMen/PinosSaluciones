@@ -7,7 +7,7 @@ import { COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 /**
  * Prueba la conexión con ARCA de una empresa (?empresa=constructora) o de las
  * dos: entra con su certificado y consulta puntos de venta y últimos números.
- * No emite nada. La usa gerencia desde Configuración > Empresas y comprobantes.
+ * No emite nada. La usa gerencia desde Perfil > Configuración > Empresas y comprobantes.
  */
 export async function GET(request: Request) {
   try {

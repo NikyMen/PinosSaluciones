@@ -6,7 +6,7 @@ import { HttpError } from "./api";
 /*
  * Talonarios de comprobantes por empresa y punto de venta (punto 9 de la
  * especificación). Nada está fijo en el código: qué tipos usa cada empresa y en
- * qué punto de venta se configura en Configuración > Empresas y comprobantes.
+ * qué punto de venta se configura en Perfil > Configuración > Empresas y comprobantes.
  */
 
 export type VoucherBookRow = { _id: string; company: CompanyKey; scope: "venta" | "compra"; voucherType: VoucherType; pointOfSale: string; fiscal: boolean; lastNumber: number; active: boolean; notes?: string };
@@ -64,7 +64,7 @@ export async function takeInternalNumber(company: CompanyKey, pointOfSale = "000
     { $inc: { lastNumber: 1 } },
     { returnDocument: "after" },
   ).lean<{ lastNumber: number }>();
-  if (!book) throw new HttpError(`La empresa no tiene un talonario X activo en el punto de venta ${pointOfSale}. Se habilita en Configuración > Empresas y comprobantes.`);
+  if (!book) throw new HttpError(`La empresa no tiene un talonario X activo en el punto de venta ${pointOfSale}. Se habilita en Perfil > Configuración > Empresas y comprobantes.`);
   return `X-${formatVoucherNumber(pointOfSale, book.lastNumber)}`;
 }
 
@@ -74,5 +74,5 @@ export async function checkVoucherEnabled(company: CompanyKey, scope: "venta" | 
   await ensureVoucherBooks();
   // Una nota de débito o de crédito va con el talonario de la factura de su letra.
   const enabled = await VoucherBook.exists({ company, scope, voucherType: isNote(voucherType) ? baseInvoiceType(voucherType) : voucherType, active: true });
-  if (!enabled) throw new HttpError(`La empresa no tiene habilitada la ${voucherLabels[String(voucherType)] || String(voucherType)} para ${scope === "venta" ? "vender" : "comprar"}. Se habilita en Configuración > Empresas y comprobantes.`);
+  if (!enabled) throw new HttpError(`La empresa no tiene habilitada la ${voucherLabels[String(voucherType)] || String(voucherType)} para ${scope === "venta" ? "vender" : "comprar"}. Se habilita en Perfil > Configuración > Empresas y comprobantes.`);
 }

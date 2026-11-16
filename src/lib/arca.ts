@@ -169,7 +169,7 @@ export async function arcaNextNumber(company: CompanyKey, voucherType: ArcaVouch
   const enabled = (await arcaPointsOfSale(company)).filter(point => !point.blocked && !point.closed).map(point => point.number);
   const baseType = voucherType.endsWith("_b") ? "factura_b" : "factura_a";
   const book = await arcaBookFor(company, baseType, enabled);
-  if (!book) throw new HttpError(`${COMPANIES[company].short} no tiene un talonario de ${voucherLabels[baseType]} en un punto de venta de web services de ARCA (${enabled.map(number => String(number).padStart(4, "0")).join(", ") || "ninguno"}). Se agrega en Configuración > Empresas y comprobantes.`);
+  if (!book) throw new HttpError(`${COMPANIES[company].short} no tiene un talonario de ${voucherLabels[baseType]} en un punto de venta de web services de ARCA (${enabled.map(number => String(number).padStart(4, "0")).join(", ") || "ninguno"}). Se agrega en Perfil > Configuración > Empresas y comprobantes.`);
   const last = await arcaLastNumber(company, Number(book.pointOfSale), ARCA_VOUCHER_CODE[voucherType]);
   return { pointOfSale: book.pointOfSale, last, next: formatVoucherNumber(book.pointOfSale, last + 1) };
 }

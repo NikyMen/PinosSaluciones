@@ -2,7 +2,7 @@
 
 Sistema web para centralizar clientes, ventas, obras, proveedores, gastos, facturación administrativa, cobranzas, pagos, cheques, tareas y reportes. Emite las Factura A y B en ARCA con CAE (ver [Factura electrónica (ARCA)](#factura-electrónica-arca)); las que salieron de Tango se pueden cargar a mano. El comprobante interno X se numera en el sistema y queda fuera del libro IVA.
 
-La barra lateral tiene trece módulos: Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión. Desde el menú del usuario (arriba a la derecha) cada persona puede pasar al menú de antes (**V1**: Tablero, Comercial, Obras, Compras y stock, Finanzas e iA y Reportes) o volver al de módulos (**V2**); la elección queda en la cookie `pino-nav` de ese navegador. El Calendario también está en ese menú. Qué hace cada parte de la especificación funcional v1.5 y qué falta: [`docs/requerimientos/especificacion-v1-5.md`](docs/requerimientos/especificacion-v1-5.md).
+La barra lateral tiene once módulos: Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión. Desde el menú del usuario (arriba a la derecha) cada persona puede pasar al menú de antes (**V1**: Tablero, Comercial, Obras, Compras y stock, Finanzas e iA y Reportes) o volver al de módulos (**V2**); la elección queda en la cookie `pino-nav` de ese navegador. El Calendario también está en ese menú. Para Gerencia, el perfil reúne **Configuración** (Empresas y comprobantes) y **Seguridad** (Usuarios y permisos y Bitácora de cambios) en ambas versiones. Qué hace cada parte de la especificación funcional v1.5 y qué falta: [`docs/requerimientos/especificacion-v1-5.md`](docs/requerimientos/especificacion-v1-5.md).
 
 ## Documentación
 
@@ -110,7 +110,7 @@ Si la versión trae una migración de datos, va después del build y antes del r
 
 ## Factura electrónica (ARCA)
 
-Cada empresa (Constructora Pino y Trabajos Verticales Pino) entra a los web services de ARCA con su propio certificado. En Configuración › Empresas y comprobantes, "Probar conexión" trae los puntos de venta de web services y el último número de cada comprobante. Solo consulta: no emite nada.
+Cada empresa (Constructora Pino y Trabajos Verticales Pino) entra a los web services de ARCA con su propio certificado. En Perfil › Configuración › Empresas y comprobantes, "Probar conexión" trae los puntos de venta de web services y el último número de cada comprobante. Solo consulta: no emite nada.
 
 - `ARCA_CERT_DIR`: carpeta **fuera del repo** (que es público) con `<empresa>.crt` y `<empresa>.key`, es decir `constructora.*` y `tvp.*`. Sin los dos archivos, la empresa figura como no conectada.
 - `ARCA_ENV`: `produccion` (por defecto) u `homologacion`, el ambiente de prueba, que necesita certificados emitidos ahí.
@@ -128,7 +128,7 @@ Alta del certificado de una empresa, con la clave fiscal de esa empresa:
 2. En ARCA, "Administración de Certificados Digitales": agregar el alias `pinosoluciones`, subir el `.csr` y descargar el certificado como `<empresa>.crt`.
 3. En "Administrador de Relaciones de Clave Fiscal": nueva relación con el servicio "Facturación Electrónica" (WSFE) y, como representante, el computador fiscal `pinosoluciones`.
 4. En "Administración de puntos de venta y domicilios": la empresa necesita un punto de venta de tipo "RECE / Factura electrónica - Web Services". Los de Factuweb o Controlador fiscal no sirven.
-5. Copiar `.crt` y `.key` a `ARCA_CERT_DIR` en el servidor (solo lectura para el usuario que corre PM2) y probar la conexión desde Configuración.
+5. Copiar `.crt` y `.key` a `ARCA_CERT_DIR` en el servidor (solo lectura para el usuario que corre PM2) y probar la conexión desde Perfil › Configuración › Empresas y comprobantes.
 
 ARCA da un ticket de acceso que dura 12 horas y no entrega otro para el mismo certificado mientras siga vigente. El sistema lo guarda en la base (colección `arcatickets`) y lo reusa. Si se prueba primero desde otra máquina con el mismo certificado (por ejemplo, en local), producción no puede entrar hasta que ese ticket venza.
 
@@ -140,8 +140,8 @@ El sistema se conecta con ARCA por web services (WSAA + WSFEv1) con un certifica
 - La clave privada se genera fuera de ARCA (`openssl genrsa` + `openssl req` con `serialNumber=CUIT <cuit>` y `CN=pinosoluciones`); a ARCA se sube solo el `.csr`.
 - En el servidor, el `.crt` y la `.key` van en `/etc/pinos/arca/` como `constructora.crt`/`.key` y `tvp.crt`/`.key` (dueño root, permisos 600), y el `.env` tiene `ARCA_CERT_DIR=/etc/pinos/arca` y `ARCA_ENV=produccion`. Nunca en el repo.
 - El ticket de acceso dura 12 horas y se guarda en la colección `arcatickets`: ARCA no entrega otro mientras esté vigente.
-- Para probar la conexión: Configuración › Empresas y comprobantes › "Probar conexión" en cada empresa. Solo consulta (puntos de venta, último número de cada comprobante y por qué punto de venta se emite cada tipo): no emite nada.
-- Emisión: en Facturas de venta, un comprobante nuevo de una empresa conectada (Factura, Nota de Débito o Nota de Crédito, A o B) se emite al guardar ("Emitir ahora en ARCA (con CAE)"): ARCA pone el número y el CAE. El número aparece bloqueado con el que sigue en ARCA (último autorizado + 1, `/api/arca/next`); "Editar" lo libera, pero al emitir tiene que coincidir con el de ARCA. También se puede elegir "Ya la emití en Tango" y cargar el número a mano. El punto de venta es el del talonario habilitado de ese tipo (Configuración › Empresas y comprobantes) que ARCA tiene de alta para web services; sin ese talonario no se emite.
+- Para probar la conexión: Perfil › Configuración › Empresas y comprobantes › "Probar conexión" en cada empresa. Solo consulta (puntos de venta, último número de cada comprobante y por qué punto de venta se emite cada tipo): no emite nada.
+- Emisión: en Facturas de venta, un comprobante nuevo de una empresa conectada (Factura, Nota de Débito o Nota de Crédito, A o B) se emite al guardar ("Emitir ahora en ARCA (con CAE)"): ARCA pone el número y el CAE. El número aparece bloqueado con el que sigue en ARCA (último autorizado + 1, `/api/arca/next`); "Editar" lo libera, pero al emitir tiene que coincidir con el de ARCA. También se puede elegir "Ya la emití en Tango" y cargar el número a mano. El punto de venta es el del talonario habilitado de ese tipo (Perfil › Configuración › Empresas y comprobantes) que ARCA tiene de alta para web services; sin ese talonario no se emite.
 - La condición frente al IVA del cliente va en su ficha; sin cargar, la A se emite a responsable inscripto y la B a consumidor final. Concepto: productos si factura remitos, servicios si no (con el mes de la factura como período).
 - Las notas de débito y crédito van asociadas a una factura (o nota de débito) del mismo cliente, empresa y letra, y usan el talonario y punto de venta de la factura de su letra. La nota de crédito resta: descuenta de lo que se debe de la factura asociada (queda "aplicada", no puede ser por más de ese saldo) y resta en tablero, reportes, seguimiento y libro IVA.
 - Un comprobante con CAE no se borra, no se anula y no cambia cliente, fecha, número ni importes: una factura se anula con una nota de crédito. Una factura con notas asociadas no se borra. Su PDF, con CAE y QR, sale del botón "PDF fiscal" de la lista.
@@ -168,7 +168,7 @@ Requerimiento integral v4, con lo acordado en el grupo de PINO (`src/lib/purchas
 
 **Importes con decimales y descuentos** (pedido de Administración, noviembre de 2026; `docs/decisiones/2026-11-decimales-descuentos.md`): todo importe se ve con sus centavos, en compras y en ventas, y en los campos de importe el punto del teclado numérico escribe la coma decimal. Los descuentos van en pesos: por renglón en la solicitud de compra y en el remito de venta, y por comprobante en la factura emitida y en la factura recibida (subtotal − descuento = neto gravado, que es lo que va a ARCA y al libro IVA).
 
-**Indicadores de facturas y cobranzas.** Compras y Ventas muestran la cantidad de comprobantes vigentes y el importe pendiente. El indicador Pendientes filtra por saldo en todo el listado. La cotización y su obra muestran el facturado neto, los recibos aplicados y el saldo por cobrar. Configuración › Empresas y comprobantes guarda el nombre y cargo impresos en los recibos y órdenes de pago. Ver `docs/decisiones/2026-11-indicadores-y-recibos.md`.
+**Indicadores de facturas y cobranzas.** Compras y Ventas muestran la cantidad de comprobantes vigentes y el importe pendiente. El indicador Pendientes filtra por saldo en todo el listado. La cotización y su obra muestran el facturado neto, los recibos aplicados y el saldo por cobrar. Perfil › Configuración › Empresas y comprobantes guarda el nombre y cargo impresos en los recibos y órdenes de pago. Ver `docs/decisiones/2026-11-indicadores-y-recibos.md`.
 
 **Ventas del Salón.** Facturas de venta permite cargar productos con precio de venta de Stock, conceptos de texto libre y observaciones, dar de alta un cliente en el formulario y bajar el PDF fiscal o de gestión. Remitos de venta permite destinar insumos del Salón a una obra y registrar a quien recibe. Aprobar una cotización avisa a Compras, Obras y Administración. El aviso de Compras enumera los materiales faltantes para que arme la solicitud. Ver `docs/decisiones/2026-11-ventas-del-salon.md`.
 
@@ -209,7 +209,7 @@ Anexo de Tesorería v5.1, validado con Administración. Las decisiones están en
 
 ## Facturación parcial
 
-En Obras, el listado muestra inicio y fin previstos y reales, duración en días hábiles y el porcentaje sobre la barra de avance. Gerencia y las personas con **Ver presupuesto de obras** ven el presupuesto en el listado y en su exportación. Los feriados se editan por año en Configuración. La cotización puede llevar fotos, dirección y un enlace de Google Maps que pasan a la obra. Desde la ficha se abre **Cómo llegar** y desde Obras se accede al mapa interno por estado y avance. Ver `docs/requerimientos/obras.md`, `docs/decisiones/2026-11-planificacion-y-mapa-de-obras.md` y `deploy/obras.md`.
+En Obras, el listado muestra inicio y fin previstos y reales, duración en días hábiles y el porcentaje sobre la barra de avance. Gerencia y las personas con **Ver presupuesto de obras** ven el presupuesto en el listado y en su exportación. Los feriados se editan por año en Perfil › Configuración › Empresas y comprobantes. La cotización puede llevar fotos, dirección y un enlace de Google Maps que pasan a la obra. Desde la ficha se abre **Cómo llegar** y desde Obras se accede al mapa interno por estado y avance. Ver `docs/requerimientos/obras.md`, `docs/decisiones/2026-11-planificacion-y-mapa-de-obras.md` y `deploy/obras.md`.
 
 Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisiones/2026-10-certificado-sobre-neto.md`.
 
@@ -266,7 +266,7 @@ Las listas de precios de proveedores se cargan aparte, desde la ficha del provee
 - Permisos por rol validados tanto en interfaz como en API.
 - Auditoría de altas, cambios, bajas e importaciones.
 - El worker genera tareas por facturas y cheques próximos a vencer.
-- Bitácora completa (usuario, fecha y hora, valor anterior y nuevo) en Seguridad › Bitácora de cambios, solo para gerencia.
+- Bitácora completa (usuario, fecha y hora, valor anterior y nuevo) en Perfil › Seguridad › Bitácora de cambios, solo para gerencia.
 - Todo ingreso y egreso de plata (caja y bancos, recibos, pagos) se imputa a una cuenta del plan de cuentas. El catálogo y los talonarios de comprobantes se crean solos la primera vez; no hace falta correr nada al actualizar.
 - Una orden de compra entra al depósito que pide (Galpón o Salón de Ventas). En la Caja, la empresa que compró define el depósito: TV Pino entra al Galpón y Constructora Pino al Salón de Ventas (`ENTRY_WAREHOUSE` en `src/lib/warehouses.ts`). La entrada manual desde la ficha de un material sigue la misma regla. Entre depósitos el material pasa por transferencia (queda en tránsito hasta que se confirma la recepción).
 - Para actualizar producción: ver [Actualizar producción](#actualizar-producción).

@@ -81,7 +81,7 @@ Implementada el 16/11. Ver [Remitos y vínculos entre documentos](decisiones/202
 ### 3.6 Rubro de la obra (R5)
 
 - **Decisión:** por ahora seis rubros, pero **la lista tiene que ser editable** porque falta confirmarla con Fer: Trabajo en altura, Albañilería, Pintura interior, Pintura exterior, Impermeabilización, Poliuretano/Poliurea.
-- Crear una lista administrable, por ejemplo una colección `WorkCategory` con nombre y activo, en Configuración › Empresas y comprobantes o en una pantalla chica parecida a `src/components/work-types-modal.tsx`. **No** usar `WorkType`: esos son tipos de trabajo con tarifa para la quincena, no rubros.
+- Crear una lista administrable, por ejemplo una colección `WorkCategory` con nombre y activo, en Perfil › Configuración › Empresas y comprobantes o en una pantalla chica parecida a `src/components/work-types-modal.tsx`. **No** usar `WorkType`: esos son tipos de trabajo con tarifa para la quincena, no rubros.
 - El rubro es **obligatorio en la cotización** (`QuoteSchema` en `src/lib/models.ts` y el formulario de cotización), pasa a la obra y llega **bloqueado** a la solicitud/OC y a la factura de compra. En las pantallas donde dice "Obra", mostrar "Cotización / Obra".
 - Las cotizaciones viejas sin rubro siguen funcionando: pedirlo recién al editarlas o al aprobarlas.
 
@@ -112,13 +112,13 @@ Implementada el 16/11. Ver [Indicadores de facturas y documentos de Tesorería](
 - **Encabezado:** número de recibo, fecha de cobro, datos del cliente y factura asociada.
 - **Medios:** un renglón por medio con su caja o cuenta (por ejemplo "Transferencia · Mercado Pago", "Banco de Corrientes"). Cada cheque con número, banco y fecha de cobro. Después las retenciones (ya están).
 - **Total abajo**, que tiene que dar igual al de las facturas aplicadas más lo que va a cuenta.
-- **Firma.** Decisión: **nombre y cargo impresos** con línea de firma, por ejemplo "Flores Fernando – Responsable de Tesorería". Se configura por empresa en Configuración › Empresas y comprobantes; agregar los campos a donde se guardan los datos de la empresa. Usar la misma firma en el PDF de la OP (`src/lib/payment-order-pdf.ts`).
+- **Firma.** Decisión: **nombre y cargo impresos** con línea de firma, por ejemplo "Flores Fernando – Responsable de Tesorería". Se configura por empresa en Perfil › Configuración › Empresas y comprobantes; agregar los campos a donde se guardan los datos de la empresa. Usar la misma firma en el PDF de la OP (`src/lib/payment-order-pdf.ts`).
 
 ### 4.4 Permisos de Fer y Ricci (R14)
 
 - **Decisión:** ven las **órdenes de compra en solo lectura** (no aprueban ni editan) y pueden cargar facturas y órdenes de pago.
 - Revisar `src/lib/permissions.ts` (roles, `defaultPermissionsForRole`, `USER_ACTIONS`) y la pantalla de usuarios (`src/components/users-admin.tsx`). Probablemente alcanza con el rol Administración más ver Compras sin `edit` en `purchases`.
-- Que Gerencia pueda **editar el nombre de un usuario** desde Seguridad › Usuarios. Revisar si hoy deja (`PATCH /api/users/[id]`) y, si no, habilitarlo.
+- Que Gerencia pueda **editar el nombre de un usuario** desde Perfil › Seguridad › Usuarios y permisos. Revisar si hoy deja (`PATCH /api/users/[id]`) y, si no, habilitarlo.
 
 **Hecho cuando:** se ven los contadores en las dos listas, la cotización muestra facturado y cobrado, el recibo sale con medios, total y firma, y el usuario de Administración ve las OC sin poder tocarlas. Con tests de los contadores y del total del recibo.
 
@@ -170,7 +170,7 @@ Implementada el 16/11. Ver [Planificación y mapa de obras](decisiones/2026-11-p
 ### 6.1 Presupuesto en el listado de obras (F5)
 
 - **Decisión:** mostrarlo a **Gerencia y a Fede**. Antes de hacerlo, buscar en el historial (`git log -S budgetCents`, commit `9118229` y `deploy/obras.md`) por qué se ocultó. Si nadie pidió ocultarlo, mostrarlo a todos.
-- Para Fede: un permiso de acción "Ver presupuesto de obras" en `USER_ACTIONS` (`src/lib/permissions.ts`), que se le da por persona en Seguridad › Usuarios, y la columna visible si el usuario es Gerencia o tiene ese permiso.
+- Para Fede: un permiso de acción "Ver presupuesto de obras" en `USER_ACTIONS` (`src/lib/permissions.ts`), que se le da por persona en Perfil › Seguridad › Usuarios y permisos, y la columna visible si el usuario es Gerencia o tiene ese permiso.
 - En el listado, además: sacar la columna "Notificar", achicar "Estado" y sumar la duración.
 - Actualizar el renglón de Obras en `AGENTS.md` (hoy dice "listado y edición sin presupuesto") y en `docs/requerimientos/obras.md` y `deploy/obras.md`.
 
@@ -182,7 +182,7 @@ Implementada el 16/11. Ver [Planificación y mapa de obras](decisiones/2026-11-p
 
 - **Decisión:** **solo lunes a viernes**. Sábados, domingos y feriados nacionales no cuentan.
 - Se carga la duración en días hábiles y el sistema calcula el fin previsto (`endDate`) desde el inicio previsto (`startDate`), y al revés.
-- Lista de feriados nacionales editable (por año) en Configuración, con los de 2026 cargados.
+- Lista de feriados nacionales editable (por año) en Perfil › Configuración › Empresas y comprobantes, con los de 2026 cargados.
 - Función pura, por ejemplo `src/lib/business-days.ts`, con tests: inicio un miércoles con 25 días hábiles da el fin correcto, salteando fines de semana y feriados.
 
 ### 6.4 Foto, ubicación y mapa de obras (F6, F7)

@@ -17,20 +17,12 @@ type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] 
 
 /*
  * La barra azul, con los módulos en el orden que pidió administración:
- * Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas,
- * Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión.
+ * Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal,
+ * Activos, Tesorería, Contabilidad y Gestión.
  * Un módulo sin nada que la persona pueda ver no aparece.
  */
 const dashboardItem: NavItem = { href: "/app", label: "Tablero gerencial", icon: LayoutDashboard, permission: "dashboard" };
-const settingsItem: NavItem = { href: "/app/settings", label: "Usuarios y permisos", icon: Users, managerOnly: true };
 const groups: NavGroup[] = [
-  { id: "config", label: "Configuración", icon: Settings, items: [
-    { href: "/app/config", label: "Empresas y comprobantes", icon: Building2, managerOnly: true },
-  ] },
-  { id: "security", label: "Seguridad", icon: ShieldCheck, items: [
-    settingsItem,
-    { href: "/app/audit", label: "Bitácora de cambios", icon: FileClock, managerOnly: true },
-  ] },
   { id: "masters", label: "Maestros", icon: Database, items: [
     { href: "/app/clients", label: "Clientes", icon: Users, permission: "clients" },
     { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
@@ -92,12 +84,8 @@ const groups: NavGroup[] = [
 /*
  * El menú de antes (v1), para quien lo prefiera: el tablero arriba, cuatro
  * grupos y el análisis al pie. Las pantallas que se sumaron con los módulos
- * entran en el grupo que les queda más cerca; la configuración y la bitácora
- * van al menú del usuario, como antes Usuarios y permisos.
+ * entran en el grupo que les queda más cerca.
  */
-const configItem: NavItem = { href: "/app/config", label: "Empresas y comprobantes", icon: Building2, managerOnly: true };
-const auditItem: NavItem = { href: "/app/audit", label: "Bitácora de cambios", icon: FileClock, managerOnly: true };
-const calendarItem: NavItem = { href: "/app/calendario", label: "Calendario", icon: CalendarDays, permission: "calendario" };
 const legacyGroups: NavGroup[] = [
   { id: "commercial", label: "Comercial", icon: CircleDollarSign, items: [
     { href: "/app/clients", label: "Clientes", icon: Users, permission: "clients" },
@@ -139,8 +127,19 @@ const legacyGroups: NavGroup[] = [
 ];
 const legacyAnalysis: NavItem[] = [{ href: "/app/reports", label: "iA y Reportes", icon: BarChart3, permission: "reports" }];
 
+const calendarItem: NavItem = { href: "/app/calendario", label: "Calendario", icon: CalendarDays, permission: "calendario" };
+const profileGroups: NavGroup[] = [
+  { id: "config", label: "Configuración", icon: Settings, items: [
+    { href: "/app/config", label: "Empresas y comprobantes", icon: Building2, managerOnly: true },
+  ] },
+  { id: "security", label: "Seguridad", icon: ShieldCheck, items: [
+    { href: "/app/settings", label: "Usuarios y permisos", icon: Users, managerOnly: true },
+    { href: "/app/audit", label: "Bitácora de cambios", icon: FileClock, managerOnly: true },
+  ] },
+];
+const profileItems = [calendarItem, ...profileGroups.flatMap(group => group.items)];
 const allItems = groups.flatMap(group => group.items);
-const legacyItems = [dashboardItem, ...legacyGroups.flatMap(group => group.items), ...legacyAnalysis, calendarItem, settingsItem, configItem, auditItem];
+const legacyItems = [dashboardItem, ...legacyGroups.flatMap(group => group.items), ...legacyAnalysis];
 
 function isActive(pathname: string, href: string) {
   return href === "/app" ? pathname === href : pathname.startsWith(href);
@@ -185,10 +184,18 @@ export function AppShell({ session, navVersion, children }: { session: { name: s
     router.refresh();
   }
 
-  const current = (version === "v1" ? legacyItems : allItems).find(item => isActive(pathname, item.href)) ?? (pathname.startsWith(calendarItem.href) ? calendarItem : dashboardItem);
-  // En el menú del usuario: el calendario siempre; con el menú de antes, también lo que en v2 vive en Configuración y Seguridad.
-  const profileLinks = [calendarItem, settingsItem, ...(version === "v1" ? [configItem, auditItem] : [])].filter(canSee);
+  const current = (version === "v1" ? legacyItems : allItems).find(item => isActive(pathname, item.href))
+    ?? profileItems.find(item => isActive(pathname, item.href))
+    ?? dashboardItem;
   const initials = session.name.split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase();
+
+  function renderProfileLink({ href, label, icon: Icon }: NavItem) {
+    return (
+      <Link key={href} href={href} className="profile-menu-link" aria-current={isActive(pathname, href) ? "page" : undefined} onClick={() => setProfileOpen(false)}>
+        <Icon size={16} /> {label}
+      </Link>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -247,21 +254,30 @@ export function AppShell({ session, navVersion, children }: { session: { name: s
           <TasksButton />
           <NotificationBell />
           <div className="profile-wrap" ref={profileRef}>
-            <button className="profile" onClick={() => setProfileOpen(value => !value)} aria-expanded={profileOpen}>
+            <button className="profile" onClick={() => setProfileOpen(value => !value)} aria-label={`Menú de perfil de ${session.name}`} aria-expanded={profileOpen}>
               <span className="avatar">{initials}</span>
               <span className="profile-name"><b>{session.name}</b><small>{roleLabels[session.role]}</small></span>
               <ChevronDown className={profileOpen ? "chevron open" : "chevron"} size={16} />
             </button>
-            {profileOpen && <div className="profile-menu"><p>{session.email}</p>
+            {profileOpen && <div className="profile-menu">
+              <p>{session.email}</p>
               <div className="nav-version" role="group" aria-label="Menú lateral">
                 <span>Menú</span>
                 {(["v1", "v2"] as const).map(option => <button key={option} type="button" className={version === option ? "active" : ""} aria-pressed={version === option} onClick={() => chooseVersion(option)} title={option === "v1" ? "El menú de antes: Comercial, Obras, Compras y stock, Finanzas" : "El menú por módulos"}>{option.toUpperCase()}</button>)}
               </div>
-              {profileLinks.map(item => {
-                const Icon = item === settingsItem ? Settings : item.icon;
-                return <Link key={item.href} href={item.href} className="profile-menu-link" onClick={() => setProfileOpen(false)}><Icon size={16} /> {item.label}</Link>;
+              {canSee(calendarItem) && renderProfileLink(calendarItem)}
+              {profileGroups.map(({ id, label, icon: Icon, items }) => {
+                const visibleItems = items.filter(canSee);
+                if (!visibleItems.length) return null;
+                return (
+                  <div className="profile-menu-group" key={id} role="group" aria-labelledby={`profile-${id}`}>
+                    <span className="profile-menu-group-label" id={`profile-${id}`}><Icon size={14} /> {label}</span>
+                    {visibleItems.map(renderProfileLink)}
+                  </div>
+                );
               })}
-              <button onClick={logout}><LogOut size={16} /> Cerrar sesión</button></div>}
+              <button onClick={logout}><LogOut size={16} /> Cerrar sesión</button>
+            </div>}
           </div>
         </header>
         <main className="content">{children}</main>

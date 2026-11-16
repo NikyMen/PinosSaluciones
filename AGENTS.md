@@ -14,6 +14,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Cuando cambie algo del proyecto o del servidor (rutas, deploy, convenciones), actualizalo en todos los lugares donde esté documentado: `README.md`, este archivo, `docs/` y `deploy/`. Buscá el dato viejo en todo el repo y corregí cada aparición.
 - **El repo es público.** No escribas IPs, usuarios, contraseñas, URIs con credenciales ni datos de acceso SSH en archivos versionados.
 
+En V1 y V2, Gerencia accede desde el botón de perfil a Configuración › Empresas y comprobantes y a Seguridad › Usuarios y permisos / Bitácora de cambios.
+
 ## Producción
 
 - Obras: inicio y fin previstos y reales, duración en días hábiles y porcentaje escrito sobre la barra de avance. Gerencia y quien tiene Ver presupuesto de obras ven la columna Presupuesto. El estado permite avance manual sin base de inspecciones y cálculo automático con base. La cotización lleva ubicación y fotos que se copian a la obra, donde se puede corregir la ubicación. El mapa requiere permiso de Obras. Ver `docs/requerimientos/obras.md`, `docs/decisiones/2026-11-planificacion-y-mapa-de-obras.md` y `deploy/obras.md`.
@@ -26,7 +28,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Formularios de Tesorería y Compras: factura de compra con número 4 + 8 (la letra la da el comprobante) y percepciones por importe (sólo el IVA en %); al cargar facturas no se elige el estado. La OP está en el menú Compras, toma el tipo de gasto y la obra de la factura, no tiene "Pago" y no ofrece e-Cheq (el cheque sale sólo de cuentas de cheques diferidos). La solicitud de compra permite cargar precios con IVA incluido. Ver `docs/decisiones/2026-11-tesoreria-formularios.md`.
 
-- Remitos y vínculos: Compras y Ventas tienen altas de factura con y sin remito. El remito de compra sin OC pide proveedor, cotización u obra y materiales. La factura de compra calcula el neto a partir de los remitos pendientes y los precios, puede asociar la OC o cotización después y reúne todos los comprobantes en Vinculado. La cotización requiere un rubro editable desde Configuración. Ver `docs/decisiones/2026-11-remitos-y-vinculos.md`.
+- Remitos y vínculos: Compras y Ventas tienen altas de factura con y sin remito. El remito de compra sin OC pide proveedor, cotización u obra y materiales. La factura de compra calcula el neto a partir de los remitos pendientes y los precios, puede asociar la OC o cotización después y reúne todos los comprobantes en Vinculado. La cotización requiere un rubro editable desde Perfil › Configuración › Empresas y comprobantes. Ver `docs/decisiones/2026-11-remitos-y-vinculos.md`.
 
 - Indicadores y documentos: las listas de facturas muestran pendientes y saldos. La cotización y su obra muestran facturación y cobranza. Gerencia configura la firma del recibo y la OP por empresa. Administración tiene Compras en solo lectura por defecto y puede cargar facturas y OP. Ver `docs/decisiones/2026-11-indicadores-y-recibos.md`.
 

@@ -16,7 +16,7 @@ Leyenda: ✅ hecho · 🟡 parcial · ⏳ pendiente (o esperando una decisión d
 
 | Pedido | Estado | Dónde |
 |---|---|---|
-| Barra azul con Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión | ✅ | `src/components/app-shell.tsx` |
+| Barra azul con Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión | ✅ | Menú lateral con once módulos. Configuración y Seguridad se abren desde el botón de perfil de Gerencia en V1 y V2. |
 | Factura X ("en negro") en venta y en compra | ✅ | Ver punto 9 |
 
 ## 1. Modelo multi-CUIT
@@ -111,7 +111,7 @@ Comercial › Seguimiento (venta) y Compras › Ruta de compras (compra).
 | Venta: A y B fiscales, X interna | ✅ | `factura_a`, `factura_b`, `factura_x` |
 | Compra: A y C fiscales, X interna | ✅ | En Facturas de compra |
 | Compra: notas de débito y de crédito del proveedor (A y C) | ✅ | En Facturas de compra; la de crédito se descuenta en la orden de pago y resta en costos y libro IVA |
-| Configurables por CUIT y punto de venta | ✅ | Configuración › Empresas y comprobantes (talonarios) |
+| Configurables por CUIT y punto de venta | ✅ | Perfil › Configuración › Empresas y comprobantes (talonarios) |
 | La X con numeración interna | ✅ | Se toma del talonario al guardar, por empresa (`X-0001-00000001`) |
 | La X fuera de reportes fiscales | ✅ | Contabilidad › Libro IVA no la incluye nunca |
 | Percepciones e impuesto interno en la factura de compra y en el libro IVA compras | ✅ | `Expense.perception*`, `internalTax*`; se precargan desde la OC; ver [[../decisiones/2026-10-impuestos-solicitud-compra]] |
@@ -152,7 +152,7 @@ Finanzas (Movimientos por cuenta, Libro IVA) y Trazabilidad (documentos sin vín
 
 ## 14. Roles y auditoría
 
-✅ Bitácora completa en Seguridad › Bitácora de cambios (usuario, fecha y hora, valor anterior y
+✅ Bitácora completa en Perfil › Seguridad › Bitácora de cambios (usuario, fecha y hora, valor anterior y
 nuevo). ⏳ responsables parametrizables por documento (genera / revisa / autoriza / confirma).
 
 ## 16. Decisiones pendientes de validación

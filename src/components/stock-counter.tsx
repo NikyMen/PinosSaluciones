@@ -335,7 +335,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     savePrinterSettings(next);
   }
 
-  if (!canEdit) return <div className="notice error">No tenés permiso para mover stock. Pedíselo a gerencia en Usuarios y permisos.</div>;
+  if (!canEdit) return <div className="notice error">No tenés permiso para mover stock. Pedíselo a Gerencia en Perfil › Seguridad › Usuarios y permisos.</div>;
 
   const entry = mode === "ingreso";
   return <>
