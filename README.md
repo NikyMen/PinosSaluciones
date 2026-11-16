@@ -232,6 +232,17 @@ Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisio
 - **Registro** (Stock y logística › Salidas a obra, `/app/salidas`): todas las salidas de la Caja, filtradas por obra y fechas, con el costo total cargado a la obra y exportación a Excel. Desde la obra, el botón "Material entregado" abre el listado filtrado.
 - **PDF con costos** (`src/lib/salida-pdf.ts`): el detalle de la salida con el costo unitario (promedio ponderado) y el subtotal de cada material, el total cargado a la obra, los remitos y las firmas. Es un papel interno: el remito que acompaña al material no lleva precios.
 
+## Envíos por transporte
+
+- **Stock y logística › Envíos por transporte** (`/app/envios`, `src/lib/shipments.ts`): encomiendas que salen por un transporte (Expreso Demonte, Correo Argentino, Mercado Libre) a un destino de afuera, por ejemplo el depósito de Demonte en Rosario.
+- **Nuevo envío**: empresa, depósito de origen, destino, quién recibe o retira, transporte, bultos y pallets, obra opcional y los materiales con cantidad y precio unitario.
+  - El precio arranca con el último costo y se puede cambiar. La suma es el **valor declarado**.
+  - Al despachar baja el stock (movimiento `envio`) y baja el remito `ENV-n` en PDF, con precios, valor declarado y las firmas de quien entrega y del transporte (`src/lib/shipment-pdf.ts`).
+  - Con obra, el costo se le carga como en la salida a obra.
+- **Nadie confirma la llegada**: el envío queda "Despachado, falta la guía". Con **Cargar guía** se carga el N° de guía o el remito del transporte, con una foto o PDF opcional, y pasa a "Con guía".
+- **Anular** devuelve el material al depósito (movimiento `envio_anulado`) y saca el costo de la obra. Sólo se puede mientras no tenga guía.
+- Pendiente (ver `docs/plan-envios-y-traslados.md`): el envío desde un remito de venta y la salida a un utilitario.
+
 ## Backups
 
 En producción el host no tiene `mongodump`, porque Mongo corre en Docker, así que `deploy/backup.sh` no funciona tal cual. Backup manual:

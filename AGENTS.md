@@ -36,6 +36,8 @@ En V1 y V2, Gerencia accede desde el botón de perfil a Configuración › Empre
 
 - Pedidos de Administración del 12/11 y del 16/11. Las facturas A y B que se emiten en ARCA no llevan un número escrito: lo asigna ARCA al guardar. TV Pino emite por el punto de venta 0004 y Constructora por el 0003, separados de Tango. La X sigue su talonario desde X0001-00000001. En la OP, cada medio pide todos sus campos, el PDF agrega los comprobantes y la forma de pago sale como "e-Cheq N° … - Banco - $ … - Fecha de pago". La factura de compra no muestra Obra ni Categoría. Las cotizaciones de la planilla se cargan con `pnpm quotes:import`. Ver `docs/decisiones/2026-11-pedidos-administracion-12-11.md`.
 
+- Envíos por transporte (Stock y logística): encomiendas con remito `ENV-n` y valor declarado (cantidad × precio, arranca con el último costo). Bajan stock sin confirmación en destino; después se carga la guía del transporte. Ver README › Envíos por transporte y `docs/plan-envios-y-traslados.md`.
+
 - Importación: botón Plantilla (`GET /api/import/[entity]`); las relaciones se resuelven por nombre, CUIT o código y las fechas en dd/mm/aaaa. Así se cargan las cotizaciones.
 
 Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en VPS", "Actualizar producción" y "Backups". En resumen:

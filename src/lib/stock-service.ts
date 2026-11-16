@@ -45,7 +45,9 @@ export type MovementInput =
   | Common & { kind: "recepcion"; from: WarehouseKey; to: WarehouseKey; sentQty: number; receivedQty: number; damagedQty?: number; ownerParts?: OwnerPart[]; remito?: string; transferId?: string }
   | Common & { kind: "venta"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; workId?: string; owner?: OwnerKey }
   | Common & { kind: "devolucion"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; ownerParts?: OwnerPart[] }
-  | Common & { kind: "ajuste"; warehouse: WarehouseKey; quantity: number; owner?: CompanyKey };
+  | Common & { kind: "ajuste"; warehouse: WarehouseKey; quantity: number; owner?: CompanyKey }
+  | Common & { kind: "envio"; warehouse: WarehouseKey; quantity: number; remito: string; shipmentId: string; destinationLabel: string; workId?: string; owner?: CompanyKey }
+  | Common & { kind: "envio_anulado"; warehouse: WarehouseKey; quantity: number; remito: string; shipmentId: string; ownerParts?: OwnerPart[] };
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
@@ -176,6 +178,30 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
     const parts = input.ownerParts?.length ? input.ownerParts : [{ owner: "sin_asignar" as OwnerKey, quantity: input.quantity }];
     addOwners(owners, "salon", parts);
     created.push({ kind: "devolucion", quantity: input.quantity, warehouse: "salon", remito: input.remito, clientId: input.clientId, salesRemitoId: input.salesRemitoId, ownerParts: parts, destinationLabel: input.destinationLabel, reference: input.remito, note: input.note, ...who });
+  }
+
+  if (input.kind === "envio") {
+    // Sale por transporte a un destino de afuera. Con obra, el costo se le carga como en la salida a obra.
+    ensureAvailable(item, levels, input.warehouse, input.quantity);
+    levels[input.warehouse] = round(levels[input.warehouse] - input.quantity);
+    const ownerParts = takeOwners(owners, input.warehouse, input.quantity, input.owner);
+    const totalCents = Math.round(input.quantity * item.avgCostCents);
+    const work = input.workId ? await Work.findById(input.workId).select("_id").lean() as { _id: Types.ObjectId } | null : null;
+    if (input.workId && !work) throw new StockError("La obra elegida ya no existe");
+    const expense = work ? await Expense.create({
+      workId: work._id, number: input.remito,
+      description: `${input.quantity} ${item.unit} de ${item.name} enviados por transporte (${warehouseLabel(input.warehouse)}, envío ${input.remito})`,
+      category: "materiales", amountCents: totalCents, issueDate: date, status: "pendiente",
+    }) : null;
+    created.push({ kind: "envio", quantity: input.quantity, warehouse: input.warehouse, remito: input.remito, shipmentId: input.shipmentId, workId: work?._id, expenseId: expense?._id, ownerParts,
+      destinationLabel: input.destinationLabel, unitCostCents: item.avgCostCents, totalCents, reference: input.remito, note: input.note, ...who });
+  }
+
+  if (input.kind === "envio_anulado") {
+    levels[input.warehouse] = round(levels[input.warehouse] + input.quantity);
+    const parts = input.ownerParts?.length ? input.ownerParts : [{ owner: "sin_asignar" as OwnerKey, quantity: input.quantity }];
+    addOwners(owners, input.warehouse, parts);
+    created.push({ kind: "envio_anulado", quantity: input.quantity, warehouse: input.warehouse, remito: input.remito, shipmentId: input.shipmentId, ownerParts: parts, reference: input.remito, note: input.note, ...who });
   }
 
   if (input.kind === "ajuste") {

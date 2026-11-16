@@ -56,6 +56,7 @@ const groups: NavGroup[] = [
     { href: "/app/caja", label: "Caja (entradas y salidas)", icon: ScanBarcode, permission: "stock" },
     { href: "/app/salidas", label: "Salidas a obra", icon: HardHat, permission: "stock" },
     { href: "/app/transferencias", label: "Transferencias", icon: ArrowLeftRight, permission: "stock" },
+    { href: "/app/envios", label: "Envíos por transporte", icon: Truck, permission: "stock" },
   ] },
   { id: "staff", label: "Personal", icon: Users, items: [
     { href: "/app/workers", label: "Personal", icon: Users, permission: "workers" },
@@ -103,6 +104,7 @@ const legacyGroups: NavGroup[] = [
     { href: "/app/caja", label: "Caja (entradas y salidas)", icon: ScanBarcode, permission: "stock" },
     { href: "/app/salidas", label: "Salidas a obra", icon: HardHat, permission: "stock" },
     { href: "/app/transferencias", label: "Transferencias", icon: ArrowLeftRight, permission: "stock" },
+    { href: "/app/envios", label: "Envíos por transporte", icon: Truck, permission: "stock" },
     { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
     { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
     { href: "/app/purchases", label: "Órdenes de compra", icon: ShoppingCart, permission: "purchases" },

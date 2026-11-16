@@ -445,7 +445,8 @@ const OwnerPartSchema = new Schema({ owner: { type: String, enum: ["tvp", "const
 const StockMovementSchema = new Schema({
   // transferencia: sale de un depósito y queda en tránsito; recepcion: llega al otro depósito.
   // venta: remito al cliente desde el Salón; devolucion: el cliente devuelve; no_utilizable: llegó dañado.
-  kind: { type: String, enum: ["ingreso", "egreso", "transferencia", "recepcion", "ajuste", "venta", "devolucion", "no_utilizable"], required: true },
+  // envio: sale por transporte (encomienda) a un destino de afuera; envio_anulado: vuelve al depósito.
+  kind: { type: String, enum: ["ingreso", "egreso", "transferencia", "recepcion", "ajuste", "venta", "devolucion", "no_utilizable", "envio", "envio_anulado"], required: true },
   quantity: { type: Number, required: true },
   // De qué depósito sale (o a cuál entra) y, en un pase entre depósitos, a cuál va.
   warehouse: { type: String, enum: WAREHOUSE_KEYS },
@@ -468,7 +469,7 @@ const StockMovementSchema = new Schema({
   ticket: String,
   // CUIT propietario de lo que se movió (una entrada es de una sola empresa; una salida puede mezclar).
   owner: { type: String, enum: ["tvp", "constructora", "sin_asignar"] }, ownerParts: { type: [OwnerPartSchema], default: undefined },
-  transferId: { type: Schema.Types.ObjectId, ref: "StockTransfer" },
+  transferId: { type: Schema.Types.ObjectId, ref: "StockTransfer" }, shipmentId: { type: Schema.Types.ObjectId, ref: "Shipment" },
   salesRemitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito" }, clientId: { type: Schema.Types.ObjectId, ref: "Client" },
 }, { timestamps: { createdAt: true, updatedAt: false } });
 
@@ -524,6 +525,39 @@ const StockTransferSchema = new Schema({
   quoteId: { type: Schema.Types.ObjectId, ref: "Quote" }, salesRemitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito" },
 }, options);
 StockTransferSchema.index({ status: 1, createdAt: -1 });
+
+/*
+ * Envío por transporte (encomienda): material que sale de un depósito a un
+ * destino de afuera (el depósito de Demonte en Rosario, un cliente por Correo
+ * Argentino) con valor declarado. Nadie confirma la llegada: después se carga
+ * el N° de guía o el remito que da el transporte. Pedido de Compras, 13/11/2026.
+ */
+const ShipmentSchema = new Schema({
+  number: { type: String, required: true, unique: true },
+  company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
+  from: { type: String, enum: WAREHOUSE_KEYS, required: true },
+  destination: { type: String, required: true, trim: true },
+  receiver: String,
+  carrier: { type: String, required: true, trim: true },
+  packages: Number, pallets: Number,
+  workId: { type: Schema.Types.ObjectId, ref: "Work" },
+  lines: [{
+    _id: false,
+    stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true },
+    name: String, code: String, unit: String, quantity: Number, ownerParts: { type: [OwnerPartSchema], default: undefined },
+    declaredUnitCents: { type: Number, min: 0, default: 0 }, declaredCents: { type: Number, min: 0, default: 0 },
+    expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
+  }],
+  declaredCents: { type: Number, min: 0, default: 0 },
+  note: String,
+  status: { type: String, enum: ["despachado", "con_guia", "anulado"], default: "despachado" },
+  sentAt: { type: Date, default: Date.now }, sentByName: String,
+  // Lo que da el transporte después de despachar: N° de guía o remito, con su foto o PDF.
+  trackingNumber: String, trackingFiles: [{ _id: false, path: String, name: String }],
+  trackingAt: Date, trackingByName: String,
+  cancelReason: String, cancelledAt: Date, cancelledByName: String,
+}, options);
+ShipmentSchema.index({ createdAt: -1 });
 
 /*
  * Remito de venta: la salida al cliente, siempre desde el Salón de Ventas. Es
@@ -1161,6 +1195,7 @@ export const StockTrash = mongoose.models.StockTrash || mongoose.model("StockTra
 export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);
 export const NotificationSettings = mongoose.models.NotificationSettings || mongoose.model("NotificationSettings", NotificationSettingsSchema);
 export const StockTransfer = mongoose.models.StockTransfer || mongoose.model("StockTransfer", StockTransferSchema);
+export const Shipment = mongoose.models.Shipment || mongoose.model("Shipment", ShipmentSchema);
 export const SalesRemito = mongoose.models.SalesRemito || mongoose.model("SalesRemito", SalesRemitoSchema);
 export const StockReservation = mongoose.models.StockReservation || mongoose.model("StockReservation", StockReservationSchema);
 export const Account = mongoose.models.Account || mongoose.model("Account", AccountSchema);

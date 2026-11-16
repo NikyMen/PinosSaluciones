@@ -24,10 +24,11 @@ Estado de cada pedido: ✅ ya está en el sistema · ◐ está a medias · 🆕 
 | # | Pedido | Estado |
 |---|---|---|
 | J1 | IVA 0 % en la solicitud | ✅ |
-| J2 | Que la compra pueda ir al **Galpón** o al **Salón de Ventas** y después repartirse a la obra o a los utilitarios | ✅ (`stockOnApproval`) |
+| J2 | Que la compra pueda ir al **Galpón** o al **Salón de Ventas** y después repartirse a la obra o a los utilitarios | ◐ entra al depósito (`stockOnApproval`) y sale a obra con el carrito; falta la salida a un utilitario (bien de uso), ver `docs/plan-envios-y-traslados.md` |
 | J3 | Que al lado del IVA se pueda indicar **"IVA ya incluido"**, porque el presupuesto del proveedor viene con precios finales y el sistema le sumó el IVA de nuevo | ✅ 16/11 |
-| J4 | **Adjuntar el PDF** del presupuesto del proveedor a la solicitud o la OC | ❓ revisar si ya se puede |
+| J4 | **Adjuntar el PDF** del presupuesto del proveedor a la solicitud o la OC | ✅ panel de adjuntos en el detalle de la solicitud y la OC |
 | J5 | Jorge carga **todos los remitos** y no puede guardar ninguno sin asociarlo a una obra o cotización | ✅ 16/11 |
+| J6 | **Remito de envío por transporte** (encomienda a Rosario por Expreso Demonte): valor declarado con el precio unitario, sin que nadie confirme en destino, y después el N° de guía o remito del transporte. Ventas lo necesita igual para Correo Argentino y Mercado Libre. Pedido por WhatsApp (13/11 y 16/11) | ✅ 16/11 el envío por transporte; falta el envío desde un remito de venta (ver `docs/plan-envios-y-traslados.md`) |
 
 ## 3. Fede: obras
 
