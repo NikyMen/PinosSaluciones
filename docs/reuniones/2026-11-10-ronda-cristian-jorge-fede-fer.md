@@ -168,6 +168,8 @@ Ordené las etapas así: primero lo que **frena la carga diaria** de Fer, que ho
 
 ## 6. Preguntas abiertas
 
+> **Respondidas el 16/11/2026.** Las decisiones y el plan detallado de las etapas 3 a 6 están en `docs/plan-etapas-3-a-6.md`. Quedan pendientes el Excel del salón (Cristian) y la lista definitiva de rubros (Fer).
+
 1. **Presupuesto en el listado de obras:** Fede pidió mantenerlo, pero se sacó en el último cambio (`9118229`). ¿Vuelve a mostrarse? ¿Solo para algunos roles?
 2. **Duración en días:** ¿el sábado cuenta medio día? ¿Qué feriados se toman (nacionales, provinciales de Corrientes)?
 3. **Rubros:** confirmar los seis exactos y si se suman a los de la cotización que ya existen.
