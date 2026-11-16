@@ -116,12 +116,24 @@ const DocumentSignatureSchema = new Schema({
   name: { type: String, required: true }, title: { type: String, required: true },
 }, options);
 
+const HolidayCalendarSchema = new Schema({
+  year: { type: Number, required: true, unique: true },
+  holidays: [{ _id: false, date: { type: String, required: true }, name: { type: String, required: true } }],
+}, options);
+
+const ProjectLocationSchema = new Schema({ address: String, mapUrl: String, latitude: Number, longitude: Number }, { _id: false });
+const projectMedia = {
+  location: { type: ProjectLocationSchema, default: undefined },
+  photos: { type: [String], default: undefined },
+} as const;
+
 const WorkCategorySchema = new Schema({
   key: { type: String, required: true, unique: true },
   name: { type: String, required: true }, allowed: { type: Boolean, default: true },
 }, options);
 
 const QuoteSchema = new Schema({
+  ...projectMedia,
   workCategoryId: { type: Schema.Types.ObjectId, ref: "WorkCategory" },
   number: { type: String, required: true, unique: true, trim: true },
   // Con qué empresa se va a facturar, si ya se sabe. La factura la toma de acá.
@@ -179,6 +191,7 @@ const ProgressLineSchema = new Schema({
 });
 
 const WorkSchema = new Schema({
+  ...projectMedia,
   workCategoryId: { type: Schema.Types.ObjectId, ref: "WorkCategory" },
   code: { type: String, required: true, unique: true },
   name: { type: String, required: true }, clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
@@ -1119,6 +1132,7 @@ const NotificationSettingsSchema = new Schema({ _id: String, hours: { type: Map,
 
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
 export const Client = mongoose.models.Client || mongoose.model("Client", ClientSchema);
+export const HolidayCalendar = mongoose.models.HolidayCalendar || mongoose.model("HolidayCalendar", HolidayCalendarSchema);
 export const DocumentSignature = mongoose.models.DocumentSignature || mongoose.model("DocumentSignature", DocumentSignatureSchema);
 export const WorkCategory = mongoose.models.WorkCategory || mongoose.model("WorkCategory", WorkCategorySchema);
 export const Quote = mongoose.models.Quote || mongoose.model("Quote", QuoteSchema);

@@ -11,6 +11,8 @@ import type { CascadeParams, Insumo, OverheadLine, QuoteItem, Rubro } from "@/li
 import { conceptGroups, findConcept } from "@/lib/cascada-conceptos";
 import { QuoteStock } from "@/components/quote-stock";
 import { QuoteBillingPanel } from "@/components/quote-billing";
+import { ProjectMediaPanel } from "@/components/project-media";
+import type { ProjectLocation } from "@/lib/project-location";
 
 /**
  * El cotizador cascada: la traduccion a pantalla de las 7 planillas de analisis
@@ -23,7 +25,7 @@ import { QuoteBillingPanel } from "@/components/quote-billing";
 
 type Quote = {
   _id: string; number: string; title: string; status: string;
-  amountCents?: number; estimatedCostCents?: number;
+  amountCents?: number; estimatedCostCents?: number; location?: ProjectLocation; photos?: string[];
   items?: QuoteItem[]; overheads?: OverheadLine[]; cascade?: Partial<CascadeParams>;
 };
 
@@ -382,6 +384,7 @@ export function QuoteCascade({ id, canEdit, canForceUnlock }: { id: string; canE
 
     {/* Disponibilidad de los materiales: consulta mientras se cotiza, reserva cuando se aprueba. */}
     <QuoteStock quoteId={id} status={quote.status} />
+    <ProjectMediaPanel location={quote?.location} photos={quote?.photos} />
     <QuoteBillingPanel quoteId={id} canEdit={canEdit} canRemove={canForceUnlock} />
   </>;
 }

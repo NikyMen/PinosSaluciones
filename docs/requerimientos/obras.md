@@ -17,7 +17,7 @@ Modelo de referencia: [[../modelo-datos/certificado-obra]]
 
 ## Lo que ya funciona
 
-El listado muestra inicio y fin previstos (`startDate`, `endDate`) e inicio y fin reales (`actualStartDate`, `actualEndDate`), editables desde la ficha de edición. No muestra ni solicita presupuesto; los importes existentes y los heredados de cotizaciones se conservan para certificar y facturar. Las fechas reales quedan vacías hasta cargarlas y cada fin debe ser igual o posterior a su inicio.
+El listado muestra inicio y fin previstos (`startDate`, `endDate`), inicio y fin reales (`actualStartDate`, `actualEndDate`) y duración en días hábiles. Con dos fechas se obtiene la duración. Con una fecha y la duración se obtiene la otra. Las fechas reales se cargan manualmente. Gerencia y las personas con **Ver presupuesto de obras** ven la columna Presupuesto y pueden exportarla. La cotización aporta fotos y ubicación. Se puede corregir la ubicación desde Obras y consultar el mapa interno por estado y avance.
 
 El botón **Estado de obra** permite consultar y cambiar el estado y cargar un avance de 0 a 100 % cuando no hay base de inspecciones. Con base, el porcentaje se calcula desde las inspecciones cerradas y no se puede sobrescribir manualmente. El avance pinta en rojo la misma proporción de toda la fila: al 50 %, la mitad. El porcentaje también se muestra como texto.
 

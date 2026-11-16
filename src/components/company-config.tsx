@@ -9,6 +9,7 @@ import type { VoucherBookRow } from "@/lib/voucher-books";
 import type { ArcaStatus } from "@/lib/arca";
 import { WorkCategorySettings } from "@/components/work-category-settings";
 import { DocumentSignatureSettings } from "@/components/document-signature-settings";
+import { WorkCalendarSettings } from "@/components/work-calendar-settings";
 
 /**
  * Configuración de las dos empresas: sus datos, los talonarios de comprobantes
@@ -112,6 +113,7 @@ export function CompanyConfig() {
     </section>
     <DocumentSignatureSettings />
     <WorkCategorySettings />
+    <WorkCalendarSettings />
   </>;
 }
 

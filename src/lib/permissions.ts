@@ -47,7 +47,7 @@ export function defaultPermissionsForRole(role: Role): UserPermissions {
     view: [...viewSections],
     edit: entities.filter(entity => writeAccess[entity].includes(role)),
     seen: [...viewSections],
-    actions: role === "gerencia" ? ["approvePurchases"] : [],
+    actions: role === "gerencia" ? [...USER_ACTIONS] : [],
   };
 }
 
@@ -60,7 +60,7 @@ export function normalizePermissions(role: Role, permissions?: Partial<UserPermi
   const view = [...new Set([...permissions.view, ...fresh.filter(section => defaults.view.includes(section))])].filter((section): section is ViewSection => viewSections.includes(section as ViewSection));
   const edit = [...new Set([...permissions.edit, ...fresh.filter(section => defaults.edit.includes(section as Entity))])].filter((entity): entity is Entity => entities.includes(entity as Entity) && view.includes(entity as ViewSection));
   const actions = (Array.isArray(permissions.actions) ? permissions.actions : []).filter((action): action is UserAction => USER_ACTIONS.includes(action as UserAction));
-  return { view, edit, seen: [...viewSections], actions: role === "gerencia" ? [...new Set<UserAction>([...actions, "approvePurchases"])] : actions };
+  return { view, edit, seen: [...viewSections], actions: role === "gerencia" ? [...USER_ACTIONS] : actions };
 }
 
 function resolved(subject: PermissionSubject) {
@@ -79,5 +79,8 @@ export function canApprovePurchases(subject: PermissionSubject, amountCents: num
   if ((typeof subject === "string" ? subject : subject.role) === "gerencia") return true;
   if (amountCents > PURCHASE_APPROVAL_LIMIT_CENTS) return false;
   return canWrite(subject, "purchases") || (canRead(subject, "purchases") && Boolean(resolved(subject).actions?.includes("approvePurchases")));
+}
+export function canViewWorkBudget(subject: PermissionSubject) {
+  return canRead(subject, "works") && Boolean(resolved(subject).actions?.includes("viewWorkBudget"));
 }
 export function canDelete(subject: PermissionSubject) { return (typeof subject === "string" ? subject : subject.role) === "gerencia"; }

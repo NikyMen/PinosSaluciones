@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import type { Schema } from "mongoose";
 import { entityLabels, entities } from "../src/lib/constants";
-import { modelByEntity, User, AuditLog, Counter, WorkInspection, PriceList, PriceListItem, VoucherBook, StockTransfer, SalesRemito, StockReservation, PurchaseReceipt, WorkCategory, DocumentSignature } from "../src/lib/models";
+import { modelByEntity, User, AuditLog, Counter, WorkInspection, PriceList, PriceListItem, VoucherBook, StockTransfer, SalesRemito, StockReservation, PurchaseReceipt, WorkCategory, DocumentSignature, HolidayCalendar } from "../src/lib/models";
 
 const OUT = "docs/modelo-datos/esquema-actual.md";
 
@@ -77,6 +77,7 @@ const extras = [
   ["PurchaseReceipt", PurchaseReceipt, "Remitos del proveedor (RE-n). Con OC, suman al stock lo recibido y el final cierra la orden. Sin OC, registran la entrega con proveedor y cotización u obra."],
   ["WorkCategory", WorkCategory, "Rubros de obra administrables. Se asignan en la cotización y se copian a la obra, la compra y la factura."],
   ["DocumentSignature", DocumentSignature, "Firma impresa por empresa para el recibo de cobro y la orden de pago."],
+  ["HolidayCalendar", HolidayCalendar, "Feriados por año para planificar la duración de una obra."],
 ] as const;
 
 const parts: string[] = [

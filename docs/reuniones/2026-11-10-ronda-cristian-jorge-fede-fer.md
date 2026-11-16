@@ -35,11 +35,11 @@ Estado de cada pedido: ✅ ya está en el sistema · ◐ está a medias · 🆕 
 |---|---|---|
 | F1 | Fechas de **inicio y fin, previstas y reales**, a la vista en el listado | ✅ |
 | F2 | **Avance manual** sin hacer la inspección completa, con la fila en rojo cuando va atrasada | ✅ |
-| F3 | Mostrar el **% escrito** sobre la barra de avance | 🆕 |
-| F4 | Cargar la **duración en días** y que el sistema calcule el fin **sin contar sábados, domingos ni feriados nacionales**. Fede mencionó que algunos días cuentan medio (0,5) | 🆕 ❓ |
-| F5 | En el listado: sacar "Notificar", achicar "Estado" y sumar la duración. Fede pidió **mantener el presupuesto**, aunque hoy está oculto | ❓ |
-| F6 | **Foto** de la obra en la cotización | 🆕 |
-| F7 | **Ubicación**: un link que abra Google Maps y un **mapa propio** con todas las obras (Corrientes, Chaco, interior) con su % de avance, que se pueda ver desde un link | 🆕 |
+| F3 | Mostrar el **% escrito** sobre la barra de avance | ✅ 16/11 |
+| F4 | Cargar la **duración en días** y que el sistema calcule el fin **sin contar sábados, domingos ni feriados nacionales**. Se confirmaron días enteros de lunes a viernes | ✅ 16/11 |
+| F5 | En el listado: sacar "Notificar", achicar "Estado" y sumar la duración. Fede pidió **mantener el presupuesto**. Lo ve Gerencia o quien recibe el permiso individual | ✅ 16/11 |
+| F6 | **Foto** de la obra en la cotización | ✅ 16/11 |
+| F7 | **Ubicación**: un link que abra Google Maps y un **mapa propio** con todas las obras (Corrientes, Chaco, interior) con su % de avance y acceso desde Obras | ✅ 16/11 |
 | F8 | Cuando se aprueba la cotización, a Fede le llega la obra para asignarle **fechas y personal** | ◐ |
 | F9 | Más adelante: tomar como referencia su Excel "programa general" (un Gantt semanal, el avance general por obra y colores verde = en ejecución, amarillo, blanco = terminada) y sus planillas de personal y materiales por obra | idea a futuro |
 

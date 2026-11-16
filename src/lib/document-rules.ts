@@ -16,6 +16,8 @@ import type { Entity } from "./constants";
 import type { Session } from "./auth";
 import { prepareWorkChanges } from "./work-status";
 import { checkQuoteCategory, projectCategory } from "./work-categories";
+import { applyWorkDuration } from "./work-calendar";
+import { normalizeProjectLocation } from "./project-location";
 
 /*
  * Las reglas de los comprobantes y de la imputación al plan de cuentas que
@@ -35,7 +37,8 @@ function ledgerDirection(entity: Entity, record: Record<string, unknown>): "ingr
 const ledgerRequired = new Set<Entity>(["cash", "payments", "collections"]);
 
 export async function beforeCreate(entity: Entity, data: Record<string, unknown>, session?: Session) {
-  if (entity === "works") { prepareWorkChanges(data); Object.assign(data, await projectCategory(data)); }
+  if ((entity === "works" || entity === "quotes") && "location" in data) data.location = normalizeProjectLocation(data.location);
+  if (entity === "works") { await applyWorkDuration(data); prepareWorkChanges(data); Object.assign(data, await projectCategory(data)); }
   if (entity === "quotes") await checkQuoteCategory(data.workCategoryId);
   delete data.accountChangeReason;
   if (entity === "accounts") data.direction = accountDirection(data.code);
@@ -70,7 +73,8 @@ export async function beforeCreate(entity: Entity, data: Record<string, unknown>
 
 /** En un cambio: valida la cuenta nueva y, si cambió, guarda quién, cuándo, de cuál a cuál y por qué. */
 export async function beforeUpdate(entity: Entity, before: Record<string, unknown>, changes: Record<string, unknown>, session: Session) {
-  if (entity === "works") { prepareWorkChanges(changes, before); if ("quoteId" in changes) Object.assign(changes, await projectCategory({ ...before, ...changes })); }
+  if ((entity === "works" || entity === "quotes") && "location" in changes) changes.location = normalizeProjectLocation(changes.location);
+  if (entity === "works") { await applyWorkDuration(changes, before); prepareWorkChanges(changes, before); if ("quoteId" in changes) Object.assign(changes, await projectCategory({ ...before, ...changes })); }
   if (entity === "quotes") await checkQuoteCategory(changes.workCategoryId ?? before.workCategoryId, before.workCategoryId);
   const reason = changes.accountChangeReason;
   delete changes.accountChangeReason;

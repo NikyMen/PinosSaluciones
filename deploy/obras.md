@@ -1,7 +1,9 @@
-# Fechas y estado de obra
+# Planificación y mapa de obras
 
-El listado y la edición de Obras reemplazan el presupuesto por las fechas previstas y reales. `startDate` y `endDate` conservan su valor y representan las previstas; `actualStartDate` y `actualEndDate` son opcionales. El presupuesto interno se conserva para certificación y facturación. No requiere migración ni cambia obras existentes durante el deploy.
+El listado muestra las fechas previstas y reales, la duración en días hábiles y el porcentaje sobre la barra de avance. El presupuesto se conserva para certificación y se muestra en el listado y su exportación a Gerencia o con el permiso **Ver presupuesto de obras**.
 
-Aplicar el procedimiento de actualización del README con pnpm y recarga de PM2. Antes de actualizar, verificar el dominio con `nslookup pinosoluciones.consultoriadigital.io` y hacer el backup manual documentado.
+Aplicar el procedimiento de actualización del README con pnpm y recarga de PM2. Antes de actualizar, verificar el dominio con el procedimiento del README y hacer el backup manual documentado. Leaflet se incluye en las dependencias fijadas por el lockfile. El mapa carga las teselas de OpenStreetMap desde el navegador.
 
-Validar en pruebas: alta sin presupuesto, cuatro fechas, rechazo de fin anterior al inicio, limpieza de fechas opcionales, avance 0–100 % y conservación de importes existentes. Estado de obra permite avance manual sólo sin base de inspecciones. Con base, sigue el cálculo automático. Al 50 %, la mitad de la fila queda roja, también al pasar el mouse y en móvil. No crear registros de prueba en producción.
+Los campos de fotos y ubicación son opcionales. Los feriados nacionales de 2026 están disponibles por defecto y se pueden editar por año desde Configuración. Las fechas existentes conservan su valor.
+
+Validar con datos de prueba el fin calculado a partir de los días hábiles, el fin posterior al inicio y los permisos de presupuesto. Confirmar que el avance manual y el de inspecciones se muestran en el listado. Al pasar una cotización a obra, revisar fotos, ubicación y el marcador en el mapa. Gerencia puede asignar el permiso individual a Fede en Seguridad › Usuarios.

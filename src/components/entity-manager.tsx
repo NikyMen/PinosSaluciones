@@ -27,6 +27,9 @@ import { downloadQuotePdf, quotePdfData } from "@/lib/quote-pdf";
 import { WorkerLaborModal } from "@/components/worker-labor-modal";
 import { InvoiceFields } from "@/components/invoice-fields";
 import { ProjectCategoryField } from "@/components/work-category-settings";
+import { ProjectMediaFields } from "@/components/project-media";
+import { WorkScheduleFields } from "@/components/work-schedule-fields";
+import type { ProjectLocation } from "@/lib/project-location";
 import { ExpenseLinks } from "@/components/expense-links";
 import { SalesInvoiceReceiptPicker } from "@/components/sales-invoice-receipt-picker";
 import { ExpenseFields, PurchaseFields } from "@/components/purchase-fields";
@@ -99,7 +102,7 @@ export type Viewer = { userId: string; role: Role };
 /** Quién de la empresa puede aparecer como responsable de una tarea. */
 type Person = { _id: string; name: string; role: Role };
 
-export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { entity: Entity; canEdit: boolean; canDeleteRecords: boolean; viewer: Viewer }) {
+export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSeeWorkBudget = false }: { entity: Entity; canEdit: boolean; canDeleteRecords: boolean; viewer: Viewer; canSeeWorkBudget?: boolean }) {
   const baseConfig = entityConfig[entity];
   // El tipo de trabajo del personal se elige de la tabla de tarifas, que se carga aparte.
   const [workTypes, setWorkTypes] = useState<string[]>([]);
@@ -242,7 +245,12 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
 
   function display(key: string, value: unknown, item: Item) {
     if (key === "balanceCents" && (entity === "expenses" || entity === "invoices")) return money(Math.max(0, Number(item.amountCents || 0) - Number(item[entity === "expenses" ? "paidCents" : "collectedCents"] || 0)));
-    if (entity === "works" && key === "progress") { const progress = displayedProgress(item); return progress === null ? "Sin avance cargado" : `${qty(progress)} %`; }
+    if (entity === "works" && key === "progress") {
+      const progress = displayedProgress(item);
+      return progress === null ? "Sin avance" : <span className="work-row-progress" role="meter" aria-label="Avance de la obra" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} style={{ "--work-progress": `${progress}%` } as CSSProperties}><b>{qty(progress)} %</b></span>;
+    }
+    if (entity === "works" && key === "durationBusinessDays") return typeof value === "number" ? `${value} d` : "—";
+    if (entity === "works" && key === "budgetCents") return value === undefined ? "—" : money(Number(value));
     if (entity === "purchases" && key === "amountCents") {
       const taxes = purchaseTaxRows(item);
       return <div className="purchase-row-amount"><strong>{money(Number(value || 0))}</strong><small>Neto: {money(taxes.subtotalCents)}</small>{taxes.rows.map((row, index) => <small key={index}>{row.label}: {money(row.cents)}</small>)}</div>;
@@ -505,7 +513,34 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       else if (field.type === "number") value = Number(value || 0);
       body[field.key] = value;
     }
-    if (entity === "quotes") body.workCategoryId = form.get("workCategoryId");
+    if (entity === "quotes" || entity === "works") {
+      const lat = String(form.get("projectLatitude") || "");
+      const lon = String(form.get("projectLongitude") || "");
+      if (Boolean(lat) !== Boolean(lon)) { setSaving(false); return setError("Cargá latitud y longitud juntas"); }
+      body.location = {
+        address: String(form.get("projectAddress") || ""), mapUrl: String(form.get("projectMapUrl") || ""),
+        ...(lat && lon ? { latitude: Number(lat), longitude: Number(lon) } : {}),
+      };
+    }
+    if (entity === "quotes") {
+      body.workCategoryId = form.get("workCategoryId");
+      const photos = form.getAll("keepProjectPhoto").map(String);
+      const selected = form.getAll("projectPhotos").filter((value): value is File => value instanceof File && value.size > 0);
+      if (photos.length + selected.length > 12) { setSaving(false); return setError("Podés cargar hasta 12 fotos"); }
+      try {
+        for (const file of selected) {
+          if (!/\.(?:jpe?g|png|webp|gif|heic|heif)$/i.test(file.name)) throw new Error("Elegí archivos de imagen");
+          const upload = new FormData();
+          upload.set("file", file);
+          const response = await fetch("/api/uploads", { method: "POST", body: upload });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "No se pudo subir la foto");
+          photos.push(result.path);
+        }
+      } catch (error) { setSaving(false); return setError(error instanceof Error ? error.message : "No se pudieron subir las fotos"); }
+      body.photos = photos;
+    }
+    if (entity === "works" && form.get("durationBusinessDays") && (!form.get("startDate") || !form.get("endDate"))) body.durationBusinessDays = Number(form.get("durationBusinessDays"));
     if ((entity === "expenses" || entity === "invoices") && form.has("withRemito")) body.withRemito = form.get("withRemito") === "true";
     if (entity === "expenses" && form.has("receiptPrices")) body.receiptPrices = JSON.parse(String(form.get("receiptPrices")));
     if (entity === "expenses" && form.has("orderPrices")) body.orderPrices = JSON.parse(String(form.get("orderPrices")));
@@ -570,7 +605,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
 
   // Con un depósito elegido se ve solo su cantidad; con los dos, cada uno y el total.
   const columns = entity === "stock" && warehouseView ? config.columns.filter(column => column === `qty_${warehouseView}` || !(column.startsWith("qty_") || column === "quantity"))
-    : entity === "expenses" && pendingInvoicesOnly || entity === "invoices" ? [...config.columns, "balanceCents"] : config.columns;
+    : entity === "works" && canSeeWorkBudget ? [...config.columns, "budgetCents"]
+      : entity === "expenses" && pendingInvoicesOnly || entity === "invoices" ? [...config.columns, "balanceCents"] : config.columns;
 
   return <>
     <div className="page-heading"><div><p className="eyebrow">{moduleOf[entity]}</p><h1>{config.title}</h1><p>{config.description}</p></div>{canEdit && entity !== "stock" && (entity === "expenses" || entity === "invoices"
@@ -580,6 +616,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       </div>
       : <button className="primary-btn" onClick={() => { void openCreate(); }}><Plus size={18} /> {newLabel}</button>)}</div>
     <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()} title="Excel (.xlsx) o CSV con los encabezados de la plantilla"><Upload size={17} /> Importar</button><a className="secondary-btn" href={`/api/import/${entity}`} title="Planilla con las columnas que entiende la importación: el cliente, la obra o el proveedor van por su nombre y las fechas en dd/mm/aaaa"><Download size={17} /> Plantilla</a></>}{hasTrash && <button className="secondary-btn" onClick={() => setTrashOpen(true)}><Trash2 size={17} /> Papelera</button>}{entity === "workers" && <button className="secondary-btn" onClick={() => setRatesOpen(true)}><Tags size={17} /> Tarifas</button>}{entity === "cash" && canEdit && <button className="secondary-btn" onClick={() => setTransferOpen(true)}><ArrowRightLeft size={17} /> Movimiento entre cuentas</button>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
+    {entity === "works" && <div className="toolbar"><Link href="/app/works/mapa" className="secondary-btn">Mapa de obras</Link></div>}
     {invoiceSummary && (entity === "expenses" || entity === "invoices") && <div className="price-kpis tracking-kpis">
       <button className="stock-kpi invoice-kpi" aria-pressed={!pendingInvoicesOnly} onClick={() => setPendingInvoicesOnly(false)}>
         <span>Facturas {entity === "expenses" ? "recibidas" : "emitidas"}</span><strong>{invoiceSummary.count}</strong>
@@ -626,7 +663,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
           </div>;
         })() : display(column, item[column], item)}</td>)}
         <td className="row-actions" onKeyDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
-          {entity === "works" && <button className="row-action-wide" onClick={() => setWorkStatusFor(item)}><Percent size={15} /> Estado de obra</button>}
+          {entity === "works" && <button title="Estado de obra" aria-label={`Estado de ${itemLabel(item)}`} onClick={() => setWorkStatusFor(item)}><Percent size={15} /></button>}
           {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
@@ -690,7 +727,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
       <button className="icon-btn" onClick={() => setModal(false)} aria-label="Cerrar"><X /></button></header>
       <form onSubmit={submit}>
         <div className="modal-form-body">{entity === "works"
-          ? <WorkFields fields={config.fields} fieldProps={fieldProps} />
+          ? <WorkFields fields={config.fields} fieldProps={fieldProps} location={editing?.location as ProjectLocation | undefined} />
           : entity === "invoices"
             ? <InvoiceFields fields={config.fields} fieldProps={fieldProps} editing={editing} draft={draft} quotes={relations.quotes || []} works={relations.works || []}
               onRelations={patch => setRelationValues(current => ({ ...current, ...patch }))} />
@@ -698,7 +735,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer }: { e
               ? <PurchaseFields fields={formFields} fieldProps={fieldProps} editing={editing} works={relations.works || []} quotes={relations.quotes || []} />
               : entity === "expenses"
                 ? <ExpenseFields fields={formFields} fieldProps={fieldProps} editing={editing} draft={draft} orders={relations.purchases || []} />
-                : <div className="form-grid">{entity === "quotes" && <ProjectCategoryField value={editing?.workCategoryId} required />}{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
+                : <div className="form-grid">{entity === "quotes" && <><ProjectCategoryField value={editing?.workCategoryId} required /><div className="wide"><ProjectMediaFields location={editing?.location as ProjectLocation | undefined} photos={editing?.photos as string[] | undefined} allowPhotos /></div></>}{formFields.map((field, index) => <FormField key={field.key} {...fieldProps(field)} autoFocus={index === 0} />)}</div>}
         </div>
         {error && <p ref={errorRef} className="form-error modal-error" role="alert">{error}</p>}
         <footer><span>Los cambios quedan registrados automáticamente.</span><button type="button" className="secondary-btn" onClick={() => setModal(false)}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></footer>
@@ -1003,15 +1040,18 @@ function TrashModal({ entity, canRestore, onClose, onRestored }: { entity: "stoc
 
 const workGroups = [
   { title: "Identificación", description: "Datos principales de la obra", keys: ["code", "name", "clientId", "quoteId"] },
-  { title: "Planificación", description: "Fechas y estado", keys: ["startDate", "endDate", "status"] },
-  { title: "Control económico", description: "Presupuesto y centro de costo", keys: ["budgetCents", "costCenter"] },
+  { title: "Planificación", description: "Fechas y estado", keys: ["actualStartDate", "actualEndDate", "status"] },
+  { title: "Centro de costo", description: "", keys: ["costCenter"] },
 ];
 
-function WorkFields({ fields, fieldProps }: { fields: Field[]; fieldProps: (field: Field) => FieldProps }) {
-  return <div className="work-form-sections">{workGroups.map((group, groupIndex) => <fieldset key={group.title}><legend><b>{group.title}</b><small>{group.description}</small></legend><div className="form-grid">{group.keys.map((key, index) => {
+function WorkFields({ fields, fieldProps, location }: { fields: Field[]; fieldProps: (field: Field) => FieldProps; location?: ProjectLocation }) {
+  const value = (key: string) => fieldProps(fields.find(field => field.key === key)!).value;
+  return <div className="work-form-sections">{workGroups.map((group, groupIndex) => <fieldset key={group.title}><legend><b>{group.title}</b>{group.description && <small>{group.description}</small>}</legend><div className="form-grid">
+    {group.title === "Planificación" && <WorkScheduleFields initialStart={value("startDate")} initialEnd={value("endDate")} />}
+    {group.keys.map((key, index) => {
     const field = fields.find(candidate => candidate.key === key);
     return field ? <FormField key={field.key} {...fieldProps(field)} autoFocus={groupIndex === 0 && index === 0} /> : null;
-  })}</div></fieldset>)}</div>;
+  })}</div></fieldset>)}<ProjectMediaFields location={location} /></div>;
 }
 
 function TaskModal({ task, config, fieldProps, error, saving, onClose, onSubmit }: { task: Item | null; config: typeof entityConfig["tasks"]; fieldProps: (field: Field) => FieldProps; error: string; saving: boolean; onClose: () => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void }) {

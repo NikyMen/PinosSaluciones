@@ -10,7 +10,7 @@
 > pnpm docs:schema
 > ```
 
-Generado el 2026-11-16 · 30 colecciones.
+Generado el 2026-11-16 · 31 colecciones.
 
 Para el modelo de negocio *deseado* — lo que el cliente pidió y todavía no existe —
 ver [[cotizador-cascada]], [[liquidacion-quincenal]] y [[certificado-obra]].
@@ -45,6 +45,12 @@ Colección `quotes` · entidad `quotes`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `location` | objeto | — | — |
+| `location.address` | texto | — | — |
+| `location.mapUrl` | texto | — | — |
+| `location.latitude` | número | — | — |
+| `location.longitude` | número | — | — |
+| `photos` | lista | — | — |
 | `workCategoryId` | referencia | — | apunta a **WorkCategory** |
 | `number` | texto | sí | único |
 | `company` | texto | — | valores: `tvp` · `constructora` · por defecto `"tvp"` |
@@ -119,6 +125,12 @@ Colección `works` · entidad `works`
 
 | Campo | Tipo | Obligatorio | Detalle |
 |---|---|:--:|---|
+| `location` | objeto | — | — |
+| `location.address` | texto | — | — |
+| `location.mapUrl` | texto | — | — |
+| `location.latitude` | número | — | — |
+| `location.longitude` | número | — | — |
+| `photos` | lista | — | — |
 | `workCategoryId` | referencia | — | apunta a **WorkCategory** |
 | `code` | texto | sí | único |
 | `name` | texto | sí | — |
@@ -1211,5 +1223,18 @@ Firma impresa por empresa para el recibo de cobro y la orden de pago. Colección
 | `company` | texto | sí | valores: `tvp` · `constructora` · único |
 | `name` | texto | sí | — |
 | `title` | texto | sí | — |
+| `createdAt` | fecha | — | — |
+| `updatedAt` | fecha | — | — |
+
+### HolidayCalendar
+
+Feriados por año para planificar la duración de una obra. Colección `holidaycalendars`.
+
+| Campo | Tipo | Obligatorio | Detalle |
+|---|---|:--:|---|
+| `year` | número | sí | único |
+| `holidays` | lista de objetos | — | — |
+| `holidays.date` | texto | sí | — |
+| `holidays.name` | texto | sí | — |
 | `createdAt` | fecha | — | — |
 | `updatedAt` | fecha | — | — |

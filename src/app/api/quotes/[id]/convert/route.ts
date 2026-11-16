@@ -20,7 +20,7 @@ export async function POST(request: Request, context: RouteContext<"/api/quotes/
     const existing = await Work.findOne({ quoteId: quote._id }); if (existing) return Response.json({ error: "La cotización ya tiene una obra" }, { status: 409 });
     // COT-2: la aprobación es un acto deliberado de alguien. Antes esto la aprobaba solo.
     if (quote.status !== "aprobada") return Response.json({ error: "La cotización tiene que estar aprobada para convertirla en obra" }, { status: 409 });
-    const work = await Work.create({ ...parsed.data, clientId: quote.clientId, quoteId: quote._id, workCategoryId: quote.workCategoryId, budgetCents: quote.amountCents, budgetNetCents: quoteNetCents(quote.toObject()), status: "planificada" });
+    const work = await Work.create({ ...parsed.data, clientId: quote.clientId, quoteId: quote._id, workCategoryId: quote.workCategoryId, location: quote.location, photos: quote.photos, budgetCents: quote.amountCents, budgetNetCents: quoteNetCents(quote.toObject()), status: "planificada" });
     // COT-4 y COT-6: queda registrado quién convirtió y la cotización sale del circuito activo.
     quote.status = "convertida"; quote.workId = work._id;
     quote.history.push({ action: "convert_to_work", note: `Convertida en la obra ${work.code}`, userId: session.userId, userName: session.name });

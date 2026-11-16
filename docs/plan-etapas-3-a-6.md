@@ -165,6 +165,8 @@ Implementadas 5.1 a 5.4 el 16/11. Sigue pendiente el Excel de Cristian para 5.5.
 
 ## Etapa 6: obras (prioridad P2)
 
+Implementada el 16/11. Ver [Planificación y mapa de obras](decisiones/2026-11-planificacion-y-mapa-de-obras.md).
+
 ### 6.1 Presupuesto en el listado de obras (F5)
 
 - **Decisión:** mostrarlo a **Gerencia y a Fede**. Antes de hacerlo, buscar en el historial (`git log -S budgetCents`, commit `9118229` y `deploy/obras.md`) por qué se ocultó. Si nadie pidió ocultarlo, mostrarlo a todos.

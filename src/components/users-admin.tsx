@@ -197,7 +197,7 @@ function UserModal({ user, error, onClose, onSave }: { user: User | null; error:
         <div className="permission-table" role="table" aria-label="Permisos especiales">
           {USER_ACTIONS.map(action => {
             // Gerencia autoriza compras siempre: no se le puede sacar.
-            const fixed = action === "approvePurchases" && role === "gerencia";
+            const fixed = role === "gerencia";
             const checked = fixed || Boolean(permissions.actions?.includes(action));
             return <div className="permission-row" role="row" key={action}>
               <span>{userActionLabels[action].label}<small>{fixed ? "Gerencia lo tiene siempre" : userActionLabels[action].hint}</small></span>

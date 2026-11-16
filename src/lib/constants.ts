@@ -72,10 +72,11 @@ export const entityLabels: Record<Entity, string> = {
  * "Autorizar compras" habilita la aprobación hasta el límite; los importes
  * mayores son exclusivos del rol Gerencia, aunque se tenga esta acción.
  */
-export const USER_ACTIONS = ["approvePurchases"] as const;
+export const USER_ACTIONS = ["approvePurchases", "viewWorkBudget"] as const;
 export type UserAction = (typeof USER_ACTIONS)[number];
 export const userActionLabels: Record<UserAction, { label: string; hint: string }> = {
   approvePurchases: { label: "Autorizar compras", hint: "Hasta $500.000; por encima de ese importe sólo el rol Gerencia" },
+  viewWorkBudget: { label: "Ver presupuesto de obras", hint: "Muestra la columna Presupuesto en el listado de Obras" },
 };
 
 /** Toda compra requiere aprobación. Por encima de este total final sólo aprueba Gerencia. */

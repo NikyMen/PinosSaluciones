@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import mongoose, { Types } from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { defaultPermissionsForRole } from "../src/lib/permissions";
+import type { Role } from "../src/lib/constants";
 
-const session = { userId: new Types.ObjectId().toHexString(), name: "Gerencia de prueba", email: "gerencia@test.local", role: "gerencia" as const, permissions: defaultPermissionsForRole("gerencia") };
+const session = { userId: new Types.ObjectId().toHexString(), name: "Gerencia de prueba", email: "gerencia@test.local", role: "gerencia" as Role, permissions: defaultPermissionsForRole("gerencia") };
 vi.mock("@/lib/auth", () => ({ requireSession: async () => session, getSession: async () => session, isOwnerEmail: () => false }));
 
 const { Client, Quote, Work, Task, SalesRemito, StockItem } = await import("../src/lib/models");
@@ -33,12 +34,33 @@ afterAll(async () => {
   await server?.stop();
 });
 
+it("calcula el fin previsto y filtra el presupuesto en el listado según permiso", async () => {
+  const client = await Client.create({ name: "Consorcio para planificación" });
+  const work = await call(await recordsRoute.POST(json("POST", {
+    code: "OB-PLAN", name: "Planificación", clientId: String(client._id), status: "planificada",
+    startDate: "2026-11-04", durationBusinessDays: 25, budgetCents: 100000, progress: 30,
+  }), params({ entity: "works" })));
+  expect(work).toMatchObject({ status: 201, body: { endDate: "2026-12-11T00:00:00.000Z", progress: 30 } });
+
+  const query = () => recordsRoute.GET(new Request("http://test?search=OB-PLAN"), params({ entity: "works" })).then(call);
+  const previous = { ...session };
+  try {
+    session.role = "arquitecto";
+    session.permissions = defaultPermissionsForRole("arquitecto");
+    const hidden = (await query()).body.items[0];
+    expect(hidden.durationBusinessDays).toBe(25);
+    expect(hidden).not.toHaveProperty("budgetCents");
+    session.permissions = { ...session.permissions, actions: ["viewWorkBudget"] };
+    expect((await query()).body.items[0]).toHaveProperty("budgetCents", 100000);
+  } finally { Object.assign(session, previous); }
+});
+
 describe("el certificado se calcula sobre el neto", () => {
   it("la cotización a mano guarda su neto y la obra lo hereda", async () => {
     const client = await Client.create({ name: "Consorcio Neto" });
     const { listWorkCategories } = await import("../src/lib/work-categories");
     const workCategoryId = String((await listWorkCategories())[0]._id);
-    const created = await call(await recordsRoute.POST(json("POST", { clientId: String(client._id), title: "Pintura", amountCents: 1_210_000_00, status: "aprobada", workCategoryId }), params({ entity: "quotes" })));
+    const created = await call(await recordsRoute.POST(json("POST", { clientId: String(client._id), title: "Pintura", amountCents: 1_210_000_00, status: "aprobada", workCategoryId, location: { mapUrl: "https://www.google.com/maps/@-27.47,-58.83,16z" }, photos: ["/api/uploads/prueba.jpg"] }), params({ entity: "quotes" })));
     expect(created.status).toBe(201);
     expect(created.body.netCents).toBe(1_000_000_00);
 
@@ -48,7 +70,7 @@ describe("el certificado se calcula sobre el neto", () => {
 
     const work = await call(await convertRoute.POST(json("POST", { code: "OB-N1", name: "Pintura" }), params({ id: created.body._id })));
     expect(work.status).toBe(201);
-    expect(work.body).toMatchObject({ budgetCents: 2_420_000_00, budgetNetCents: 2_000_000_00, workCategoryId });
+    expect(work.body).toMatchObject({ budgetCents: 2_420_000_00, budgetNetCents: 2_000_000_00, workCategoryId, location: { latitude: -27.47, longitude: -58.83 }, photos: ["/api/uploads/prueba.jpg"] });
   });
 
   it("con cascada el neto es el subtotal 3, no el precio con IVA", () => {

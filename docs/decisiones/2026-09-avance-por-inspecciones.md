@@ -24,7 +24,7 @@ diarias**, armadas sobre las cinco planillas de *PLANILLA DE INSPECCION DE OBRAS
 
 | Dato | Fuente |
 | --- | --- |
-| Nombre, cliente, fechas previstas y reales, estado | Obra (sin presupuesto en listado y edici?n; se conserva internamente para certificar) |
+| Nombre, cliente, fechas previstas y reales, estado | Obra (el presupuesto del listado se muestra según el permiso vigente desde noviembre) |
 | Personas y horas | Partes diarios de la obra |
 | Producción y avance físico | Inspecciones cerradas |
 | Materiales que entran | Egresos de stock hacia la obra |

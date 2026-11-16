@@ -4,7 +4,7 @@ import { composeWorkerName, modelByEntity, nextReceiptNumber, nextQuoteNumber, n
 import { afterPaymentChange, refreshOrderPayment } from "@/lib/purchase-flow";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
-import { canApprovePurchases, canRead, canWrite } from "@/lib/permissions";
+import { canApprovePurchases, canRead, canViewWorkBudget, canWrite } from "@/lib/permissions";
 import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
@@ -20,6 +20,8 @@ import { withLastPrices } from "@/lib/stock-prices";
 import { closeCertificate } from "@/lib/certificate-billing";
 import { cashAccountBalances, type CashAccountDoc } from "@/lib/cash-accounts";
 import { invoiceListSummary, pendingInvoiceFilter } from "@/lib/invoice-summary";
+import { workHolidays } from "@/lib/work-calendar";
+import { businessDaysBetween } from "@/lib/business-days";
 import { DEFAULT_WAREHOUSE, isWarehouse } from "@/lib/warehouses";
 
 function validEntity(value: string): value is Entity { return entities.includes(value as Entity); }
@@ -69,11 +71,18 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const model = modelByEntity[entity];
     // En ventas interesa lo que se movio recien, no lo que se creo primero. El plan de cuentas y las cajas van por código.
     const sort: Record<string, 1 | -1> = entity === "quotes" ? { updatedAt: -1 } : entity === "accounts" || entity === "cashAccounts" ? { code: 1, name: 1 } : { createdAt: -1 };
+    const projection = entity === "works" && !canViewWorkBudget(session) ? { ...listProjection.works, budgetCents: 0, budgetNetCents: 0 } : listProjection[entity] || {};
     const [items, total, summary] = await Promise.all([
-      model.find(filter, listProjection[entity] || {}).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
+      model.find(filter, projection).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
       model.countDocuments(filter),
       invoiceEntity && url.searchParams.get("summary") === "1" ? invoiceListSummary(invoiceEntity) : undefined,
     ]);
+    if (entity === "works" && items.length) {
+      const holidays = await workHolidays();
+      for (const item of items as Array<{ startDate?: Date; endDate?: Date; durationBusinessDays?: number }>) {
+        if (item.startDate && item.endDate) item.durationBusinessDays = businessDaysBetween(item.startDate, item.endDate, holidays);
+      }
+    }
     // El maestro de cajas muestra el saldo de cada cuenta.
     if (entity === "cashAccounts") {
       const balances = await cashAccountBalances(items as CashAccountDoc[]);

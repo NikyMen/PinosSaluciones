@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeGoogleMapsUrl } from "./project-location";
 import type { Entity } from "./constants";
 import { WAREHOUSE_KEYS } from "./warehouses";
 import { ACCOUNT_CODES } from "./account-catalog";
@@ -45,6 +46,14 @@ const invoiceLines = z.preprocess(value => {
 const receiptMode = z.union([z.boolean(), z.enum(["true", "false"])]).transform(value => value === true || value === "true").optional();
 const receiptPrices = z.array(z.object({ receiptId: id, line: z.number().int().min(0), unitCents: cents.max(1e12) })).max(2000).optional();
 const date = z.coerce.date();
+const projectMedia = {
+  location: z.object({
+    address: z.string().trim().max(300).optional(),
+    mapUrl: z.string().trim().max(1800).refine(value => !value || Boolean(safeGoogleMapsUrl(value)), "Pegá un enlace de Google Maps").optional(),
+    latitude: z.number().min(-90).max(90).optional(), longitude: z.number().min(-180).max(180).optional(),
+  }).refine(value => (value.latitude === undefined) === (value.longitude === undefined), "Completá latitud y longitud juntas").nullable().optional(),
+  photos: z.array(z.string().regex(/^\/api\/uploads\/[\w-]+\.(?:jpe?g|png|webp|gif|heic|heif)$/i)).max(12).optional(),
+};
 const workDate = z.preprocess(value => value === "" ? null : value, z.coerce.date().nullable().optional());
 // El período de una factura ("2026-10"); vacío toma el mes de la fecha.
 const optionalPeriod = z.union([z.literal(""), z.string().regex(PERIOD_PATTERN, "El período es año y mes: 2026-10")]).optional().transform(v => v || undefined);
@@ -60,8 +69,8 @@ const phoneList = z.preprocess(value => {
 
 export const schemas: Record<Entity, z.ZodObject<z.ZodRawShape>> = {
   clients: z.object({ name: text, tradeName: optionalText, cuit: cuit, contactName: optionalText, email: optionalText, phones: phoneList, address: optionalText, notes: optionalText, vatCondition: z.union([z.enum(VAT_CONDITION_KEYS), z.literal("")]).optional().transform(v => v || undefined), active: z.boolean().optional().default(true) }),
-  quotes: z.object({ workCategoryId: optionalId, company: z.enum(["tvp", "constructora"]).default("tvp"), number: z.string().trim().optional().transform(v => v || undefined), clientId: id, title: text, description: optionalText, version: z.coerce.number().int().min(1).default(1), amountCents: cents, estimatedCostCents: cents.default(0), status: z.enum(["borrador", "enviada", "seguimiento", "aprobada", "rechazada", "vencida", "convertida"]), ownerId: optionalId, validUntil: optionalDate, workId: optionalId, attachment: optionalText }),
-  works: z.object({ assignedWorkers: z.array(z.any()).optional(), code: text, name: text, clientId: id, quoteId: optionalId, managerId: optionalId, status: z.enum(["planificada", "en_curso", "pausada", "terminada", "cerrada", "cancelada"]), startDate: workDate, endDate: workDate, actualStartDate: workDate, actualEndDate: workDate, progress: z.coerce.number().min(0).max(100).optional(), budgetCents: cents.optional(), budgetNetCents: cents.optional(), costCenter: optionalText, checklist: z.array(z.object({ _id: optionalId, title: text, done: z.boolean().default(false), completedAt: optionalDate, createdAt: optionalDate, updatedAt: optionalDate })).optional(), certificates: z.array(z.any()).optional(), labor: z.array(z.any()).optional() }),
+  quotes: z.object({ ...projectMedia, workCategoryId: optionalId, company: z.enum(["tvp", "constructora"]).default("tvp"), number: z.string().trim().optional().transform(v => v || undefined), clientId: id, title: text, description: optionalText, version: z.coerce.number().int().min(1).default(1), amountCents: cents, estimatedCostCents: cents.default(0), status: z.enum(["borrador", "enviada", "seguimiento", "aprobada", "rechazada", "vencida", "convertida"]), ownerId: optionalId, validUntil: optionalDate, workId: optionalId, attachment: optionalText }),
+  works: z.object({ ...projectMedia, durationBusinessDays: z.number().int().min(1).max(3650).optional(), assignedWorkers: z.array(z.any()).optional(), code: text, name: text, clientId: id, quoteId: optionalId, managerId: optionalId, status: z.enum(["planificada", "en_curso", "pausada", "terminada", "cerrada", "cancelada"]), startDate: workDate, endDate: workDate, actualStartDate: workDate, actualEndDate: workDate, progress: z.coerce.number().min(0).max(100).optional(), budgetCents: cents.optional(), budgetNetCents: cents.optional(), costCenter: optionalText, checklist: z.array(z.object({ _id: optionalId, title: text, done: z.boolean().default(false), completedAt: optionalDate, createdAt: optionalDate, updatedAt: optionalDate })).optional(), certificates: z.array(z.any()).optional(), labor: z.array(z.any()).optional() }),
   workers: z.object({ fileNumber: z.coerce.number().int().min(0).max(999_999).optional(), position: optionalText, workType: optionalText, firstName: text, lastName: text, dni: z.string().trim().optional().default("").transform(v => v.replace(/\D/g, "")).refine(v => v === "" || (v.length >= 7 && v.length <= 8), "El DNI tiene que tener 7 u 8 dígitos"), phone: optionalText, category: z.enum(["capataz", "oficial", "medio_oficial", "ayudante", "especialista"]), rateMode: z.enum(["jornada", "hora"]).default("jornada"), dailyRateCents: cents.default(0), hoursPerDay: z.coerce.number().min(1).max(24).default(8), hourlyRateCents: cents.default(0), notes: optionalText, active: z.boolean().optional().default(true) }),
   // El descuento va sin default: un PATCH parcial no tiene que volverlo a cero.
   suppliers: z.object({ name: text, tradeName: optionalText, cuit: z.union([cuit, z.literal("")]).optional(), contactName: optionalText, email: optionalText, phone: optionalText, address: optionalText, notes: optionalText, discountPct: z.coerce.number().min(0, "El descuento no puede ser negativo").max(100, "El descuento no puede pasar el 100%").optional(), active: z.boolean().optional().default(true) }),
