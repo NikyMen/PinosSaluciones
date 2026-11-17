@@ -210,7 +210,7 @@ Anexo de Tesorería v5.1, validado con Administración. Las decisiones están en
 
 ## Facturación parcial
 
-En Obras, el listado muestra inicio y fin previstos y reales, duración en días hábiles y el porcentaje sobre la barra de avance. Gerencia y las personas con **Ver presupuesto de obras** ven el presupuesto en el listado y en su exportación. Los feriados se editan por año en Perfil › Configuración › Empresas y comprobantes. La cotización puede llevar fotos, dirección y un enlace de Google Maps que pasan a la obra. Desde la ficha se abre **Cómo llegar** y desde Obras se accede al mapa interno por estado y avance. Ver `docs/requerimientos/obras.md`, `docs/decisiones/2026-11-planificacion-y-mapa-de-obras.md` y `deploy/obras.md`.
+En Obras, el listado muestra inicio y fin previstos y reales, duración en días hábiles y el avance real en una línea azul a lo ancho de la fila y, pegada abajo, la línea del avance esperado según el plan (días hábiles transcurridos desde el inicio previsto sobre la duración prevista), verde o naranja si se aparta 5 puntos o más. Gerencia y las personas con **Ver presupuesto de obras** ven el presupuesto en el listado y en su exportación. Los feriados se editan por año en Perfil › Configuración › Empresas y comprobantes. La cotización puede llevar fotos, dirección y un enlace de Google Maps que pasan a la obra. Desde la ficha se abre **Cómo llegar** y desde Obras se accede al mapa interno por estado y avance. Ver `docs/requerimientos/obras.md`, `docs/decisiones/2026-11-planificacion-y-mapa-de-obras.md` y `deploy/obras.md`.
 
 Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisiones/2026-10-certificado-sobre-neto.md`.
 

@@ -186,7 +186,11 @@ td { padding: 17px 16px; border-bottom: 1px solid #e9edf2; color: #445064; font-
 tbody tr { transition: background-color .16s ease; }
 tbody tr.work-progress-row,
 tbody tr.work-progress-row:hover {
-  background-image: linear-gradient(to right, #fecaca 0%, #fecaca var(--work-progress), transparent var(--work-progress), transparent 100%);
+  /* Avance real (azul) y, pegado abajo, el esperado según el plan (verde, o naranja si se aparta 5 puntos o más), a 3/4 del alto. */
+  background-image: linear-gradient(#2563eb, #2563eb), linear-gradient(var(--work-expected-color, #22c55e), var(--work-expected-color, #22c55e));
+  background-size: var(--work-progress) 4px, var(--work-expected) 4px;
+  background-position: 0 75%, 0 calc(75% + 5px);
+  background-repeat: no-repeat;
 }
 tbody tr.work-progress-row .row-actions,
 tbody tr.work-progress-row:hover .row-actions {
@@ -1519,7 +1523,11 @@ tbody tr.price-best:hover { background: #e8f6ef; }
 .receipt-picker label small { color: var(--muted); }
 .receipt-picker .muted { color: var(--muted); font-size: .72rem; }
 .invoice-kpi { text-align: left; cursor: pointer; }
-.work-row-progress { display: grid; place-items: center; min-width: 60px; min-height: 23px; padding: 0 5px; border-radius: 6px; color: #682119; background: linear-gradient(to right, #fda4a4 var(--work-progress), #fff6f6 var(--work-progress)); }
+.work-row-progress { display: grid; gap: 2px; min-width: 70px; white-space: nowrap; }
+.work-row-progress b { color: #1d4ed8; }
+.work-row-progress small { font-size: .6rem; font-weight: 700; }
+.work-row-progress small.on-track { color: #15803d; }
+.work-row-progress small.behind { color: #c2410c; }
 @media (min-width: 721px) { .work-progress-row td[data-label="Estado"] { width: 1%; white-space: nowrap; } }
 .project-media-panel { margin-block: 14px; padding: 16px; }
 .project-photos { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }

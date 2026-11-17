@@ -1,6 +1,6 @@
 # Planificación y mapa de obras
 
-El listado muestra las fechas previstas y reales, la duración en días hábiles y el porcentaje sobre la barra de avance. El presupuesto se conserva para certificación y se muestra en el listado y su exportación a Gerencia o con el permiso **Ver presupuesto de obras**.
+El listado muestra las fechas previstas y reales, la duración en días hábiles y el avance real en una línea azul a lo ancho de la fila y, pegada abajo, la línea del avance esperado según el plan (días hábiles transcurridos desde el inicio previsto sobre la duración prevista), verde o naranja si se aparta 5 puntos o más. El presupuesto se conserva para certificación y se muestra en el listado y su exportación a Gerencia o con el permiso **Ver presupuesto de obras**.
 
 Aplicar el procedimiento de actualización del README con pnpm y recarga de PM2. Antes de actualizar, verificar el dominio con el procedimiento del README y hacer el backup manual documentado. Leaflet se incluye en las dependencias fijadas por el lockfile. El mapa carga las teselas de OpenStreetMap desde el navegador.
 

@@ -89,6 +89,23 @@ const moduleOf: Record<Entity, string> = {
   workers: "PERSONAL", assets: "ACTIVOS", cash: "TESORERÍA", checks: "TESORERÍA", payments: "COMPRAS", cashAccounts: "TESORERÍA",
 };
 
+// La obra va atrasada (o adelantada) cuando su avance se aparta 5 puntos o más del esperado según el plan.
+function workProgressBehind(progress: number | null, expected: number) {
+  return Math.abs((progress ?? 0) - expected) >= 5;
+}
+
+// Dos líneas finas a lo ancho de la fila, a 3/4 de su alto: el avance real en azul y, pegado abajo, el esperado.
+function workRowStyle(item: Item) {
+  const progress = displayedProgress(item);
+  const expected = typeof item.expectedProgress === "number" ? item.expectedProgress : null;
+  const clamp = (value: number) => `${Math.max(0, Math.min(100, value))}%`;
+  return {
+    "--work-progress": clamp(progress ?? 0),
+    "--work-expected": clamp(expected ?? 0),
+    "--work-expected-color": expected !== null && workProgressBehind(progress, expected) ? "#f97316" : "#22c55e",
+  } as CSSProperties;
+}
+
 const feminine = new Set(["factura", "obra", "cotización", "orden", "tarea", "orden de pago", "cuenta", "factura de compra", "caja o cuenta", "solicitud"]);
 
 function itemLabel(item: Item) {
@@ -247,7 +264,11 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
     if (key === "balanceCents" && (entity === "expenses" || entity === "invoices")) return money(Math.max(0, Number(item.amountCents || 0) - Number(item[entity === "expenses" ? "paidCents" : "collectedCents"] || 0)));
     if (entity === "works" && key === "progress") {
       const progress = displayedProgress(item);
-      return progress === null ? "Sin avance" : <span className="work-row-progress" role="meter" aria-label="Avance de la obra" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} style={{ "--work-progress": `${progress}%` } as CSSProperties}><b>{qty(progress)} %</b></span>;
+      const expected = typeof item.expectedProgress === "number" ? item.expectedProgress : null;
+      return <span className="work-row-progress" role="meter" aria-label="Avance de la obra" aria-valuenow={progress ?? 0} aria-valuemin={0} aria-valuemax={100}>
+        {progress === null ? "Sin avance" : <b>{qty(progress)} %</b>}
+        {expected !== null && <small className={workProgressBehind(progress, expected) ? "behind" : "on-track"}>Esperado {qty(expected)} %</small>}
+      </span>;
     }
     if (entity === "works" && key === "durationBusinessDays") return typeof value === "number" ? `${value} d` : "—";
     if (entity === "works" && key === "budgetCents") return value === undefined ? "—" : money(Number(value));
@@ -647,7 +668,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
       const rowTitle = entity === "works" ? "Abrir la obra" : entity === "assets" ? "Ver el mantenimiento" : entity === "tasks" ? "Abrir detalle de la tarea" : entity === "purchases" ? "Abrir la compra: autorización, orden de pago y remitos" : "Abrir para editar";
       // Las tareas se pintan enteras según el estado: de un vistazo se ve qué falta.
       const rowClass = [rowAction ? "clickable-row" : "", entity === "works" ? "work-progress-row" : "", entity === "tasks" ? `task-row ${String(item.status || "pendiente")}` : "", entity === "workers" && item.active === false ? "row-inactive" : ""].filter(Boolean).join(" ");
-      return <tr key={item._id} className={rowClass} style={entity === "works" ? { "--work-progress": `${Math.max(0, Math.min(100, displayedProgress(item) ?? 0))}%` } as CSSProperties : undefined} onClick={rowAction || undefined} onKeyDown={rowAction ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rowAction(); } } : undefined} tabIndex={rowAction ? 0 : undefined} title={rowAction ? rowTitle : undefined}>
+      return <tr key={item._id} className={rowClass} style={entity === "works" ? workRowStyle(item) : undefined} onClick={rowAction || undefined} onKeyDown={rowAction ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); rowAction(); } } : undefined} tabIndex={rowAction ? 0 : undefined} title={rowAction ? rowTitle : undefined}>
         {columns.map(column => <td key={column} data-label={config.columnTitles?.[column] || columnLabels[column] || column}>{inlineStatusEntities.has(entity) && column === "status" && canEdit ? (() => {
           const pending = pendingStatus?.id === item._id ? pendingStatus.status : "";
           return <div className="status-cell" onClick={event => event.stopPropagation()}>

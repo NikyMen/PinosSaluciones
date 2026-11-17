@@ -79,8 +79,15 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     ]);
     if (entity === "works" && items.length) {
       const holidays = await workHolidays();
-      for (const item of items as Array<{ startDate?: Date; endDate?: Date; durationBusinessDays?: number }>) {
-        if (item.startDate && item.endDate) item.durationBusinessDays = businessDaysBetween(item.startDate, item.endDate, holidays);
+      // El avance esperado sale del plan: días hábiles transcurridos desde el inicio previsto sobre la duración prevista.
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+      for (const item of items as Array<{ startDate?: Date; endDate?: Date; durationBusinessDays?: number; expectedProgress?: number; status?: string }>) {
+        if (!item.startDate || !item.endDate) continue;
+        item.durationBusinessDays = businessDaysBetween(item.startDate, item.endDate, holidays);
+        if (!item.durationBusinessDays || item.status === "cancelada") continue;
+        const end = new Date(item.endDate).toISOString().slice(0, 10);
+        const elapsed = businessDaysBetween(item.startDate, today < end ? today : end, holidays);
+        item.expectedProgress = Math.round(Math.min(100, elapsed / item.durationBusinessDays * 100) * 10) / 10;
       }
     }
     // El maestro de cajas muestra el saldo de cada cuenta.
