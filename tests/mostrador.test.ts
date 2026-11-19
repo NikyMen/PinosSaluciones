@@ -90,6 +90,8 @@ describe("ARCA: el documento del comprador", () => {
 
 describe("venta por mostrador", () => {
   it("con Factura X: baja el Salón, factura el remito y lo deja cobrado en un solo paso", async () => {
+    // Ya había un "Consumidor Final" cargado a mano, sin condición de IVA: se usa ése.
+    const existing = await Client.create({ name: "Consumidor Final" });
     const latex = await product("Látex interior 20 L", 5, 2_500_000, "7790001");
     const rodillo = await product("Rodillo 22 cm", 10, 450_000);
     const sale = await call(await post({
@@ -115,8 +117,9 @@ describe("venta por mostrador", () => {
     expect(receipt).toMatchObject({ amountCents: 5_350_000, company: "tvp" });
     expect(String((await mongoose.model("Account").findById(receipt!.accountId).lean<{ name: string }>())?.name)).toBe("CI - VENTA DE MATERIALES");
 
-    // El cliente genérico se crea una vez y se reutiliza.
+    // El cliente genérico no se duplica.
     expect(await Client.countDocuments({ name: "Consumidor Final" })).toBe(1);
+    expect(String(sale.body.sale.clientId)).toBe(String(existing._id));
   });
 
   it("con Factura B a consumidor final: emite en ARCA con su DNI y cobra en dos medios", async () => {

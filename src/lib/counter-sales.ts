@@ -72,9 +72,17 @@ export const counterSaleSchema = z.object({
 });
 export type CounterSaleInput = z.infer<typeof counterSaleSchema>;
 
-/** El cliente genérico de las ventas sin identificar. Se crea la primera vez que se lo necesita. */
+/**
+ * El cliente genérico de las ventas sin identificar: el "Consumidor Final" sin
+ * CUIT que ya esté cargado (aunque no tenga la condición de IVA: sin ella, la B
+ * va igual a consumidor final) o uno nuevo, la primera vez que se lo necesita.
+ */
 export async function consumerClient() {
-  const existing = await Client.findOne({ name: CONSUMER_CLIENT_NAME, vatCondition: "consumidor_final", $or: [{ cuit: { $exists: false } }, { cuit: "" }, { cuit: null }] })
+  const existing = await Client.findOne({
+    name: { $regex: `^\\s*${CONSUMER_CLIENT_NAME}\\s*$`, $options: "i" },
+    vatCondition: { $in: [null, "consumidor_final"] },
+    $or: [{ cuit: { $exists: false } }, { cuit: "" }, { cuit: null }],
+  })
     .sort({ createdAt: 1 }).lean<{ _id: Types.ObjectId; name: string; cuit?: string; vatCondition?: string }>();
   if (existing) return existing;
   const created = await Client.create({ name: CONSUMER_CLIENT_NAME, vatCondition: "consumidor_final", notes: "Cliente de las ventas por Mostrador sin identificar. No borrar." });
