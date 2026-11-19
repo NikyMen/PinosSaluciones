@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { z } from "zod";
-import { Client, Counter, CounterSale } from "./models";
+import { CashAccount, Client, Counter, CounterSale, StockItem } from "./models";
 import { HttpError } from "./api";
 import { audit } from "./audit";
 import { schemas } from "./schemas";
@@ -9,14 +9,14 @@ import { COMPANIES, COMPANY_KEYS, type CompanyKey } from "./companies";
 import { vatConditionFor, type ArcaVoucherType } from "./fiscal";
 import { accountByName } from "./account-service";
 import { DEFAULT_ACCOUNTS } from "./account-catalog";
-import { resolveCashAccount } from "./cash-accounts";
+import { cashAccountServes } from "./cash-account-kinds";
 import { accountTypesFor, cashMethodLabels } from "./cash-methods";
 import { checkVoucherEnabled } from "./voucher-books";
-import { cancelSalesRemito, createSalesRemito } from "./sales-remitos";
+import { cancelSalesRemito, createSalesRemito, SALE_SOURCES } from "./sales-remitos";
 import { createInvoice } from "./invoice-create";
-import { receiptSchema, saveReceipt } from "./receipt-service";
+import { saveReceipt } from "./receipt-service";
 import { invoiceLabel } from "./invoice-labels";
-import { money, todayIso } from "./format";
+import { todayIso } from "./format";
 import { counterTotals } from "./counter-totals";
 import { canWrite, type PermissionSubject } from "./permissions";
 import type { Session } from "./auth";
@@ -51,7 +51,8 @@ export const COUNTER_VOUCHERS = ["factura_b", "factura_a", "factura_x"] as const
 export type CounterVoucher = (typeof COUNTER_VOUCHERS)[number];
 
 const id = z.string().regex(/^[a-f\d]{24}$/i, "ID inválido");
-const paymentLine = receiptSchema.shape.lines.unwrap().element;
+/** Con qué se paga en el mostrador. La caja o cuenta la elige el sistema (defaultCashAccount). */
+export const COUNTER_METHODS = ["efectivo", "transferencia", "tarjeta"] as const;
 
 export const counterSaleSchema = z.object({
   company: z.enum(COMPANY_KEYS).default("tvp"),
@@ -68,7 +69,9 @@ export const counterSaleSchema = z.object({
     unitPriceCents: z.coerce.number().int().min(0),
     discountCents: z.coerce.number().int().min(0).default(0),
   })).min(1, "Agregá al menos un producto").max(100),
-  payments: z.array(paymentLine).min(1, "Elegí con qué paga").max(10),
+  method: z.enum(COUNTER_METHODS, { error: "Elegí con qué paga" }),
+  // De dónde sale: primero el Salón y lo que falte del Galpón ("auto"), o sólo uno de los dos.
+  from: z.enum(SALE_SOURCES).default("auto"),
 });
 export type CounterSaleInput = z.infer<typeof counterSaleSchema>;
 
@@ -87,6 +90,21 @@ export async function consumerClient() {
   if (existing) return existing;
   const created = await Client.create({ name: CONSUMER_CLIENT_NAME, vatCondition: "consumidor_final", notes: "Cliente de las ventas por Mostrador sin identificar. No borrar." });
   return created.toObject() as { _id: Types.ObjectId; name: string; cuit?: string; vatCondition?: string };
+}
+
+/**
+ * La caja o cuenta donde entra lo cobrado en el mostrador: la primera activa de
+ * la empresa (o compartida) que sirve para ese medio, por código. El efectivo va
+ * a una caja; la transferencia, a un banco; la tarjeta, a una cuenta de tarjeta.
+ */
+export async function defaultCashAccount(method: (typeof COUNTER_METHODS)[number], company: CompanyKey) {
+  const types = accountTypesFor(method, "cobro") || ["caja", "otra"];
+  const accounts = await CashAccount.find({ type: { $in: types }, active: { $ne: false } }).sort({ code: 1, createdAt: 1 }).lean<Array<{ _id: Types.ObjectId; name: string; company?: string; type?: string }>>();
+  // Primero las del tipo propio del medio; "otra" sólo si no hay ninguna.
+  const usable = accounts.filter(account => cashAccountServes(account.company, company));
+  const chosen = usable.find(account => account.type !== "otra") || usable[0];
+  if (!chosen) throw new HttpError(`Falta una cuenta para cobrar con ${cashMethodLabels[method].toLowerCase()} de ${COMPANIES[company].short}: dala de alta en Tesorería › Cajas y cuentas bancarias`);
+  return chosen;
 }
 
 async function nextCounterSaleNumber() {
@@ -113,8 +131,6 @@ export async function registerCounterSale(input: CounterSaleInput, session: Sess
   for (const line of input.lines) if (line.discountCents > Math.round(line.quantity * line.unitPriceCents)) throw new HttpError("Un descuento pasa el importe de su renglón");
   const totals = counterTotals(input.voucherType, input.lines);
   if (totals.netCents <= 0) throw new HttpError("La venta no tiene importe: revisá los precios");
-  const paid = input.payments.reduce((total, line) => total + line.amountCents, 0);
-  if (paid !== totals.amountCents) throw new HttpError(`Lo cobrado (${money(paid)}) tiene que dar el total de la venta (${money(totals.amountCents)})`);
 
   // El comprobante: habilitado en la empresa y, si es fiscal, con ARCA conectada y el comprador que corresponde.
   await checkVoucherEnabled(company, "venta", input.voucherType);
@@ -122,22 +138,17 @@ export async function registerCounterSale(input: CounterSaleInput, session: Sess
     if (!arcaCredentials(company)) throw new HttpError(`${COMPANIES[company].short} no está conectada con ARCA: vendé con Factura X o pedí que se cargue su certificado`);
     checkReceiver({ voucherType: input.voucherType as ArcaVoucherType, vatCondition: vatConditionFor(input.voucherType, client.vatCondition), clientCuit: String(client.cuit || ""), buyerDocument, amountCents: totals.amountCents });
   }
-  // La cuenta del plan del cobro y las cajas de cada medio.
+  // La cuenta del plan del cobro y la caja o cuenta donde entra, según el medio.
   const ledger = await accountByName(DEFAULT_ACCOUNTS.materialSale);
   if (!ledger) throw new HttpError(`Falta la cuenta "${DEFAULT_ACCOUNTS.materialSale}" en el plan de cuentas`);
-  for (const line of input.payments) {
-    const label = cashMethodLabels[line.method].toLowerCase();
-    if (!line.cashAccountId) throw new HttpError(`Elegí la caja o cuenta donde entra la ${label}`);
-    const account = await resolveCashAccount(line.cashAccountId, { company });
-    const types = accountTypesFor(line.method, "cobro");
-    if (account && types && !types.includes(account.type as never)) throw new HttpError(`${account.name} no sirve para cobrar con ${label}`);
-  }
+  const cashAccount = await defaultCashAccount(input.method, company);
+  const payments = [{ method: input.method, cashAccountId: String(cashAccount._id), amountCents: totals.amountCents }];
 
   const number = await nextCounterSaleNumber();
   const note = [`Mostrador ${number}`, buyerName && `Compró ${buyerName}`, input.note].filter(Boolean).join(" · ");
 
-  // 1. El remito baja el stock del Salón. Si algo no alcanza, no sale nada.
-  const { remito, changed } = await createSalesRemito({ company, clientId: String(client._id), quoteId: undefined, date: new Date(`${date}T00:00:00.000Z`), note, lines: input.lines }, session);
+  // 1. El remito baja el stock (primero el Salón y lo que falte del Galpón, salvo que se elija uno). Si algo no alcanza, no sale nada.
+  const { remito, changed } = await createSalesRemito({ company, clientId: String(client._id), quoteId: undefined, date: new Date(`${date}T00:00:00.000Z`), note, lines: input.lines, from: input.from }, session);
   await audit(session, "create", "sales_remitos", remito._id, null, remito, ip);
   for (const entry of changed) await audit(session, "stock_venta", "stock", entry.item._id, entry.before, entry.after, ip);
 
@@ -164,7 +175,7 @@ export async function registerCounterSale(input: CounterSaleInput, session: Sess
   try {
     receipt = await saveReceipt({
       clientId: String(client._id), date: new Date(`${date}T00:00:00.000Z`), company, accountId: String(ledger._id),
-      lines: input.payments, allocations: [{ invoiceId: String(invoice._id), amountCents: Number(invoice.amountCents || 0) }],
+      lines: payments, allocations: [{ invoiceId: String(invoice._id), amountCents: Number(invoice.amountCents || 0) }],
       notes: `Venta por mostrador ${number}${buyerName ? ` · ${buyerName}` : ""}`,
     }, session) as Record<string, unknown>;
     await audit(session, "create", "collections", receipt._id, null, receipt, ip);
@@ -179,7 +190,7 @@ export async function registerCounterSale(input: CounterSaleInput, session: Sess
     collectionId: receipt?._id, receiptNumber: receipt?.number,
     lines: (remito.lines as Array<Record<string, unknown>>).map(line => {
       const item = changed.find(entry => String(entry.item._id) === String(line.stockItemId))?.item as { sku?: string; barcode?: string } | undefined;
-      return { stockItemId: line.stockItemId, name: line.name, sku: item?.sku, barcode: item?.barcode, unit: line.unit, quantity: line.quantity, unitPriceCents: line.unitPriceCents, discountCents: line.discountCents, totalCents: line.totalCents };
+      return { stockItemId: line.stockItemId, name: line.name, sku: item?.sku, barcode: item?.barcode, unit: line.unit, quantity: line.quantity, warehouse: line.warehouse, unitPriceCents: line.unitPriceCents, discountCents: line.discountCents, totalCents: line.totalCents };
     }),
     netCents: Number(invoice.netCents || 0), vatPct: Number(invoice.vatPct || 0), vatCents: Number(invoice.vatCents || 0), amountCents: Number(invoice.amountCents || 0),
     payments: receipt ? (receipt.lines as Array<Record<string, unknown>>).map(line => ({ method: line.method, account: line.account, amountCents: line.amountCents })) : [],
@@ -213,4 +224,23 @@ export async function counterDay(day: string) {
       byVoucher: [...byVoucher].map(([voucherType, amountCents]) => ({ voucherType, amountCents })),
     },
   };
+}
+
+/**
+ * El catálogo del mostrador: los productos con existencia en el Salón o en el
+ * Galpón (según de dónde se vende), ordenados por nombre. La búsqueda filtra
+ * por cada palabra en el nombre, el código interno o el código de barras.
+ */
+export async function counterCatalog(search: string, from: (typeof SALE_SOURCES)[number] = "auto", limit = 60) {
+  const words = search.trim().split(/\s+/).filter(Boolean).slice(0, 6).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const byWords = words.map(word => ({ $or: [{ name: { $regex: word, $options: "i" } }, { sku: { $regex: word, $options: "i" } }, { barcode: { $regex: word, $options: "i" } }] }));
+  // Los materiales de antes, sin depósitos separados, tienen todo en el Galpón.
+  const legacy = { qty_central: { $exists: false }, qty_salon: { $exists: false }, quantity: { $gt: 0 } };
+  const inStock = from === "salon" ? [{ qty_salon: { $gt: 0 } }] : from === "central" ? [{ qty_central: { $gt: 0 } }, legacy] : [{ qty_salon: { $gt: 0 } }, { qty_central: { $gt: 0 } }, legacy];
+  const filter = { $and: [{ active: { $ne: false } }, { $or: inStock }, ...byWords] };
+  const [items, total] = await Promise.all([
+    StockItem.find(filter, { name: 1, unit: 1, sku: 1, barcode: 1, category: 1, salePriceCents: 1, quantity: 1, qty_salon: 1, qty_central: 1 }).collation({ locale: "es", strength: 1 }).sort({ name: 1 }).limit(limit).lean(),
+    StockItem.countDocuments(filter),
+  ]);
+  return { items, total };
 }

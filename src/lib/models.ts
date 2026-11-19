@@ -579,6 +579,8 @@ const SalesRemitoSchema = new Schema({
     _id: false,
     stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true },
     name: String, unit: String, quantity: Number,
+    // De qué depósito salió el renglón (el Mostrador vende también del Galpón). Sin dato, el Salón.
+    warehouse: { type: String, enum: WAREHOUSE_KEYS },
     // `discountCents`: el descuento o la bonificación en pesos del renglón; totalCents ya viene con él restado.
     unitPriceCents: { type: Number, min: 0, default: 0 }, discountCents: { type: Number, min: 0 }, totalCents: { type: Number, min: 0, default: 0 },
     unitCostCents: Number, ownerParts: { type: [OwnerPartSchema], default: undefined },
@@ -662,6 +664,7 @@ const CounterSaleSchema = new Schema({
     stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" },
     name: String, sku: String, barcode: String, unit: String, quantity: Number,
     unitPriceCents: Number, discountCents: Number, totalCents: Number,
+    warehouse: { type: String, enum: WAREHOUSE_KEYS },
   }],
   netCents: { type: Number, default: 0 }, vatPct: Number, vatCents: { type: Number, default: 0 }, amountCents: { type: Number, default: 0 },
   payments: [{ _id: false, method: String, account: String, amountCents: Number }],

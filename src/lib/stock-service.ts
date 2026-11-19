@@ -19,9 +19,10 @@ import type { Session } from "./auth";
  *   remito por depósito. No es una venta: no hay factura.
  * - transferencia: sale del depósito de origen y queda en tránsito; con la
  *   recepción entra al de destino. No mueve plata ni cambia el costo.
- * - venta: el remito al cliente, desde el Salón de Ventas. La factura después
+ * - venta: el remito al cliente, desde el Salón de Ventas (el Mostrador también vende
+ *   lo del Galpón). La factura después
  *   lo referencia y no vuelve a descontar.
- * - devolución: el cliente devuelve; vuelve al Salón.
+ * - devolución: el cliente devuelve; vuelve al Salón (o al depósito de donde salió, si se anula el remito).
  * - ajuste: fija lo que se contó en un depósito.
  *
  * El stock físico no queda negativo nunca: si no alcanza, no se mueve.
@@ -43,8 +44,9 @@ export type MovementInput =
   | Common & { kind: "egreso"; workId: string; parts: Array<{ warehouse: WarehouseKey; quantity: number }>; reference?: string; ticket?: string; remitos?: Partial<Record<WarehouseKey, string>>; salesRemitoId?: string }
   | Common & { kind: "transferencia"; from: WarehouseKey; to: WarehouseKey; quantity: number; remito?: string; transferId?: string; owner?: OwnerKey }
   | Common & { kind: "recepcion"; from: WarehouseKey; to: WarehouseKey; sentQty: number; receivedQty: number; damagedQty?: number; ownerParts?: OwnerPart[]; remito?: string; transferId?: string }
-  | Common & { kind: "venta"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; workId?: string; owner?: OwnerKey }
-  | Common & { kind: "devolucion"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; ownerParts?: OwnerPart[] }
+  // La venta sale del Salón de Ventas; desde el Mostrador también puede salir del Galpón (`warehouse`).
+  | Common & { kind: "venta"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; workId?: string; owner?: OwnerKey; warehouse?: WarehouseKey }
+  | Common & { kind: "devolucion"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; ownerParts?: OwnerPart[]; warehouse?: WarehouseKey }
   | Common & { kind: "ajuste"; warehouse: WarehouseKey; quantity: number; owner?: CompanyKey }
   | Common & { kind: "envio"; warehouse: WarehouseKey; quantity: number; remito: string; shipmentId: string; destinationLabel: string; workId?: string; owner?: CompanyKey }
   | Common & { kind: "envio_anulado"; warehouse: WarehouseKey; quantity: number; remito: string; shipmentId: string; ownerParts?: OwnerPart[] };
@@ -165,19 +167,22 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
   }
 
   if (input.kind === "venta") {
-    // Punto 6.2: la salida al cliente se documenta con remito emitido desde el Salón de Ventas.
-    ensureAvailable(item, levels, "salon", input.quantity);
-    levels.salon = round(levels.salon - input.quantity);
-    const ownerParts = takeOwners(owners, "salon", input.quantity, input.owner);
-    created.push({ kind: "venta", quantity: input.quantity, warehouse: "salon", remito: input.remito, clientId: input.clientId, workId: input.workId, salesRemitoId: input.salesRemitoId, ownerParts, destinationLabel: input.destinationLabel,
+    // Punto 6.2: la salida al cliente se documenta con remito emitido desde el Salón de Ventas
+    // (o desde el Galpón, si el Mostrador vende lo que está ahí).
+    const from: WarehouseKey = input.warehouse || "salon";
+    ensureAvailable(item, levels, from, input.quantity);
+    levels[from] = round(levels[from] - input.quantity);
+    const ownerParts = takeOwners(owners, from, input.quantity, input.owner);
+    created.push({ kind: "venta", quantity: input.quantity, warehouse: from, remito: input.remito, clientId: input.clientId, workId: input.workId, salesRemitoId: input.salesRemitoId, ownerParts, destinationLabel: input.destinationLabel,
       unitCostCents: item.avgCostCents, totalCents: Math.round(input.quantity * item.avgCostCents), reference: input.remito, note: input.note, ...who });
   }
 
   if (input.kind === "devolucion") {
-    levels.salon = round(levels.salon + input.quantity);
+    const into: WarehouseKey = input.warehouse || "salon";
+    levels[into] = round(levels[into] + input.quantity);
     const parts = input.ownerParts?.length ? input.ownerParts : [{ owner: "sin_asignar" as OwnerKey, quantity: input.quantity }];
-    addOwners(owners, "salon", parts);
-    created.push({ kind: "devolucion", quantity: input.quantity, warehouse: "salon", remito: input.remito, clientId: input.clientId, salesRemitoId: input.salesRemitoId, ownerParts: parts, destinationLabel: input.destinationLabel, reference: input.remito, note: input.note, ...who });
+    addOwners(owners, into, parts);
+    created.push({ kind: "devolucion", quantity: input.quantity, warehouse: into, remito: input.remito, clientId: input.clientId, salesRemitoId: input.salesRemitoId, ownerParts: parts, destinationLabel: input.destinationLabel, reference: input.remito, note: input.note, ...who });
   }
 
   if (input.kind === "envio") {

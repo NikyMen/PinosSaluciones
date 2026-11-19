@@ -8,6 +8,7 @@ import { companyOf } from "./companies";
 import { VOID_INVOICE_STATUSES } from "./invoice-labels";
 import type { OwnerPart } from "./stock-owners";
 import { invoicedQtyOf, lineNetCents, pendingQtyOf, remitoBillingStatus, type RemitoInvoiceLine, type RemitoLineLike } from "./remito-billing";
+import { warehouseLabel, type WarehouseKey } from "./warehouses";
 import type { Session } from "./auth";
 
 /*
@@ -32,6 +33,8 @@ export const salesRemitoSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Poné la fecha").transform(value => new Date(`${value}T00:00:00.000Z`)),
   note: z.string().trim().max(1000).optional().default(""),
   lines: z.array(z.object({ itemId: id, quantity: z.coerce.number().positive("Cada cantidad tiene que ser mayor a cero"), unitPriceCents: z.coerce.number().int().min(0).default(0), discountCents: z.coerce.number().int().min(0).default(0) })).min(1, "Agregá al menos un material").max(100),
+  // De dónde sale: el Salón (por defecto), el Galpón o "auto" (primero el Salón). Ver saleParts.
+  from: z.enum(["salon", "central", "auto"]).optional(),
 }).refine(data => data.workId ? Boolean(data.receiverName) : Boolean(data.clientId), "Elegí el destino y completá el nombre de quien recibe en obra");
 export type SalesRemitoInput = z.infer<typeof salesRemitoSchema>;
 
@@ -43,7 +46,24 @@ export const returnSchema = z.object({
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
-/** Emite el remito de salida al cliente desde el Salón. Si un material no alcanza, no sale ninguno. */
+/** De dónde sale una venta: el Salón (como siempre), el Galpón, o primero el Salón y lo que falte del Galpón. */
+export const SALE_SOURCES = ["salon", "central", "auto"] as const;
+export type SaleSource = (typeof SALE_SOURCES)[number];
+
+/** Cómo sale una cantidad según el origen elegido: lo que toca de cada depósito y lo que falta. */
+export function saleParts(levels: Record<WarehouseKey, number>, quantity: number, from: SaleSource) {
+  if (from !== "auto") return { parts: [{ warehouse: from as WarehouseKey, quantity }], missing: round(Math.max(0, quantity - levels[from])) };
+  const fromSalon = round(Math.min(Math.max(0, levels.salon), quantity));
+  const fromCentral = round(Math.min(Math.max(0, levels.central), quantity - fromSalon));
+  const parts = [{ warehouse: "salon" as WarehouseKey, quantity: fromSalon }, { warehouse: "central" as WarehouseKey, quantity: fromCentral }].filter(part => part.quantity > 0);
+  return { parts, missing: round(quantity - fromSalon - fromCentral) };
+}
+
+/**
+ * Emite el remito de salida al cliente. Sale del Salón; el Mostrador también
+ * vende lo del Galpón (`from`). Un material que sale de los dos depósitos queda
+ * en dos renglones, uno por depósito. Si un material no alcanza, no sale ninguno.
+ */
 export async function createSalesRemito(input: SalesRemitoInput, session: Session) {
   const work = input.workId ? await Work.findById(input.workId).select("clientId code name status").lean<Lean>() : null;
   if (input.workId && (!work || !work.clientId || ["cerrada", "cancelada"].includes(String(work.status)))) throw new HttpError("Elegí una obra vigente con cliente");
@@ -51,6 +71,8 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
   const client = clientId ? await Client.findById(clientId).select("name").lean<{ name?: string }>() : null;
   if (!client) throw new HttpError("Elegí el cliente");
   const destinationLabel = work ? [work.code, work.name].filter(Boolean).join(" · ") : client.name;
+  // A una obra sale siempre del Salón, como salida a obra.
+  const from: SaleSource = work ? "salon" : input.from || "salon";
   const merged = new Map<string, { itemId: string; quantity: number; unitPriceCents: number; discountCents: number }>();
   for (const entry of input.lines) {
     const line = work ? { ...entry, unitPriceCents: 0, discountCents: 0 } : entry;
@@ -61,29 +83,45 @@ export async function createSalesRemito(input: SalesRemitoInput, session: Sessio
   const docs = await StockItem.find({ _id: { $in: lines.map(line => line.itemId) } }) as unknown as ItemDoc[];
   const byId = new Map(docs.map(doc => [String(doc._id), doc]));
   const short: string[] = [];
+  const plan = new Map<string, Array<{ warehouse: WarehouseKey; quantity: number }>>();
   for (const line of lines) {
     const item = byId.get(line.itemId);
     if (!item) throw new StockError("Uno de los materiales ya no está en el stock");
-    const salon = levelsOf(item as unknown as Record<string, unknown>).salon;
-    if (line.quantity > salon + 1e-9) short.push(`${item.name}: en el Salón hay ${salon} ${item.unit}`);
+    const levels = levelsOf(item as unknown as Record<string, unknown>);
+    const split = saleParts(levels, line.quantity, from);
+    if (split.missing > 0) short.push(from === "auto" ? `${item.name}: entre el Salón y el Galpón hay ${round(levels.salon + levels.central)} ${item.unit}` : `${item.name}: en el ${warehouseLabel(from)} hay ${levels[from]} ${item.unit}`);
+    plan.set(line.itemId, split.parts);
     if (line.discountCents > Math.round(line.quantity * line.unitPriceCents)) throw new HttpError(`El descuento de ${item.name} pasa el importe del renglón`);
   }
-  if (short.length) throw new StockError(`No alcanza el stock del Salón de Ventas (si está en el Galpón, primero hay que transferirlo). ${short.join(" · ")}`);
+  if (short.length) {
+    const where = from === "auto" ? "No alcanza el stock" : from === "salon" ? "No alcanza el stock del Salón de Ventas (si está en el Galpón, primero hay que transferirlo)" : "No alcanza el stock del Galpón";
+    throw new StockError(`${where}. ${short.join(" · ")}`);
+  }
 
+  const used = new Set([...plan.values()].flat().map(part => part.warehouse));
   const number = await nextRemitoNumber();
-  const remito = await SalesRemito.create({ number, kind: "salida", company: input.company, clientId, quoteId: work ? undefined : input.quoteId, workId: work?._id, receiverName: work ? input.receiverName : undefined, status: work ? "entregado" : "pendiente", date: input.date, warehouse: "salon", note: input.note, userId: session.userId, userName: session.name, lines: [] });
+  const remito = await SalesRemito.create({ number, kind: "salida", company: input.company, clientId, quoteId: work ? undefined : input.quoteId, workId: work?._id, receiverName: work ? input.receiverName : undefined, status: work ? "entregado" : "pendiente", date: input.date, warehouse: used.size === 1 ? [...used][0] : "salon", note: input.note, userId: session.userId, userName: session.name, lines: [] });
   const remitoLines: Array<Record<string, unknown>> = [];
   const changed: Array<{ item: ItemDoc; before: Record<string, unknown>; after: Record<string, unknown> }> = [];
   for (const line of lines) {
     const item = byId.get(line.itemId)!;
     const before = item.toObject();
-    // A una obra es consumo, no venta: sale del Salón como salida a obra (cuenta en la obra y en su cotización).
-    const result = work
-      ? await applyStockMovement(item, { kind: "egreso", workId: String(work._id), parts: [{ warehouse: "salon", quantity: line.quantity }], remitos: { salon: number }, salesRemitoId: String(remito._id), reference: number, note: input.note || `Recibió ${input.receiverName}`, date: input.date }, session)
-      : await applyStockMovement(item, { kind: "venta", quantity: line.quantity, clientId, remito: number, salesRemitoId: String(remito._id), destinationLabel, owner: input.company, note: input.note, date: input.date }, session);
-    const movement = result.movements[0] as { ownerParts?: OwnerPart[]; unitCostCents?: number };
-    remitoLines.push({ stockItemId: item._id, name: item.name, unit: item.unit, quantity: line.quantity, unitPriceCents: line.unitPriceCents, discountCents: line.discountCents || undefined, totalCents: Math.max(0, Math.round(line.quantity * line.unitPriceCents) - line.discountCents), unitCostCents: movement.unitCostCents, ownerParts: movement.ownerParts });
-    changed.push({ item, before, after: result.item });
+    const parts = plan.get(line.itemId)!;
+    let after: Record<string, unknown> = before;
+    let discountLeft = line.discountCents;
+    for (const [index, part] of parts.entries()) {
+      // El descuento se reparte entre los depósitos según la cantidad; el último se lleva el resto.
+      const discountCents = index === parts.length - 1 ? discountLeft : Math.round(line.discountCents * part.quantity / line.quantity);
+      discountLeft -= discountCents;
+      // A una obra es consumo, no venta: sale del Salón como salida a obra (cuenta en la obra y en su cotización).
+      const result = work
+        ? await applyStockMovement(item, { kind: "egreso", workId: String(work._id), parts: [{ warehouse: "salon", quantity: part.quantity }], remitos: { salon: number }, salesRemitoId: String(remito._id), reference: number, note: input.note || `Recibió ${input.receiverName}`, date: input.date }, session)
+        : await applyStockMovement(item, { kind: "venta", warehouse: part.warehouse, quantity: part.quantity, clientId, remito: number, salesRemitoId: String(remito._id), destinationLabel, owner: input.company, note: input.note, date: input.date }, session);
+      const movement = result.movements[0] as { ownerParts?: OwnerPart[]; unitCostCents?: number };
+      remitoLines.push({ stockItemId: item._id, name: item.name, unit: item.unit, quantity: part.quantity, warehouse: part.warehouse, unitPriceCents: line.unitPriceCents, discountCents: discountCents || undefined, totalCents: Math.max(0, Math.round(part.quantity * line.unitPriceCents) - discountCents), unitCostCents: movement.unitCostCents, ownerParts: movement.ownerParts });
+      after = result.item;
+    }
+    changed.push({ item, before, after });
   }
   remito.set("lines", remitoLines);
   remito.totalCents = remitoLines.reduce((total, line) => total + Number(line.totalCents || 0), 0);
@@ -136,10 +174,10 @@ export async function cancelSalesRemito(remitoId: string, reason: string, sessio
   if (await SalesRemito.exists({ returnsId: remito._id, status: { $ne: "anulado" } })) throw new HttpError("El remito tiene devoluciones cargadas: no se anula");
   const claimed = await SalesRemito.updateOne({ _id: remito._id, status: remito.status }, { $set: { status: "anulado", note: [remito.note, `Anulado por ${session.name}: ${reason}`].filter(Boolean).join(" · ") } });
   if (!claimed.modifiedCount) throw new HttpError("El remito ya cambió de estado");
-  for (const line of remito.lines as Array<{ stockItemId: Types.ObjectId; quantity: number; ownerParts?: OwnerPart[] }>) {
+  for (const line of remito.lines as Array<{ stockItemId: Types.ObjectId; quantity: number; warehouse?: WarehouseKey; ownerParts?: OwnerPart[] }>) {
     const item = await StockItem.findById(line.stockItemId) as unknown as ItemDoc | null;
     if (!item) continue;
-    await applyStockMovement(item, { kind: "devolucion", quantity: line.quantity, clientId: String(remito.clientId), remito: remito.number, salesRemitoId: String(remito._id), ownerParts: line.ownerParts, note: `Remito ${remito.number} anulado: ${reason}` }, session);
+    await applyStockMovement(item, { kind: "devolucion", quantity: line.quantity, clientId: String(remito.clientId), remito: remito.number, salesRemitoId: String(remito._id), ownerParts: line.ownerParts, warehouse: remito.workId ? undefined : line.warehouse, note: `Remito ${remito.number} anulado: ${reason}` }, session);
   }
   // La entrega a obra había cargado el costo del material en la obra: se anula con el remito.
   if (remito.workId) await Expense.updateMany({ workId: remito.workId, number: remito.number, category: "materiales", voucherType: { $in: [null, ""] }, status: "pendiente" }, { $set: { status: "anulado" } });

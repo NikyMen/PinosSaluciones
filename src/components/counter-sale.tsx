@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Check, FileDown, Minus, Plus, Printer, ReceiptText, ScanBarcode, Search, Store, Trash2, TriangleAlert, UserPlus, X } from "lucide-react";
+import { Banknote, Camera, Check, CreditCard, FileDown, Landmark, Minus, Plus, Printer, ReceiptText, ScanBarcode, Store, Trash2, TriangleAlert, UserPlus, X } from "lucide-react";
 import Link from "next/link";
 import { DateInput, SearchSelect, type Option } from "@/components/fields";
 import { CameraScanner, scanFeedback, useKeyboardScanner } from "@/components/barcode-scanner";
-import { CashLinesEditor, lineProblem, linesCents, linesPayload, newLine, type EditableLine } from "@/components/cash-lines-editor";
 import { amountToInput, dateTime, money, parseAmount, qty, todayIso } from "@/lib/format";
 import { levelsOf } from "@/lib/stock-levels";
 import { COMPANIES, COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
@@ -19,12 +18,13 @@ import { downloadSaleInvoicePdf } from "@/lib/invoice-pdf";
 import { downloadFiscalInvoicePdf, fiscalInvoicePdfData } from "@/lib/fiscal-invoice-pdf";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Mostrador: la venta al público del Salón de Ventas, en un solo paso.
+   Mostrador: la venta al público, en un solo paso.
 
-   Se escanean (lector o cámara) o se buscan los productos, se elige el
-   comprobante y con qué paga, y al cobrar el servidor hace el remito (baja el
-   stock del Salón), la factura (B o A en ARCA, o X) y el recibo. Sin cliente
-   elegido es un consumidor final; puede dar su nombre y DNI.
+   Los productos con stock se ven en una lista que se filtra con cada letra
+   (o se escanean con el lector o la cámara). Se elige el comprobante y con qué
+   paga, y al cobrar el servidor hace el remito (baja el stock: primero el Salón
+   y lo que falte del Galpón), la factura (B o A en ARCA, o X) y el recibo, en la
+   caja o cuenta que corresponde al medio. Sin cliente elegido, consumidor final.
    Ver src/lib/counter-sales.ts.
    ───────────────────────────────────────────────────────────────────────────── */
 
@@ -35,38 +35,55 @@ type Sale = SaleTicketData & { _id: string; voucherType: string; status: string;
 type Day = { day: string; items: Sale[]; summary: { count: number; totalCents: number; pendingCents: number; byMethod: Array<{ method: string; label: string; amountCents: number }>; byVoucher: Array<{ voucherType: string; amountCents: number }> } };
 
 const VOUCHERS = [
-  { key: "factura_b", label: "Factura B", hint: "Consumidor final o exento" },
-  { key: "factura_a", label: "Factura A", hint: "Responsable inscripto o monotributo" },
-  { key: "factura_x", label: "Factura X", hint: "Interna, sin IVA" },
+  { key: "factura_b", label: "Factura B" },
+  { key: "factura_a", label: "Factura A" },
+  { key: "factura_x", label: "Factura X" },
 ] as const;
 type Voucher = (typeof VOUCHERS)[number]["key"];
 const voucherName = (key: string) => VOUCHERS.find(voucher => voucher.key === key)?.label || key;
 /** La letra que le toca al cliente: A al inscripto y al monotributista, B al resto. */
 const letterFor = (condition?: string): Voucher => condition === "responsable_inscripto" || condition === "monotributo" ? "factura_a" : "factura_b";
 
+const METHODS = [
+  { key: "efectivo", label: "Efectivo", icon: Banknote },
+  { key: "transferencia", label: "Transferencia", icon: Landmark },
+  { key: "tarjeta", label: "Tarjeta", icon: CreditCard },
+] as const;
+type Method = (typeof METHODS)[number]["key"];
+
+const SOURCES = [
+  { key: "auto", label: "Salón y Galpón", hint: "Primero del Salón y lo que falte del Galpón." },
+  { key: "salon", label: "Salón", hint: "Todo sale del Salón de Ventas." },
+  { key: "central", label: "Galpón", hint: "Todo sale del Galpón." },
+] as const;
+type Source = (typeof SOURCES)[number]["key"];
+
 const round = (value: number) => Math.round(value * 1000) / 1000;
 const toNumber = (value: string) => Number(value.replace(",", ".")) || 0;
 const onlyAmount = (value: string) => value.replace(/[^\d,.]/g, "");
 const codeOf = (item: Product) => item.barcode || item.sku || "";
-const salonOf = (item: Product) => levelsOf(item as Record<string, unknown>).salon;
 const methodLabel = (method: string) => cashMethodLabels[method] || method;
+/** Lo que se puede vender de un producto según de dónde sale. */
+function availableOf(item: Product, from: Source) {
+  const levels = levelsOf(item as Record<string, unknown>);
+  return { ...levels, available: from === "auto" ? round(levels.salon + levels.central) : levels[from] };
+}
 
 export function CounterSale({ canSell }: { canSell: boolean }) {
   const [lines, setLines] = useState<Line[]>([]);
-  const [scanText, setScanText] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const [catalog, setCatalog] = useState<{ items: Product[]; total: number } | null>(null);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [catalogVersion, setCatalogVersion] = useState(0);
   const [flash, setFlash] = useState<{ text: string; ok: boolean } | null>(null);
-  const [results, setResults] = useState<Product[] | null>(null);
   const [camera, setCamera] = useState(false);
   const [company, setCompany] = useState<CompanyKey>("tvp");
   const [voucher, setVoucher] = useState<Voucher>("factura_b");
+  const [from, setFrom] = useState<Source>("auto");
+  const [method, setMethod] = useState<Method>("efectivo");
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [clientId, setClientId] = useState("");
-  const [buyerName, setBuyerName] = useState("");
-  const [buyerDocument, setBuyerDocument] = useState("");
   const [creatingClient, setCreatingClient] = useState(false);
-  // El primer medio con clave fija: se arma igual en el servidor y en el navegador (newLine numera al vuelo).
-  const [payments, setPayments] = useState<EditableLine[]>(() => [newLine("efectivo", 0, { key: 0 })]);
   const [cashGiven, setCashGiven] = useState("");
   const [note, setNote] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -76,8 +93,9 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
   const [day, setDay] = useState(todayIso());
   const [dayData, setDayData] = useState<Day | null>(null);
   const [printer, setPrinter] = useState<PrinterSettings>({ width: 80, autoPrint: false });
-  const scanRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const flashTimer = useRef(0);
+  const catalogRequest = useRef(0);
 
   const loadDay = useCallback(async (value: string) => {
     const response = await fetch(`/api/mostrador?day=${value}`).catch(() => null);
@@ -89,9 +107,23 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     const timer = window.setTimeout(() => { setPrinter(readPrinterSettings()); void loadDay(todayIso()); }, 0);
     // Sin permiso para ver clientes, se vende igual a consumidor final.
     void fetchAllRecords("clients").then(rows => setClients((rows as ClientRow[]).filter(row => (row as Record<string, unknown>).active !== false))).catch(() => setClients([]));
-    if (window.matchMedia("(pointer: fine)").matches) scanRef.current?.focus();
+    if (window.matchMedia("(pointer: fine)").matches) searchRef.current?.focus();
     return () => window.clearTimeout(timer);
   }, [loadDay]);
+
+  // La lista de productos se filtra mientras se escribe: sin Enter, con cada letra.
+  useEffect(() => {
+    const request = ++catalogRequest.current;
+    const timer = window.setTimeout(() => {
+      setLoadingCatalog(true);
+      void fetch(`/api/mostrador/productos?from=${from}&search=${encodeURIComponent(query.trim())}`)
+        .then(response => response.ok ? response.json() : { items: [], total: 0 })
+        .then(result => { if (request === catalogRequest.current) setCatalog(result as { items: Product[]; total: number }); })
+        .catch(() => { if (request === catalogRequest.current) setCatalog({ items: [], total: 0 }); })
+        .finally(() => { if (request === catalogRequest.current) setLoadingCatalog(false); });
+    }, query ? 180 : 0);
+    return () => window.clearTimeout(timer);
+  }, [query, from, catalogVersion]);
 
   const client = clients.find(row => row._id === clientId) || null;
   const clientOptions: Option[] = useMemo(() => clients.map(row => ({ value: row._id, label: row.name, hint: [row.code && `N° ${row.code}`, row.cuit].filter(Boolean).join(" · ") || undefined })), [clients]);
@@ -114,43 +146,36 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     say(`${item.name}: +${qty(amount)} ${item.unit}${item.salePriceCents ? "" : " · no tiene precio de venta: cargalo"}`, Boolean(item.salePriceCents));
   }, []);
 
-  const searchByName = useCallback(async (query: string) => {
-    const response = await fetch(`/api/records/stock?limit=12&search=${encodeURIComponent(query)}`).catch(() => null);
-    const rows = response?.ok ? ((await response.json()).items || []) as Product[] : [];
-    setResults(rows);
-    return rows;
-  }, []);
-
+  /** Lo que leyó el lector o la cámara: se busca el código y se suma. */
   const handleCode = useCallback(async (raw: string) => {
     const text = cleanScannedCode(raw);
-    if (!text) return;
-    setError(""); setResults(null);
+    if (!text) return false;
+    setError("");
     const inList = lines.find(line => [line.item.barcode, line.item.sku].some(code => code && code.toLowerCase() === text.toLowerCase()));
-    if (inList) { scanFeedback(true); addItem(inList.item); return; }
-    setBusy(true);
-    try {
-      if (!/\s/.test(text)) {
-        const response = await fetch(`/api/stock/scan?code=${encodeURIComponent(text)}`);
-        if (response.ok) { scanFeedback(true); addItem((await response.json()).item as Product); return; }
-        if (response.status !== 404) { const result = await response.json().catch(() => ({})); throw new Error(result.error || "No se pudo buscar el código"); }
-      }
-      const found = await searchByName(text);
-      scanFeedback(false);
-      if (!found.length) say(`No hay productos que coincidan con "${text}"`, false);
-    } catch (problem) {
-      setError(problem instanceof Error ? problem.message : "No se pudo buscar el código");
-    } finally { setBusy(false); }
-  }, [lines, addItem, searchByName]);
+    if (inList) { scanFeedback(true); addItem(inList.item); return true; }
+    if (/\s/.test(text)) return false;
+    const response = await fetch(`/api/stock/scan?code=${encodeURIComponent(text)}`).catch(() => null);
+    if (response?.ok) { scanFeedback(true); addItem((await response.json()).item as Product); return true; }
+    return false;
+  }, [lines, addItem]);
 
-  useKeyboardScanner(code => { void handleCode(code); }, canSell && !camera && !creatingClient);
+  useKeyboardScanner(code => { void handleCode(code).then(found => { if (!found) { scanFeedback(false); say(`El código ${code} no es de ningún producto`, false); } }); }, canSell && !camera && !creatingClient);
   const closeCamera = useCallback(() => setCamera(false), []);
   const onCameraCode = useCallback((code: string) => { void handleCode(code); }, [handleCode]);
 
-  function submitScan(event: React.FormEvent) {
+  /** Enter en el buscador: un código leído se suma; si la lista quedó con un solo producto, también. */
+  async function submitSearch(event: React.FormEvent) {
     event.preventDefault();
-    const text = scanText;
-    setScanText("");
-    void handleCode(text).then(() => scanRef.current?.focus());
+    const text = query.trim();
+    if (!text) return;
+    if (await handleCode(text)) { setQuery(""); return; }
+    if (catalog?.items.length === 1) { addItem(catalog.items[0]); setQuery(""); }
+  }
+
+  function pick(item: Product) {
+    addItem(item);
+    setQuery("");
+    searchRef.current?.focus();
   }
 
   function updateLine(id: string, patch: Partial<Line>) {
@@ -171,25 +196,21 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
   }
 
   const checked = useMemo(() => {
-    const rows = lines.map(line => ({ line, amount: toNumber(line.quantity), priceCents: Math.round(parseAmount(line.price) * 100), discountCents: Math.round(parseAmount(line.discount) * 100), salon: salonOf(line.item) }));
+    const rows = lines.map(line => ({ line, amount: toNumber(line.quantity), priceCents: Math.round(parseAmount(line.price) * 100), discountCents: Math.round(parseAmount(line.discount) * 100), stock: availableOf(line.item, from) }));
     const { rows: amounts, ...totals } = counterTotals(voucher, rows.map(row => ({ quantity: row.amount, unitPriceCents: row.priceCents, discountCents: row.discountCents })));
-    return { ...totals, rows: rows.map((row, index) => ({ ...row, totalCents: amounts[index].totalCents, gross: amounts[index].gross, short: row.amount > row.salon + 1e-9 })) };
-  }, [lines, voucher]);
+    return { ...totals, rows: rows.map((row, index) => ({ ...row, totalCents: amounts[index].totalCents, gross: amounts[index].gross, short: row.amount > row.stock.available + 1e-9 })) };
+  }, [lines, voucher, from]);
 
   const totalCents = checked.amountCents;
-  const single = payments.length === 1;
-  const paidCents = single ? totalCents : linesCents(payments);
   const cashGivenCents = Math.round(parseAmount(cashGiven) * 100);
-  const changeCents = single && payments[0].method === "efectivo" && cashGivenCents > totalCents ? cashGivenCents - totalCents : 0;
+  const changeCents = method === "efectivo" && cashGivenCents > totalCents ? cashGivenCents - totalCents : 0;
+  const sourceLabel = SOURCES.find(source => source.key === from)!;
   const problems = [
     !lines.length ? "" : checked.rows.some(row => row.amount <= 0) ? "Hay productos con cantidad cero: corregila o sacalos" : "",
-    checked.rows.some(row => row.short) ? "No alcanza el stock del Salón de algún producto: si está en el Galpón, primero hay que transferirlo" : "",
+    checked.rows.some(row => row.short) ? `No alcanza el stock de algún producto (${sourceLabel.label})` : "",
     checked.rows.some(row => row.priceCents <= 0) ? "Hay productos sin precio" : "",
     checked.rows.some(row => row.discountCents > row.gross) ? "Un descuento pasa el importe de su renglón" : "",
     voucher === "factura_a" && !client?.cuit ? "La Factura A va a un cliente con CUIT: elegilo o dalo de alta" : "",
-    buyerDocument && ![7, 8, 11].includes(buyerDocument.length) ? "El DNI tiene 7 u 8 números y el CUIT, 11" : "",
-    ...payments.map(line => lineProblem(line, "cobro", true)),
-    !single && paidCents !== totalCents ? `Los medios suman ${money(paidCents)} y el total es ${money(totalCents)}` : "",
   ].filter(Boolean);
   const ready = lines.length > 0 && totalCents > 0 && !problems.length;
 
@@ -199,21 +220,20 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     setConfirming(false); setSaving(true); setError("");
     try {
       const body = {
-        company, voucherType: voucher, clientId: clientId || undefined,
-        buyerName: clientId ? "" : buyerName, buyerDocument: clientId ? "" : buyerDocument, note,
+        company, voucherType: voucher, clientId: clientId || undefined, note, from, method,
         lines: checked.rows.map(row => ({ itemId: row.line.item._id, quantity: row.amount, unitPriceCents: row.priceCents, discountCents: row.discountCents })),
-        payments: await linesPayload(payments, "cobro", totalCents),
       };
       const response = await fetch("/api/mostrador", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "No se pudo registrar la venta");
       const sale = { ...(result.sale as Sale), changeCents, warning: result.warning || undefined };
       setDone(sale);
-      setLines([]); setClientId(""); setBuyerName(""); setBuyerDocument(""); setNote(""); setCashGiven("");
-      setPayments([newLine("efectivo")]); setVoucher("factura_b");
+      setLines([]); setClientId(""); setNote(""); setCashGiven(""); setVoucher("factura_b"); setMethod("efectivo");
+      // El stock cambió: la lista se vuelve a pedir.
+      setCatalogVersion(version => version + 1);
       void loadDay(day);
       if (printer.autoPrint) void printTicket(sale);
-      scanRef.current?.focus();
+      searchRef.current?.focus();
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : "No se pudo registrar la venta");
     } finally { setSaving(false); }
@@ -262,9 +282,10 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
   if (!canSell) return <div className="notice error">Para vender en el mostrador hace falta poder mover stock, cargar facturas de venta y cobrar. Pedíselo a Gerencia en Perfil › Seguridad › Usuarios y permisos.</div>;
 
   const fiscal = voucher !== "factura_x";
+  const inSale = new Map(lines.map(line => [line.item._id, toNumber(line.quantity)]));
   return <>
     <div className="page-heading counter-heading">
-      <div><p className="eyebrow">VENTAS</p><h1>Mostrador</h1><p>Venta al público del Salón: escaneá los productos, cobrá y sale la factura con su ticket. El stock se descuenta del Salón de Ventas.</p></div>
+      <div><p className="eyebrow">VENTAS</p><h1>Mostrador</h1><p>Venta al público: elegí los productos de la lista (o escanealos), cobrá y sale la factura con su ticket. El stock se descuenta del Salón y, si no alcanza, del Galpón.</p></div>
       <div className="counter-printer" role="group" aria-label="Ticketera">
         <Printer size={16} />
         <span>Ticketera</span>
@@ -284,34 +305,48 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
 
     <div className="counter-layout">
       <section className="panel counter-main">
-        <form className="counter-scan" onSubmit={submitScan}>
-          <div className={busy ? "counter-scan-input busy" : "counter-scan-input"}>
+        <form className="counter-scan" onSubmit={event => { void submitSearch(event); }}>
+          <div className={loadingCatalog ? "counter-scan-input busy" : "counter-scan-input"}>
             <ScanBarcode size={22} />
-            <input ref={scanRef} value={scanText} onChange={event => setScanText(event.target.value)} placeholder="Escaneá el código o escribí el nombre…" autoComplete="off" enterKeyHint="search" aria-label="Código de barras o nombre del producto" />
-            <button type="submit" className="icon-btn" disabled={!scanText.trim() || busy} aria-label="Buscar"><Search size={18} /></button>
+            <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Escribí para filtrar o escaneá el código…" autoComplete="off" enterKeyHint="search" aria-label="Buscar producto por nombre o código" />
+            {query && <button type="button" className="icon-btn" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="Borrar la búsqueda"><X size={18} /></button>}
           </div>
           <button type="button" className="primary-btn counter-camera-btn" onClick={() => setCamera(true)}><Camera size={18} /> Cámara</button>
         </form>
-        <p className="counter-hint">Cada lectura suma una unidad. El precio es el de venta sin IVA cargado en Stock y se puede cambiar en la venta.</p>
         {flash && <p className={flash.ok ? "counter-flash ok" : "counter-flash"} role="status">{flash.ok ? <Check size={15} /> : <TriangleAlert size={15} />} {flash.text}</p>}
 
-        {results && <div className="counter-results">
-          <div className="counter-results-head"><b>{results.length ? "¿Cuál de estos?" : "No se encontró ningún producto"}</b><button type="button" className="icon-btn" onClick={() => setResults(null)} aria-label="Cerrar resultados"><X size={16} /></button></div>
-          {results.map(item => <button type="button" key={item._id} onClick={() => { setResults(null); addItem(item); }}>
-            <span><b>{item.name}</b><small>{[codeOf(item) && `Cód. ${codeOf(item)}`, `${qty(salonOf(item))} ${item.unit} en el Salón`, item.salePriceCents ? `${money(Number(item.salePriceCents))} s/IVA` : "sin precio de venta"].filter(Boolean).join(" · ")}</small></span><Plus size={16} />
-          </button>)}
-        </div>}
+        <div className="mostrador-catalog" aria-label="Productos con stock">
+          <div className="mostrador-catalog-head">
+            <span>Producto</span><span>Salón</span><span>Galpón</span><span>Precio s/IVA</span><span />
+          </div>
+          <div className="mostrador-catalog-body">
+            {catalog?.items.map(item => {
+              const levels = levelsOf(item as Record<string, unknown>);
+              const taken = inSale.get(item._id);
+              return <button type="button" key={item._id} className={taken ? "mostrador-catalog-row taken" : "mostrador-catalog-row"} onClick={() => pick(item)}>
+                <span className="mostrador-catalog-name"><b>{item.name}</b>{codeOf(item) && <small>Cód. {codeOf(item)}</small>}</span>
+                <span data-label="Salón">{qty(levels.salon)}</span>
+                <span data-label="Galpón">{qty(levels.central)}</span>
+                <span data-label="Precio">{item.salePriceCents ? money(Number(item.salePriceCents)) : <em>sin precio</em>}</span>
+                <span className="mostrador-catalog-add">{taken ? <>{qty(taken)} <Check size={14} /></> : <Plus size={16} />}</span>
+              </button>;
+            })}
+            {catalog && !catalog.items.length && <p className="mostrador-catalog-empty">{query ? `No hay productos con stock que coincidan con "${query}".` : "No hay productos con stock."}</p>}
+            {!catalog && <p className="mostrador-catalog-empty">Cargando productos…</p>}
+          </div>
+          {catalog && catalog.total > catalog.items.length && <p className="mostrador-catalog-more">Se ven {catalog.items.length} de {catalog.total} productos: seguí escribiendo para filtrar.</p>}
+        </div>
 
-        {!lines.length ? <div className="counter-empty">
-          <Store size={38} />
+        {!lines.length ? <div className="counter-empty mostrador-empty">
+          <Store size={30} />
           <b>Nueva venta</b>
-          <span>Escaneá el primer producto con el lector o la cámara, o buscalo por nombre.</span>
+          <span>Tocá un producto de la lista para sumarlo, o escanealo.</span>
         </div> : <ul className="counter-lines">
-          {checked.rows.map(({ line, amount, salon, short, priceCents, totalCents: lineCents }) => <li key={line.item._id} className={short || amount <= 0 || priceCents <= 0 ? "counter-line mostrador-line problem" : "counter-line mostrador-line"}>
+          {checked.rows.map(({ line, amount, stock, short, priceCents, totalCents: lineCents }) => <li key={line.item._id} className={short || amount <= 0 || priceCents <= 0 ? "counter-line mostrador-line problem" : "counter-line mostrador-line"}>
             <div className="counter-line-info">
               <b>{line.item.name}</b>
-              <small>{[codeOf(line.item) && `Cód. ${codeOf(line.item)}`, `En el Salón: ${qty(salon)} ${line.item.unit}`].filter(Boolean).join(" · ")}</small>
-              {short && <small className="below">No alcanza: en el Salón hay {qty(salon)} {line.item.unit}</small>}
+              <small>{[codeOf(line.item) && `Cód. ${codeOf(line.item)}`, `Salón ${qty(stock.salon)} · Galpón ${qty(stock.central)} ${line.item.unit}`].filter(Boolean).join(" · ")}</small>
+              {short && <small className="below">No alcanza: {from === "auto" ? "entre el Salón y el Galpón" : `en el ${sourceLabel.label}`} hay {qty(stock.available)} {line.item.unit}</small>}
             </div>
             <div className="counter-qty">
               <button type="button" onClick={() => step(line.item._id, -1)} aria-label="Uno menos"><Minus size={15} /></button>
@@ -335,18 +370,16 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
       <div className="panel counter-side">
         <div className="counter-side-body">
           <p className="eyebrow">COBRO</p>
-          <div className="counter-field"><span>Vende</span><div className="counter-segment">{COMPANY_KEYS.map(key => <button key={key} type="button" className={company === key ? "active" : ""} aria-pressed={company === key} onClick={() => { setCompany(key); setConfirming(false); setPayments(current => current.map(line => ({ ...line, cashAccountId: "" }))); }}>{COMPANIES[key].short}</button>)}</div></div>
+          <div className="counter-field"><span>Vende</span><div className="counter-segment">{COMPANY_KEYS.map(key => <button key={key} type="button" className={company === key ? "active" : ""} aria-pressed={company === key} onClick={() => { setCompany(key); setConfirming(false); }}>{COMPANIES[key].short}</button>)}</div></div>
+
+          <div className="counter-field"><span>Sale de</span><div className="counter-segment">{SOURCES.map(source => <button key={source.key} type="button" className={from === source.key ? "active" : ""} aria-pressed={from === source.key} onClick={() => { setFrom(source.key); setConfirming(false); }}>{source.label}</button>)}</div>
+            <small className="field-hint">{sourceLabel.hint}</small></div>
 
           <label className="counter-field"><span>Cliente</span>
             <SearchSelect name="clientId" options={clientOptions} value={clientId} onChange={pickClient} placeholder="Consumidor final" createLabel="Dar de alta un cliente" onCreate={() => setCreatingClient(true)} />
-            {client ? <small className="field-hint">{[client.cuit && `CUIT ${client.cuit}`, client.vatCondition && VAT_CONDITIONS[client.vatCondition as VatCondition]?.label].filter(Boolean).join(" · ") || "Sin CUIT ni condición de IVA cargados"} · <button type="button" className="link-btn" onClick={() => pickClient("")}>Consumidor final</button></small>
-              : <small className="field-hint">Sin cliente, la venta es a consumidor final.</small>}
+            {client && <small className="field-hint">{[client.cuit && `CUIT ${client.cuit}`, client.vatCondition && VAT_CONDITIONS[client.vatCondition as VatCondition]?.label].filter(Boolean).join(" · ") || "Sin CUIT ni condición de IVA cargados"} · <button type="button" className="link-btn" onClick={() => pickClient("")}>Consumidor final</button></small>}
           </label>
           {creatingClient && <NewClient onCancel={() => setCreatingClient(false)} onCreate={form => { void createClient(form); }} />}
-          {!client && <div className="counter-manual-grid">
-            <label className="counter-field"><span>Nombre (opcional)</span><input value={buyerName} onChange={event => setBuyerName(event.target.value)} placeholder="A nombre de…" /></label>
-            <label className="counter-field"><span>DNI o CUIT</span><input inputMode="numeric" value={buyerDocument} onChange={event => { setBuyerDocument(event.target.value.replace(/\D/g, "").slice(0, 11)); setConfirming(false); }} placeholder="Opcional" /></label>
-          </div>}
 
           <div className="counter-field"><span>Comprobante</span><div className="counter-segment">{VOUCHERS.map(entry => <button key={entry.key} type="button" className={voucher === entry.key ? "active" : ""} aria-pressed={voucher === entry.key} onClick={() => { setVoucher(entry.key); setConfirming(false); }}>{entry.label}</button>)}</div>
             <small className="field-hint">{fiscal ? "Se emite en ARCA con CAE al cobrar." : "Comprobante interno: no va a ARCA ni lleva IVA."}</small></div>
@@ -358,14 +391,14 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
             <div className="wide"><span>Total a cobrar</span><strong>{money(totalCents)}</strong></div>
           </div>
 
-          <CashLinesEditor side="cobro" lines={payments} onChange={next => { setPayments(next); setConfirming(false); }} company={company} totalCents={totalCents} />
-          {single && payments[0].method === "efectivo" && <label className="counter-field"><span>Paga con (para el vuelto)</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={cashGiven} placeholder="0,00" onChange={event => setCashGiven(onlyAmount(event.target.value))} /></div>
+          <div className="counter-field"><span>Paga con</span><div className="counter-segment mostrador-methods">{METHODS.map(entry => <button key={entry.key} type="button" className={method === entry.key ? "active" : ""} aria-pressed={method === entry.key} onClick={() => { setMethod(entry.key); setConfirming(false); }}><entry.icon size={15} /> {entry.label}</button>)}</div></div>
+          {method === "efectivo" && <label className="counter-field"><span>Con cuánto paga (para el vuelto)</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={cashGiven} placeholder="0,00" onChange={event => setCashGiven(onlyAmount(event.target.value))} /></div>
             {changeCents > 0 && <small className="mostrador-change">Vuelto: <b>{money(changeCents)}</b></small>}</label>}
           <label className="counter-field"><span>Observaciones</span><textarea rows={2} value={note} onChange={event => setNote(event.target.value)} placeholder="Retira en el momento, envío…" /></label>
           {lines.length > 0 && problems.length > 0 && <p className="form-error">{problems[0]}</p>}
         </div>
         <footer>
-          {confirming && <span className="counter-confirm-text">Se cobran {money(totalCents)} con {voucherName(voucher)}{fiscal ? " emitida en ARCA" : ""}, a {client?.name || buyerName || "consumidor final"}. El stock sale del Salón.</span>}
+          {confirming && <span className="counter-confirm-text">Se cobran {money(totalCents)} en {methodLabel(method).toLowerCase()} con {voucherName(voucher)}{fiscal ? " emitida en ARCA" : ""}, a {client?.name || "consumidor final"}.</span>}
           {confirming && <button type="button" className="secondary-btn" onClick={() => setConfirming(false)}>Volver</button>}
           <button type="button" className={confirming ? "primary-btn confirming" : "primary-btn"} disabled={saving || !ready} onClick={() => { void submit(); }}>
             {saving ? (fiscal ? "Emitiendo en ARCA…" : "Registrando…") : confirming ? <><Check size={16} /> Sí, cobrar</> : <><ReceiptText size={16} /> Cobrar {money(totalCents)}</>}
@@ -406,6 +439,7 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     {camera && <CameraScanner continuous onDetected={onCameraCode} onClose={closeCamera} title="Escanear lo que se vende" />}
   </>;
 }
+
 
 /** Alta rápida de un cliente con CUIT, sin salir de la venta. */
 function NewClient({ onCreate, onCancel }: { onCreate: (form: FormData) => void; onCancel: () => void }) {

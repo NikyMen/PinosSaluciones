@@ -176,9 +176,10 @@ Requerimiento integral v4, con lo acordado en el grupo de PINO (`src/lib/purchas
 
 ## Mostrador (venta al público)
 
-- **Ventas › Mostrador** (`/app/mostrador`, `src/lib/counter-sales.ts`): la venta al público del Salón de Ventas en un solo paso. Se escanean (lector o cámara) o se buscan los productos; el precio es el de venta sin IVA de Stock y se puede cambiar, con descuento en pesos por renglón.
-- Se elige la empresa que vende, el cliente (sin elegir, **consumidor final**, con nombre y DNI opcionales), el comprobante (**Factura B o A** emitida en ARCA, o **Factura X** interna) y con qué paga (uno o varios medios, con el vuelto del efectivo).
-- Al cobrar se hacen juntos el remito de venta (baja el stock del Salón), la factura del remito y el recibo a `CI - VENTA DE MATERIALES`. La venta queda como `VM-n`, con su ticket para la ticketera y el PDF de la factura.
+- **Ventas › Mostrador** (`/app/mostrador`, `src/lib/counter-sales.ts`): la venta al público en un solo paso. Los productos con stock (en el Salón o en el Galpón) se ven en una **lista que se filtra con cada letra**, sin Enter, por nombre o código (`GET /api/mostrador/productos`). También se escanean con el lector o la cámara. El precio es el de venta sin IVA de Stock y se puede cambiar, con descuento en pesos por renglón.
+- **Sale de**: por defecto, primero del Salón y lo que falte del Galpón; también se puede elegir sólo uno. Un producto que sale de los dos queda en dos renglones del remito, uno por depósito, y si se anula el remito cada parte vuelve a su depósito.
+- Se elige la empresa que vende, el cliente (sin elegir, **consumidor final**), el comprobante (**Factura B o A** emitida en ARCA, o **Factura X** interna) y **con qué paga**: efectivo, transferencia o tarjeta, con el vuelto del efectivo. La caja o cuenta la elige el sistema: la primera activa de la empresa que sirve para ese medio (caja para el efectivo, banco para la transferencia, cuenta de tarjeta para la tarjeta).
+- Al cobrar se hacen juntos el remito de venta (baja el stock), la factura del remito y el recibo a `CI - VENTA DE MATERIALES`. La venta queda como `VM-n`, con su ticket para la ticketera y el PDF de la factura.
 - Abajo, el **cierre del día**: las ventas, el total por medio de cobro y por comprobante. Si una factura salió y el cobro no se pudo registrar, la venta figura "Sin cobro" y se cobra en Cobranzas y recibos.
 - Vende quien puede mover stock, cargar facturas y cobrar. Ver `docs/decisiones/2026-11-mostrador.md`.
 
