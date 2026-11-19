@@ -93,7 +93,10 @@ export async function checkInvoiceExcess(data: Record<string, unknown>, session:
     // Lo que valen las cantidades elegidas de cada renglón (o todo lo pendiente, si no se eligieron).
     const lines = invoiceRemitoLines(data);
     const remitoNet = lines.length ? invoiceLinesNetCents(remitos, lines) : remitos.reduce((total, remito) => total + remitoPendingCents(remito), 0);
-    if (net > remitoNet + billingTolerance(remitoNet)) problems.push(`Lo elegido de los remitos suma ${money(remitoNet)} netos y esta factura es de ${money(net)} netos`);
+    // Los servicios que van junto con los remitos (conceptos sin stock) se suman a lo que valen los remitos.
+    const servicesNet = Array.isArray(data.lines) ? (data.lines as Array<{ stockItemId?: unknown; quantity: number; unitCents: number }>).filter(line => !line.stockItemId).reduce((total, line) => total + Math.round(Number(line.quantity) * Number(line.unitCents)), 0) : 0;
+    const allowed = remitoNet + servicesNet;
+    if (net > allowed + billingTolerance(allowed)) problems.push(`Lo elegido de los remitos suma ${money(remitoNet)} netos${servicesNet ? ` y los servicios ${money(servicesNet)}` : ""}, y esta factura es de ${money(net)} netos`);
   }
   if (!problems.length) return;
 

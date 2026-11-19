@@ -664,6 +664,8 @@ const CounterSaleSchema = new Schema({
     stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" },
     name: String, sku: String, barcode: String, unit: String, quantity: Number,
     unitPriceCents: Number, discountCents: Number, totalCents: Number,
+    // Un servicio (concepto sin stock): no tiene material ni depósito.
+    service: Boolean,
     warehouse: { type: String, enum: WAREHOUSE_KEYS },
   }],
   netCents: { type: Number, default: 0 }, vatPct: Number, vatCents: { type: Number, default: 0 }, amountCents: { type: Number, default: 0 },

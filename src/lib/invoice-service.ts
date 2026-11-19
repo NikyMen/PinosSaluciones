@@ -24,13 +24,16 @@ export async function prepareInvoice(data: Record<string, unknown>, before: Reco
   if (merged.withRemito === true && !remitos) throw new HttpError("Elegí al menos un remito de venta");
   if (merged.withRemito === false && remitos) throw new HttpError("Elegí Factura con remito para facturar remitos de venta");
   const lines = Array.isArray(merged.lines) ? merged.lines as InvoiceLine[] : [];
-  if (remitos && lines.length) throw new HttpError("Los productos de los remitos se cargan desde el remito");
+  // Con remitos, los productos vienen del remito; los renglones sueltos sólo pueden ser servicios o
+  // conceptos sin stock (el Mostrador vende productos y servicios juntos). El neto lo trae la factura:
+  // lo de los remitos más los servicios (checkInvoiceExcess controla que no pase de eso).
+  if (remitos && lines.some(line => line.stockItemId)) throw new HttpError("Los productos de los remitos se cargan desde el remito");
   if (merged.withRemito === false && !lines.length && !isNote(merged.voucherType) && !merged.replacesId && (!before._id || Array.isArray(before.lines) && before.lines.length)) throw new HttpError("Agregá al menos un producto o concepto");
   if ("lines" in data && lines.length) {
     const products = [...new Set(lines.map(line => line.stockItemId).filter(Boolean))];
     if (products.length && await StockItem.countDocuments({ _id: { $in: products } }) !== products.length) throw new HttpError("Uno de los productos ya no existe en Stock");
   }
-  if (lines.length && ["lines", "netCents", "discountCents", "amountCents"].some(key => key in data)) {
+  if (lines.length && !remitos && ["lines", "netCents", "discountCents", "amountCents"].some(key => key in data)) {
     const net = invoiceLinesGrossCents(lines) - Number(merged.discountCents || 0);
     if (net < 0) throw new HttpError("El descuento pasa el subtotal");
     data.netCents = net;
@@ -121,8 +124,11 @@ export async function emitInvoiceInArca(data: Record<string, unknown>) {
   // ARCA autoriza con fecha de hasta 5 días antes (productos) o 10 (servicios). Una factura vieja
   // ya se emitió: se carga a mano con su número (reunión con Tesorería, 10/11/2026).
   const lines = (data.lines || []) as InvoiceLine[];
-  const products = lines.filter(line => line.stockItemId).length;
-  const concept = (Array.isArray(data.remitoIds) && data.remitoIds.length) || (products > 0 && products === lines.length) ? 1 : products > 0 ? 3 : 2;
+  // Productos (1), servicios (2) o los dos (3). Los productos de los remitos cuentan como productos.
+  const hasRemitos = Array.isArray(data.remitoIds) && data.remitoIds.length > 0;
+  const products = lines.filter(line => line.stockItemId).length + (hasRemitos ? 1 : 0);
+  const services = lines.filter(line => !line.stockItemId).length;
+  const concept = products > 0 && !services ? 1 : products > 0 ? 3 : 2;
   const windowDays = concept === 1 ? 5 : 10;
   const issue = new Date(data.issueDate as string | Date);
   if (Number.isFinite(issue.getTime()) && Date.now() - issue.getTime() > (windowDays + 1) * 86_400_000) {

@@ -68,7 +68,14 @@ export const counterSaleSchema = z.object({
     quantity: z.coerce.number().positive("Cada cantidad tiene que ser mayor a cero"),
     unitPriceCents: z.coerce.number().int().min(0),
     discountCents: z.coerce.number().int().min(0).default(0),
-  })).min(1, "Agregá al menos un producto").max(100),
+  })).max(100).default([]),
+  // Servicios: conceptos sin stock (colocación, corte, flete…), con su precio sin IVA. No mueven stock.
+  services: z.array(z.object({
+    description: z.string().trim().min(2, "Escribí qué servicio es").max(300),
+    quantity: z.coerce.number().positive("Cada cantidad tiene que ser mayor a cero"),
+    unit: z.string().trim().min(1).max(24).default("unidad"),
+    unitPriceCents: z.coerce.number().int().positive("Poné el precio del servicio"),
+  })).max(50).default([]),
   method: z.enum(COUNTER_METHODS, { error: "Elegí con qué paga" }),
   // De dónde sale: primero el Salón y lo que falte del Galpón ("auto"), o sólo uno de los dos.
   from: z.enum(SALE_SOURCES).default("auto"),
@@ -128,8 +135,10 @@ export async function registerCounterSale(input: CounterSaleInput, session: Sess
   const buyerDocument = anonymous ? input.buyerDocument : "";
 
   // Lo que se cobra, antes de tocar nada.
+  if (!input.lines.length && !input.services.length) throw new HttpError("Agregá al menos un producto o un servicio");
   for (const line of input.lines) if (line.discountCents > Math.round(line.quantity * line.unitPriceCents)) throw new HttpError("Un descuento pasa el importe de su renglón");
-  const totals = counterTotals(input.voucherType, input.lines);
+  const totals = counterTotals(input.voucherType, [...input.lines, ...input.services]);
+  const services = input.services.map(service => ({ description: service.description, quantity: service.quantity, unit: service.unit, unitCents: service.unitPriceCents }));
   if (totals.netCents <= 0) throw new HttpError("La venta no tiene importe: revisá los precios");
 
   // El comprobante: habilitado en la empresa y, si es fiscal, con ARCA conectada y el comprador que corresponde.
@@ -148,13 +157,16 @@ export async function registerCounterSale(input: CounterSaleInput, session: Sess
   const note = [`Mostrador ${number}`, buyerName && `Compró ${buyerName}`, input.note].filter(Boolean).join(" · ");
 
   // 1. El remito baja el stock (primero el Salón y lo que falte del Galpón, salvo que se elija uno). Si algo no alcanza, no sale nada.
-  const { remito, changed } = await createSalesRemito({ company, clientId: String(client._id), quoteId: undefined, date: new Date(`${date}T00:00:00.000Z`), note, lines: input.lines, from: input.from }, session);
-  await audit(session, "create", "sales_remitos", remito._id, null, remito, ip);
+  //    Una venta de sólo servicios no tiene remito.
+  const { remito, changed } = input.lines.length
+    ? await createSalesRemito({ company, clientId: String(client._id), quoteId: undefined, date: new Date(`${date}T00:00:00.000Z`), note, lines: input.lines, from: input.from }, session)
+    : { remito: null, changed: [] };
+  if (remito) await audit(session, "create", "sales_remitos", remito._id, null, remito, ip);
   for (const entry of changed) await audit(session, "stock_venta", "stock", entry.item._id, entry.before, entry.after, ip);
 
-  // 2. La factura del remito. Si no sale, el remito se anula y el material vuelve al Salón.
+  // 2. La factura: los productos del remito y los servicios como conceptos. Si no sale, el remito se anula y el material vuelve.
   const data = schemas.invoices.parse({
-    company, voucherType: input.voucherType, withRemito: true, remitoIds: [String(remito._id)], clientId: String(client._id),
+    company, voucherType: input.voucherType, withRemito: Boolean(remito), remitoIds: remito ? [String(remito._id)] : undefined, lines: services.length ? services : undefined, clientId: String(client._id),
     issueDate: date, netCents: totals.netCents, vatPct: totals.vatPct, description: `Venta por mostrador ${number}`,
     buyerName: buyerName || undefined, buyerDocument: buyerDocument || undefined, arcaEmit: fiscal,
   }) as Record<string, unknown>;
@@ -164,7 +176,7 @@ export async function registerCounterSale(input: CounterSaleInput, session: Sess
     invoice = (await createInvoice(data, session, ip)).toObject() as Record<string, unknown> & { _id: Types.ObjectId };
   } catch (error) {
     // Con CAE la factura existe en ARCA aunque no se haya guardado: el remito queda como está.
-    if (!data.cae) await cancelSalesRemito(String(remito._id), `No se pudo facturar la venta ${number}: ${message(error)}`, session)
+    if (remito && !data.cae) await cancelSalesRemito(String(remito._id), `No se pudo facturar la venta ${number}: ${message(error)}`, session)
       .catch(problem => console.error("No se pudo anular el remito de una venta por mostrador sin factura", { number, remito: remito.number, problem }));
     throw error;
   }
@@ -186,12 +198,15 @@ export async function registerCounterSale(input: CounterSaleInput, session: Sess
   const sale = await CounterSale.create({
     number, date: new Date(`${date}T00:00:00.000Z`), company, voucherType: input.voucherType,
     clientId: client._id, clientName: client.name, buyerName: buyerName || undefined, buyerDocument: buyerDocument || undefined,
-    remitoId: remito._id, remitoNumber: remito.number, invoiceId: invoice._id, invoiceLabel: invoiceLabel(invoice),
+    remitoId: remito?._id, remitoNumber: remito?.number, invoiceId: invoice._id, invoiceLabel: invoiceLabel(invoice),
     collectionId: receipt?._id, receiptNumber: receipt?.number,
-    lines: (remito.lines as Array<Record<string, unknown>>).map(line => {
-      const item = changed.find(entry => String(entry.item._id) === String(line.stockItemId))?.item as { sku?: string; barcode?: string } | undefined;
-      return { stockItemId: line.stockItemId, name: line.name, sku: item?.sku, barcode: item?.barcode, unit: line.unit, quantity: line.quantity, warehouse: line.warehouse, unitPriceCents: line.unitPriceCents, discountCents: line.discountCents, totalCents: line.totalCents };
-    }),
+    lines: [
+      ...((remito?.lines || []) as Array<Record<string, unknown>>).map(line => {
+        const item = changed.find(entry => String(entry.item._id) === String(line.stockItemId))?.item as { sku?: string; barcode?: string } | undefined;
+        return { stockItemId: line.stockItemId, name: line.name, sku: item?.sku, barcode: item?.barcode, unit: line.unit, quantity: line.quantity, warehouse: line.warehouse, unitPriceCents: line.unitPriceCents, discountCents: line.discountCents, totalCents: line.totalCents };
+      }),
+      ...input.services.map(service => ({ service: true, name: service.description, unit: service.unit, quantity: service.quantity, unitPriceCents: service.unitPriceCents, totalCents: Math.round(service.quantity * service.unitPriceCents) })),
+    ],
     netCents: Number(invoice.netCents || 0), vatPct: Number(invoice.vatPct || 0), vatCents: Number(invoice.vatCents || 0), amountCents: Number(invoice.amountCents || 0),
     payments: receipt ? (receipt.lines as Array<Record<string, unknown>>).map(line => ({ method: line.method, account: line.account, amountCents: line.amountCents })) : [],
     status: receipt ? "cobrada" : "sin_cobro", warning: warning || undefined, note: input.note || undefined,

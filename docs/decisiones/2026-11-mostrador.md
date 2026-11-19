@@ -43,3 +43,10 @@ La venta al público del Salón se podía hacer, pero en tres pantallas: Ventas 
 - **Guardar** graba el precio sin IVA en Stock (`PUT /api/stock/[id]/precio`) para las próximas ventas. Si el producto ya tiene precio, los dos campos quedan fijos y aparece **Editar**; al tocarlo se pueden cambiar y se guarda de nuevo. El precio también se puede cambiar para una sola venta sin guardarlo.
 - Los precios van en su propia fila del renglón, debajo de la cantidad, para que el botón no quede encima del total ni del tacho.
 - **Historial de precios** (`stockpricechanges`, `src/lib/sale-prices.ts`): cada cambio del precio de venta, desde el Mostrador, desde la ficha de Stock o al dar de alta el material, deja el precio anterior, el nuevo, el usuario y la fecha y hora. En Stock y logística › Stock, el botón **Precios** de cada material lo muestra, y también la ficha al editarlo. Los cambios de antes de esta versión no tienen historial (siguen en el historial de cambios general del material).
+
+## Servicios (19/11/2026)
+
+- Al lado de **Cámara** está el botón **Servicio**: suma un renglón para cobrar un servicio (colocación, corte a medida, flete…) con descripción, cantidad, unidad y precio sin IVA o con IVA (se calculan uno del otro). No mueve stock.
+- Una venta puede ser sólo de servicios (sin remito: la factura lleva los servicios como conceptos) o de productos y servicios juntos: el remito lleva los productos y la factura, además, los servicios como renglones sueltos. Para eso la factura con remito ahora acepta renglones sin stock (`prepareInvoice`); el neto es lo de los remitos más los servicios y `checkInvoiceExcess` controla que no pase de eso.
+- En ARCA el concepto sale de lo que se vende: productos (1), servicios (2) o productos y servicios (3), con el período del mes que piden los servicios.
+- Los servicios no se guardan en un catálogo: se escriben en cada venta.

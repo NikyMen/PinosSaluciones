@@ -252,3 +252,39 @@ describe("precio de venta e historial", () => {
     expect(Math.abs(withVatCents(withoutVatCents(999_999)) - 999_999)).toBeLessThanOrEqual(1);
   });
 });
+
+describe("servicios en el mostrador", () => {
+  it("una venta de sólo servicios factura el concepto, sin remito ni stock", async () => {
+    // Otro test reinicia a propósito la numeración de la X: acá sigue de más adelante.
+    const { VoucherBook } = await import("../src/lib/models");
+    await VoucherBook.updateMany({ company: "tvp", voucherType: "factura_x" }, { $set: { lastNumber: 100 } });
+    const sale = await call(await post({ company: "tvp", voucherType: "factura_x", method: "efectivo", services: [{ description: "Corte a medida", quantity: 2, unit: "unidad", unitPriceCents: 150_000 }] }));
+    expect(sale.status).toBe(201);
+    expect(sale.body.sale).toMatchObject({ amountCents: 300_000, status: "cobrada" });
+    expect(sale.body.sale.remitoId).toBeUndefined();
+    expect(sale.body.sale.lines).toEqual([expect.objectContaining({ service: true, name: "Corte a medida", quantity: 2, unitPriceCents: 150_000, totalCents: 300_000 })]);
+    const invoice = await Invoice.findById(sale.body.sale.invoiceId).lean<Record<string, unknown>>();
+    expect(invoice).toMatchObject({ netCents: 300_000, withRemito: false, status: "cobrada", lines: [{ description: "Corte a medida", quantity: 2, unit: "unidad", unitCents: 150_000 }] });
+  });
+
+  it("productos y servicios juntos: el remito lleva los productos y la factura suma los dos (concepto mixto en ARCA)", async () => {
+    const membrana = await product("Membrana 4 mm", 3, 2_000_000);
+    const sale = await call(await post({
+      company: "tvp", voucherType: "factura_b", method: "transferencia",
+      lines: [{ itemId: membrana, quantity: 1, unitPriceCents: 2_000_000 }],
+      services: [{ description: "Colocación de membrana", quantity: 10, unit: "m2", unitPriceCents: 300_000 }],
+    }));
+    expect(sale.status).toBe(201);
+    expect(sale.body.sale).toMatchObject({ netCents: 5_000_000, vatCents: 1_050_000, amountCents: 6_050_000, status: "cobrada" });
+    expect(await StockItem.findById(membrana).lean()).toMatchObject({ qty_salon: 2 });
+    const invoice = await Invoice.findById(sale.body.sale.invoiceId).lean<Record<string, unknown>>();
+    expect(invoice).toMatchObject({ netCents: 5_000_000, withRemito: true, status: "cobrada" });
+    expect((invoice!.lines as unknown[]).length).toBe(1);
+    expect(await SalesRemito.findById(sale.body.sale.remitoId).lean()).toMatchObject({ status: "facturado", totalCents: 2_000_000 });
+    expect([xmlTag(sentToArca.at(-1)!, "Concepto"), xmlTag(sentToArca.at(-1)!, "ImpNeto")]).toEqual(["3", "50000.00"]);
+
+    // Sin nada no se vende; un servicio sin precio tampoco.
+    expect((await call(await post({ company: "tvp", voucherType: "factura_x", method: "efectivo" }))).body.error).toMatch(/al menos un producto o un servicio/);
+    expect((await call(await post({ company: "tvp", voucherType: "factura_x", method: "efectivo", services: [{ description: "Flete", quantity: 1, unitPriceCents: 0 }] }))).status).toBe(400);
+  });
+});

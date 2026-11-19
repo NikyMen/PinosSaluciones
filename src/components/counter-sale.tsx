@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Banknote, Camera, Check, CreditCard, Edit3, FileDown, Landmark, Minus, Plus, Printer, ReceiptText, Save, ScanBarcode, Store, Trash2, TriangleAlert, UserPlus, X } from "lucide-react";
+import { Banknote, Camera, Check, CreditCard, Edit3, FileDown, Landmark, Minus, Plus, Printer, ReceiptText, Save, ScanBarcode, Store, Trash2, TriangleAlert, UserPlus, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { DateInput, SearchSelect, type Option } from "@/components/fields";
 import { CameraScanner, scanFeedback, useKeyboardScanner } from "@/components/barcode-scanner";
@@ -35,7 +35,10 @@ type Product = { _id: string; name: string; unit: string; sku?: string; barcode?
  * fijos hasta tocar Editar; Guardar lo graba en Stock para las próximas ventas.
  */
 type Line = { item: Product; quantity: string; price: string; priceVat: string; discount: string; editing: boolean; saving?: boolean };
-type ClientRow = { _id: string; name: string; cuit?: string; vatCondition?: string; code?: number };
+/** Un servicio: un concepto sin stock (colocación, corte, flete…). Va en la factura y no mueve stock. */
+type ServiceLine = { key: string; description: string; quantity: string; unit: string; price: string; priceVat: string };
+const SERVICE_UNITS = ["unidad", "hora", "m2", "metro", "viaje", "servicio"];
+type ClientRow ={ _id: string; name: string; cuit?: string; vatCondition?: string; code?: number };
 type Sale = SaleTicketData & { _id: string; voucherType: string; status: string; warning?: string; invoiceId?: string; clientId?: string };
 type Day = { day: string; items: Sale[]; summary: { count: number; totalCents: number; pendingCents: number; byMethod: Array<{ method: string; label: string; amountCents: number }>; byVoucher: Array<{ voucherType: string; amountCents: number }> } };
 
@@ -78,6 +81,7 @@ function availableOf(item: Product, from: Source) {
 
 export function CounterSale({ canSell }: { canSell: boolean }) {
   const [lines, setLines] = useState<Line[]>([]);
+  const [services, setServices] = useState<ServiceLine[]>([]);
   const [query, setQuery] = useState("");
   const [catalog, setCatalog] = useState<{ items: Product[]; total: number } | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
@@ -213,6 +217,17 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     say(`Precio guardado en Stock: ${money(cents)} sin IVA (${money(withVatCents(cents))} con IVA)`);
   }
 
+  /** Suma un renglón de servicio vacío: se escribe qué es, la cantidad y el precio. */
+  function addService() {
+    setDone(null); setConfirming(false);
+    setServices(current => [...current, { key: `servicio-${Date.now()}`, description: "", quantity: "1", unit: "unidad", price: "", priceVat: "" }]);
+  }
+
+  function updateService(key: string, patch: Partial<ServiceLine>) {
+    setConfirming(false);
+    setServices(current => current.map(service => service.key === key ? { ...service, ...patch } : service));
+  }
+
   function updateLine(id: string, patch: Partial<Line>) {
     setConfirming(false);
     setLines(current => current.map(line => line.item._id === id ? { ...line, ...patch } : line));
@@ -232,9 +247,17 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
 
   const checked = useMemo(() => {
     const rows = lines.map(line => ({ line, amount: toNumber(line.quantity), priceCents: Math.round(parseAmount(line.price) * 100), discountCents: Math.round(parseAmount(line.discount) * 100), stock: availableOf(line.item, from) }));
-    const { rows: amounts, ...totals } = counterTotals(voucher, rows.map(row => ({ quantity: row.amount, unitPriceCents: row.priceCents, discountCents: row.discountCents })));
-    return { ...totals, rows: rows.map((row, index) => ({ ...row, totalCents: amounts[index].totalCents, gross: amounts[index].gross, short: row.amount > row.stock.available + 1e-9 })) };
-  }, [lines, voucher, from]);
+    const serviceRows = services.map(service => ({ service, amount: toNumber(service.quantity), priceCents: Math.round(parseAmount(service.price) * 100) }));
+    const { rows: amounts, ...totals } = counterTotals(voucher, [
+      ...rows.map(row => ({ quantity: row.amount, unitPriceCents: row.priceCents, discountCents: row.discountCents })),
+      ...serviceRows.map(row => ({ quantity: row.amount, unitPriceCents: row.priceCents })),
+    ]);
+    return {
+      ...totals,
+      rows: rows.map((row, index) => ({ ...row, totalCents: amounts[index].totalCents, gross: amounts[index].gross, short: row.amount > row.stock.available + 1e-9 })),
+      services: serviceRows.map((row, index) => ({ ...row, totalCents: amounts[rows.length + index].totalCents })),
+    };
+  }, [lines, services, voucher, from]);
 
   const totalCents = checked.amountCents;
   const cashGivenCents = Math.round(parseAmount(cashGiven) * 100);
@@ -245,9 +268,12 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     checked.rows.some(row => row.short) ? `No alcanza el stock de algún producto (${sourceLabel.label})` : "",
     checked.rows.some(row => row.priceCents <= 0) ? "Hay productos sin precio" : "",
     checked.rows.some(row => row.discountCents > row.gross) ? "Un descuento pasa el importe de su renglón" : "",
+    checked.services.some(row => row.service.description.trim().length < 2) ? "Escribí qué servicio es" : "",
+    checked.services.some(row => row.amount <= 0 || row.priceCents <= 0) ? "Cada servicio lleva cantidad y precio" : "",
     voucher === "factura_a" && !client?.cuit ? "La Factura A va a un cliente con CUIT: elegilo o dalo de alta" : "",
   ].filter(Boolean);
-  const ready = lines.length > 0 && totalCents > 0 && !problems.length;
+  const itemsCount = lines.length + services.length;
+  const ready = itemsCount > 0 && totalCents > 0 && !problems.length;
 
   async function submit() {
     if (!ready) return;
@@ -257,13 +283,14 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
       const body = {
         company, voucherType: voucher, clientId: clientId || undefined, note, from, method,
         lines: checked.rows.map(row => ({ itemId: row.line.item._id, quantity: row.amount, unitPriceCents: row.priceCents, discountCents: row.discountCents })),
+        services: checked.services.map(row => ({ description: row.service.description.trim(), quantity: row.amount, unit: row.service.unit, unitPriceCents: row.priceCents })),
       };
       const response = await fetch("/api/mostrador", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "No se pudo registrar la venta");
       const sale = { ...(result.sale as Sale), changeCents, warning: result.warning || undefined };
       setDone(sale);
-      setLines([]); setClientId(""); setNote(""); setCashGiven(""); setVoucher("factura_b"); setMethod("efectivo");
+      setLines([]); setServices([]); setClientId(""); setNote(""); setCashGiven(""); setVoucher("factura_b"); setMethod("efectivo");
       // El stock cambió: la lista se vuelve a pedir.
       setCatalogVersion(version => version + 1);
       void loadDay(day);
@@ -287,7 +314,7 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     const printLines = sale.lines.map(line => ({ description: line.name, quantity: line.quantity, unit: line.unit, unitCents: Number(line.unitPriceCents || 0) }));
     const discountCents = sale.lines.reduce((total, line) => total + Number(line.discountCents || 0), 0) || undefined;
     const download = invoice.cae
-      ? downloadFiscalInvoicePdf({ ...fiscalInvoicePdfData(invoice, customer), lines: printLines, discountCents, products: true })
+      ? downloadFiscalInvoicePdf({ ...fiscalInvoicePdfData(invoice, customer), lines: printLines, discountCents, products: !sale.lines.some(line => (line as { service?: boolean }).service) })
       : downloadSaleInvoicePdf({ ...invoice, lines: printLines, discountCents }, customer || undefined);
     await download.catch(() => setError("No se pudo generar el PDF de la factura"));
   }
@@ -347,6 +374,7 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
             {query && <button type="button" className="icon-btn" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="Borrar la búsqueda"><X size={18} /></button>}
           </div>
           <button type="button" className="primary-btn counter-camera-btn" onClick={() => setCamera(true)}><Camera size={18} /> Cámara</button>
+          <button type="button" className="secondary-btn counter-camera-btn mostrador-service-btn" title="Sumar un servicio a la venta: colocación, corte, flete… (no mueve stock)" onClick={addService}><Wrench size={18} /> Servicio</button>
         </form>
         {flash && <p className={flash.ok ? "counter-flash ok" : "counter-flash"} role="status">{flash.ok ? <Check size={15} /> : <TriangleAlert size={15} />} {flash.text}</p>}
 
@@ -372,10 +400,10 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
           {catalog && catalog.total > catalog.items.length && <p className="mostrador-catalog-more">Se ven {catalog.items.length} de {catalog.total} productos: seguí escribiendo para filtrar.</p>}
         </div>
 
-        {!lines.length ? <div className="counter-empty mostrador-empty">
+        {!itemsCount ? <div className="counter-empty mostrador-empty">
           <Store size={30} />
           <b>Nueva venta</b>
-          <span>Tocá un producto de la lista para sumarlo, o escanealo.</span>
+          <span>Tocá un producto de la lista para sumarlo, o escanealo. Para cobrar un servicio, tocá Servicio.</span>
         </div> : <ul className="counter-lines">
           {checked.rows.map(({ line, amount, stock, short, priceCents, totalCents: lineCents }) => <li key={line.item._id} className={short || amount <= 0 || priceCents <= 0 ? "counter-line mostrador-line problem" : "counter-line mostrador-line"}>
             <div className="counter-line-info">
@@ -403,6 +431,26 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
               <button type="button" title="Sacar de la venta" onClick={() => { setConfirming(false); setLines(current => current.filter(candidate => candidate !== line)); }}><Trash2 size={16} /></button>
             </div>
           </li>)}
+          {checked.services.map(({ service, amount, priceCents, totalCents: serviceCents }) => <li key={service.key} className={amount <= 0 || priceCents <= 0 || service.description.trim().length < 2 ? "counter-line mostrador-line mostrador-service problem" : "counter-line mostrador-line mostrador-service"}>
+            <div className="counter-line-info">
+              <label className="mostrador-service-name"><span className="badge">Servicio</span><input value={service.description} autoFocus={!service.description} maxLength={300} placeholder="¿Qué servicio? Ej.: colocación, corte a medida, flete" onChange={event => updateService(service.key, { description: event.target.value })} aria-label="Descripción del servicio" /></label>
+              <small>No mueve stock: va en la factura como concepto.</small>
+            </div>
+            <div className="counter-qty">
+              <button type="button" onClick={() => updateService(service.key, { quantity: String(Math.max(0, round(amount - 1))) })} aria-label="Uno menos"><Minus size={15} /></button>
+              <input inputMode="decimal" value={service.quantity} onChange={event => updateService(service.key, { quantity: onlyAmount(event.target.value) })} aria-label="Cantidad del servicio" />
+              <button type="button" onClick={() => updateService(service.key, { quantity: String(round(amount + 1)) })} aria-label="Uno más"><Plus size={15} /></button>
+              <select value={service.unit} onChange={event => updateService(service.key, { unit: event.target.value })} aria-label="Unidad del servicio">{SERVICE_UNITS.map(unit => <option key={unit} value={unit}>{unit}</option>)}</select>
+            </div>
+            <div className="counter-cost mostrador-price">
+              <label><span>Precio s/IVA</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={service.price} placeholder="0,00" onChange={event => { const value = onlyAmount(event.target.value); const cents = Math.round(parseAmount(value) * 100); updateService(service.key, { price: value, priceVat: value && cents ? amountToInput(withVatCents(cents) / 100) : "" }); }} aria-label="Precio sin IVA del servicio" /></div></label>
+              <label><span>Precio c/IVA</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={service.priceVat} placeholder="IVA 21 %" onChange={event => { const value = onlyAmount(event.target.value); const cents = Math.round(parseAmount(value) * 100); updateService(service.key, { priceVat: value, price: value && cents ? amountToInput(withoutVatCents(cents) / 100) : "" }); }} aria-label="Precio con IVA del servicio" /></div></label>
+            </div>
+            <strong className="counter-line-total">{money(serviceCents)}</strong>
+            <div className="counter-line-actions">
+              <button type="button" title="Sacar el servicio de la venta" onClick={() => { setConfirming(false); setServices(current => current.filter(candidate => candidate.key !== service.key)); }}><Trash2 size={16} /></button>
+            </div>
+          </li>)}
         </ul>}
       </section>
 
@@ -424,7 +472,7 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
             <small className="field-hint">{fiscal ? "Se emite en ARCA con CAE al cobrar." : "Comprobante interno: no va a ARCA ni lleva IVA."}</small></div>
 
           <div className="counter-totals">
-            <div><span>Productos</span><b>{lines.length}</b></div>
+            <div><span>{services.length ? "Productos y servicios" : "Productos"}</span><b>{itemsCount}</b></div>
             <div><span>{fiscal ? "Neto sin IVA" : "Subtotal"}</span><b>{money(checked.netCents)}</b></div>
             {fiscal && <div><span>IVA 21 %</span><b>{money(checked.vatCents)}</b></div>}
             <div className="wide"><span>Total a cobrar</span><strong>{money(totalCents)}</strong></div>
