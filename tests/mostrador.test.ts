@@ -217,3 +217,38 @@ describe("venta por mostrador", () => {
     expect(await SalesRemito.findOne({ clientId: aRI._id, status: "anulado" }).lean()).toBeTruthy();
   });
 });
+
+describe("precio de venta e historial", () => {
+  it("Guardar desde el Mostrador y editar en la ficha de Stock dejan quién, cuándo y de cuánto a cuánto", async () => {
+    const priceRoute = await import("../src/app/api/stock/[id]/precio/route");
+    const recordRoute = await import("../src/app/api/records/[entity]/[id]/route");
+    const params = <T extends Record<string, string>>(value: T) => ({ params: Promise.resolve(value) });
+    const json = (method: string, body: unknown) => new Request("http://test", { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const disco = await product("Disco sierra widia", 0, 0, undefined, 1);
+
+    // Sin precio: se guarda desde el Mostrador.
+    const saved = await call(await priceRoute.PUT(json("PUT", { salePriceCents: 1_000_000, source: "mostrador" }), params({ id: disco })));
+    expect(saved.status).toBe(200);
+    expect(await StockItem.findById(disco).lean()).toMatchObject({ salePriceCents: 1_000_000 });
+    expect((await call(await priceRoute.PUT(json("PUT", { salePriceCents: 0 }), params({ id: disco })))).status).toBe(400);
+
+    // Después se cambia en la ficha de Stock; un cambio de otra cosa no anota precio.
+    expect((await call(await recordRoute.PATCH(json("PATCH", { salePriceCents: 1_250_000 }), params({ entity: "stock", id: disco })))).status).toBe(200);
+    expect((await call(await recordRoute.PATCH(json("PATCH", { notes: "Estante 3" }), params({ entity: "stock", id: disco })))).status).toBe(200);
+
+    const history = await call(await priceRoute.GET(new Request("http://test"), params({ id: disco })));
+    expect(history.body.items.map((change: Record<string, unknown>) => [change.previousCents ?? null, change.salePriceCents, change.source, change.userName])).toEqual([
+      [1_000_000, 1_250_000, "stock", "Mostrador"],
+      [null, 1_000_000, "mostrador", "Mostrador"],
+    ]);
+    expect(history.body.items[0].createdAt).toBeTruthy();
+  });
+
+  it("el precio con IVA y sin IVA se calculan uno del otro", async () => {
+    const { withVatCents, withoutVatCents } = await import("../src/lib/counter-totals");
+    expect(withVatCents(1_000_000)).toBe(1_210_000);
+    expect(withoutVatCents(1_210_000)).toBe(1_000_000);
+    // El precio se guarda sin IVA en centavos: al volver a sumarle el IVA puede haber un centavo de diferencia.
+    expect(Math.abs(withVatCents(withoutVatCents(999_999)) - 999_999)).toBeLessThanOrEqual(1);
+  });
+});

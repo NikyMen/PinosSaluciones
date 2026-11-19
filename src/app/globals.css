@@ -2096,12 +2096,17 @@ tr.row-inactive td { color: var(--muted); background: #fafbfc; }
 .counter-confirm-text { flex-basis: 100%; color: #9e2630; font-size: .7rem; font-weight: 750; }
 .counter-recent .task-history-state { padding: 18px 20px; }
 /* Mostrador (venta al público): usa la misma base que la Caja. El nombre va arriba, los controles abajo. */
-.counter-line.mostrador-line { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.counter-line.mostrador-line { grid-template-columns: auto minmax(0, 1fr) auto; }
 .mostrador-line .counter-line-info { grid-column: 1 / -1; }
-.mostrador-price { display: grid; grid-template-columns: 112px 92px; gap: 3px 8px; }
+/* Los precios van en su propia fila, debajo de la cantidad: así nunca tapan el total ni el tacho. */
+.mostrador-line .mostrador-price { grid-column: 1 / -1; grid-row: 3; }
+.mostrador-line .counter-line-total { justify-self: end; }
+.mostrador-price { display: grid; grid-template-columns: repeat(3, minmax(96px, 150px)) auto; justify-content: start; align-items: end; gap: 3px 8px; }
 .mostrador-price label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mostrador-price .money-input input { min-width: 0; width: 100%; }
 .mostrador-price small { grid-column: 1 / -1; color: var(--muted-2); font-size: .62rem; font-weight: 700; }
+.mostrador-price.locked .money-input input[readonly] { color: var(--brand-navy-deep); background: #f4f6f9; font-weight: 750; }
+.mostrador-price-btn { min-height: 38px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
 .mostrador-change { color: #0c6b3f; font-size: .78rem; }
 .mostrador-day { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .mostrador-summary { padding: 0 20px 14px; display: flex; flex-wrap: wrap; gap: 10px; }
@@ -2140,8 +2145,9 @@ tr.row-inactive td { color: var(--muted); background: #fafbfc; }
   .mostrador-catalog-row > span[data-label="Salón"]::before, .mostrador-catalog-row > span[data-label="Galpón"]::before { content: attr(data-label) " "; }
   .mostrador-catalog-row > span[data-label="Precio"] { grid-area: price; }
   .mostrador-catalog-add { grid-area: add; }
-  .counter-line.mostrador-line { grid-template-columns: minmax(0, 1fr) auto auto; }
-  .mostrador-line .mostrador-price { grid-column: 1 / -1; grid-row: 3; grid-template-columns: 1fr 1fr; }
+  .counter-line.mostrador-line { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .mostrador-line .mostrador-price { grid-template-columns: 1fr 1fr; }
+  .mostrador-price-btn { justify-content: center; }
 }
 
 /* La cámara leyendo */

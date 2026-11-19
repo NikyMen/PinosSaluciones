@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth";
 import { canApprovePurchases, canRead, canViewWorkBudget, canWrite } from "@/lib/permissions";
 import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { recordSalePriceChange } from "@/lib/sale-prices";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
 import { applyCollection, applyPayment } from "@/lib/balances";
 import { createInvoice } from "@/lib/invoice-create";
@@ -124,6 +125,7 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     if (entity === "payments") await afterPaymentChange(null, item.toObject(), session);
     // Una factura de una OC ya pagada de contado o con anticipo queda cubierta por ese pago.
     if (entity === "expenses" && item.purchaseId) await refreshOrderPayment(item.purchaseId);
+    if (entity === "stock" && item.salePriceCents) await recordSalePriceChange(item._id, undefined, item.salePriceCents, session, "alta");
     await audit(session, "create", entity, item._id, null, item.toObject(), ip);
     return Response.json(item, { status: 201 });
   } catch (error) { return apiError(error); }

@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth";
 import { canDelete, canRead, canWrite } from "@/lib/permissions";
 import { apiError, HttpError } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { recordSalePriceChange } from "@/lib/sale-prices";
 import { canSeeTask, resolveTaskAssignee } from "@/lib/tasks";
 import { applyCollection, applyPayment } from "@/lib/balances";
 import { beforeUpdate, checkExpenseDelete } from "@/lib/document-rules";
@@ -102,6 +103,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     if (entity === "expenses" && item) {
       for (const orderId of new Set([(before as Record<string, unknown>).purchaseId, (item as Record<string, unknown>).purchaseId].filter(Boolean).map(String))) await refreshOrderPayment(orderId);
     }
+    // El precio de venta de un material queda en su historial: quién lo cambió y cuándo.
+    if (entity === "stock" && item && "salePriceCents" in changes) await recordSalePriceChange(id, (before as Record<string, unknown>).salePriceCents, (item as Record<string, unknown>).salePriceCents, session, "stock");
     const action = entity === "tasks" && (before as Record<string, unknown>).status !== (item as Record<string, unknown> | null)?.status
       ? "status_change"
       : "update";

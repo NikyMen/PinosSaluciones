@@ -676,6 +676,18 @@ const CounterSaleSchema = new Schema({
 CounterSaleSchema.index({ date: -1, createdAt: -1 });
 
 /*
+ * Cada cambio del precio de venta de un material (`salePriceCents`): de cuánto a
+ * cuánto, quién y cuándo, y desde dónde (la ficha de Stock o el Mostrador). Se
+ * ve en Stock, en el historial de precios del material. Ver src/lib/sale-prices.ts.
+ */
+const StockPriceChangeSchema = new Schema({
+  stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true, index: true },
+  previousCents: Number, salePriceCents: Number,
+  source: { type: String, enum: ["stock", "mostrador", "alta"], default: "stock" },
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+}, options);
+
+/*
  * Bienes de uso: la camioneta, los andamios, la hidrolavadora. Cada uno lleva
  * lo que se le hizo (services, arreglos) y lo que toca hacerle: "dentro de 3
  * meses, service de los 10.000 km". Lo que se programa avisa solo antes de
@@ -1230,6 +1242,7 @@ export const Task = mongoose.models.Task || mongoose.model("Task", TaskSchema);
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditSchema);
 export const StockTicket = mongoose.models.StockTicket || mongoose.model("StockTicket", StockTicketSchema);
 export const CounterSale = mongoose.models.CounterSale || mongoose.model("CounterSale", CounterSaleSchema);
+export const StockPriceChange = mongoose.models.StockPriceChange || mongoose.model("StockPriceChange", StockPriceChangeSchema);
 export const Asset = mongoose.models.Asset || mongoose.model("Asset", AssetSchema);
 export const StockTrash = mongoose.models.StockTrash || mongoose.model("StockTrash", StockTrashSchema);
 export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);

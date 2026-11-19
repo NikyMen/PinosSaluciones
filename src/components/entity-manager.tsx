@@ -9,6 +9,7 @@ import { entityConfig, columnLabels, type Field } from "@/lib/entity-config";
 import { date, dateTime, money, qty, titleCase } from "@/lib/format";
 import { DateInput } from "@/components/fields";
 import { HistoryModal, RecordHistory } from "@/components/record-history";
+import { StockPriceHistory, StockPriceHistoryModal } from "@/components/stock-price-history";
 import { FormField, QuickCreateModal, fieldErrors, type FieldProps } from "@/components/record-form";
 import { StockMovementModal, type StockItem, type StockMovement } from "@/components/stock-movement";
 import { PurchaseDetailModal } from "@/components/purchase-detail";
@@ -163,6 +164,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
   const [relationValues, setRelationValues] = useState<Record<string, string>>({});
   const [quickCreate, setQuickCreate] = useState<{ fieldKey: string; entity: Entity } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ _id: string; label: string } | null>(null);
+  const [pricesFor, setPricesFor] = useState<{ _id: string; label: string; salePriceCents?: number } | null>(null);
   const [laborFor, setLaborFor] = useState<{ _id: string; label: string } | null>(null);
   const [movementFor, setMovementFor] = useState<{ item: StockItem; kind: StockMovement["kind"] } | null>(null);
   // La ficha de una compra: la solicitud con su orden, sus pagos y sus remitos.
@@ -703,6 +705,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
           {entity === "stock" && canEdit && <button title="Entrada: una compra que llegó (TV Pino al Galpón, Constructora Pino al Salón)" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "ingreso" })}><ArrowDownToLine size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Transferir entre el Galpón y el Salón de Ventas (queda en tránsito hasta que se recibe)" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "transferencia" })}><ArrowRightLeft size={16} /></button>}
           {entity === "stock" && canEdit && <button title="Salida a obra, con remito" onClick={() => setMovementFor({ item: item as unknown as StockItem, kind: "egreso" })}><HardHat size={16} /></button>}
+          {entity === "stock" && <button className="row-action-wide" title="Precio de venta y su historial: quién lo cambió y cuándo" onClick={() => setPricesFor({ _id: item._id, label: itemLabel(item), salePriceCents: Number(item.salePriceCents || 0) || undefined })}><Tags size={15} /> Precios</button>}
           {entity === "stock" && canEdit && <button title={item.barcode ? `Imprimir la etiqueta (${String(item.barcode)})` : "Generar el código de barras e imprimir la etiqueta"} onClick={() => { void printStockLabel(item); }}><Tag size={16} /></button>}
           {entity === "assets" && <button className="row-action-wide labor" title="Services, arreglos y próximos mantenimientos" onClick={() => setMaintenanceFor(item._id)}><Wrench size={15} /> Mantenimiento</button>}
           {entity === "purchases" && Boolean(item.stockedAt) && <span className="row-stocked" title={`Recibida por ${String(item.stockedByName || "")}`}><PackageCheck size={14} /> {item.receptionStatus === "parcial" ? "Recibida en parte" : "En stock"} · {warehouseLabel(String(item.stockedWarehouse || ""))}</span>}
@@ -762,6 +765,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
         <footer><span>Los cambios quedan registrados automáticamente.</span><button type="button" className="secondary-btn" onClick={() => setModal(false)}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></footer>
       </form>
       {editing && entity === "workers" && <WorkerPeriods worker={editing} />}
+      {editing && entity === "stock" && <div className="modal-form-body"><StockPriceHistory itemId={editing._id} embedded /></div>}
       {editing && <div className="modal-form-body"><RecordHistory entity={entity} recordId={editing._id} embedded /></div>}
     </section></div>}
 
@@ -803,6 +807,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
       onSaved={updated => { setItems(current => current.map(row => row._id === updated._id ? { ...row, ...updated } as Item : row)); setMovementFor({ item: updated, kind: movementFor.kind }); }} />}
 
     {historyFor && <HistoryModal entity={entity} record={historyFor} onClose={() => setHistoryFor(null)} />}
+    {pricesFor && <StockPriceHistoryModal item={pricesFor} onClose={() => setPricesFor(null)} />}
     {maintenanceFor && <AssetMaintenanceModal assetId={maintenanceFor} canEdit={canEdit} onClose={() => setMaintenanceFor(null)}
       onChanged={(updated: AssetRecord) => setItems(current => current.map(row => row._id === updated._id ? { ...row, nextDueDate: updated.nextDueDate, nextDueTitle: updated.nextDueTitle, nextDueReading: updated.nextDueReading, currentReading: updated.currentReading, status: updated.status } : row))} />}
     {laborFor && <WorkerLaborModal worker={laborFor} canEdit={canEdit} onClose={() => setLaborFor(null)} />}

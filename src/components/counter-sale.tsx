@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Banknote, Camera, Check, CreditCard, FileDown, Landmark, Minus, Plus, Printer, ReceiptText, ScanBarcode, Store, Trash2, TriangleAlert, UserPlus, X } from "lucide-react";
+import { Banknote, Camera, Check, CreditCard, Edit3, FileDown, Landmark, Minus, Plus, Printer, ReceiptText, Save, ScanBarcode, Store, Trash2, TriangleAlert, UserPlus, X } from "lucide-react";
 import Link from "next/link";
 import { DateInput, SearchSelect, type Option } from "@/components/fields";
 import { CameraScanner, scanFeedback, useKeyboardScanner } from "@/components/barcode-scanner";
@@ -12,7 +12,7 @@ import { cleanScannedCode } from "@/lib/barcode";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
 import { cashMethodLabels } from "@/lib/cash-methods";
 import { VAT_CONDITION_KEYS, VAT_CONDITIONS, type VatCondition } from "@/lib/fiscal";
-import { counterTotals, finalUnitCents } from "@/lib/counter-totals";
+import { counterTotals, withoutVatCents, withVatCents } from "@/lib/counter-totals";
 import { printSaleTicket, readPrinterSettings, savePrinterSettings, type PrinterSettings, type SaleTicketData } from "@/lib/ticket-print";
 import { downloadSaleInvoicePdf } from "@/lib/invoice-pdf";
 import { downloadFiscalInvoicePdf, fiscalInvoicePdfData } from "@/lib/fiscal-invoice-pdf";
@@ -29,7 +29,12 @@ import { downloadFiscalInvoicePdf, fiscalInvoicePdfData } from "@/lib/fiscal-inv
    ───────────────────────────────────────────────────────────────────────────── */
 
 type Product = { _id: string; name: string; unit: string; sku?: string; barcode?: string; salePriceCents?: number } & Record<string, unknown>;
-type Line = { item: Product; quantity: string; price: string; discount: string };
+/**
+ * Un renglón de la venta. `price` es el precio sin IVA y `priceVat` el mismo con
+ * el 21 %: se calculan uno del otro. Con precio guardado en Stock, los dos quedan
+ * fijos hasta tocar Editar; Guardar lo graba en Stock para las próximas ventas.
+ */
+type Line = { item: Product; quantity: string; price: string; priceVat: string; discount: string; editing: boolean; saving?: boolean };
 type ClientRow = { _id: string; name: string; cuit?: string; vatCondition?: string; code?: number };
 type Sale = SaleTicketData & { _id: string; voucherType: string; status: string; warning?: string; invoiceId?: string; clientId?: string };
 type Day = { day: string; items: Sale[]; summary: { count: number; totalCents: number; pendingCents: number; byMethod: Array<{ method: string; label: string; amountCents: number }>; byVoucher: Array<{ voucherType: string; amountCents: number }> } };
@@ -63,6 +68,8 @@ const toNumber = (value: string) => Number(value.replace(",", ".")) || 0;
 const onlyAmount = (value: string) => value.replace(/[^\d,.]/g, "");
 const codeOf = (item: Product) => item.barcode || item.sku || "";
 const methodLabel = (method: string) => cashMethodLabels[method] || method;
+/** El precio sin IVA y con IVA de un renglón, a partir de los centavos sin IVA. */
+const pricePair = (cents: number) => ({ price: cents ? amountToInput(cents / 100) : "", priceVat: cents ? amountToInput(withVatCents(cents) / 100) : "" });
 /** Lo que se puede vender de un producto según de dónde sale. */
 function availableOf(item: Product, from: Source) {
   const levels = levelsOf(item as Record<string, unknown>);
@@ -141,7 +148,7 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
       const existing = current.find(line => line.item._id === item._id);
       if (existing) return [{ ...existing, item: { ...existing.item, ...item }, quantity: String(round(toNumber(existing.quantity) + amount)) }, ...current.filter(line => line !== existing)];
       const cents = Number(item.salePriceCents || 0);
-      return [{ item, quantity: String(amount), price: cents ? amountToInput(cents / 100) : "", discount: "" }, ...current];
+      return [{ item, quantity: String(amount), ...pricePair(cents), discount: "", editing: !cents }, ...current];
     });
     say(`${item.name}: +${qty(amount)} ${item.unit}${item.salePriceCents ? "" : " · no tiene precio de venta: cargalo"}`, Boolean(item.salePriceCents));
   }, []);
@@ -176,6 +183,34 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     addItem(item);
     setQuery("");
     searchRef.current?.focus();
+  }
+
+  /** El precio sin IVA cambia: el con IVA se recalcula. */
+  function changePrice(id: string, value: string) {
+    const cents = Math.round(parseAmount(value) * 100);
+    updateLine(id, { price: value, priceVat: value && cents ? amountToInput(withVatCents(cents) / 100) : "" });
+  }
+
+  /** El precio con IVA cambia: el sin IVA se recalcula. */
+  function changePriceWithVat(id: string, value: string) {
+    const cents = Math.round(parseAmount(value) * 100);
+    updateLine(id, { priceVat: value, price: value && cents ? amountToInput(withoutVatCents(cents) / 100) : "" });
+  }
+
+  /** Guarda el precio sin IVA en Stock (queda en el historial de precios del material). */
+  async function savePrice(id: string, cents: number) {
+    if (cents <= 0) return;
+    updateLine(id, { saving: true });
+    setError("");
+    const response = await fetch(`/api/stock/${id}/precio`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ salePriceCents: cents, source: "mostrador" }) }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    if (!response?.ok) {
+      updateLine(id, { saving: false });
+      return setError(result.error || "No se pudo guardar el precio");
+    }
+    setLines(current => current.map(line => line.item._id === id ? { ...line, item: { ...line.item, salePriceCents: cents }, ...pricePair(cents), editing: false, saving: false } : line));
+    setCatalogVersion(version => version + 1);
+    say(`Precio guardado en Stock: ${money(cents)} sin IVA (${money(withVatCents(cents))} con IVA)`);
   }
 
   function updateLine(id: string, patch: Partial<Line>) {
@@ -354,10 +389,14 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
               <button type="button" onClick={() => step(line.item._id, 1)} aria-label="Uno más"><Plus size={15} /></button>
               <span>{line.item.unit}</span>
             </div>
-            <div className="counter-cost mostrador-price">
-              <label><span>Precio s/IVA</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={line.price} placeholder="0,00" onChange={event => updateLine(line.item._id, { price: onlyAmount(event.target.value) })} aria-label={`Precio de ${line.item.name}`} /></div></label>
+            <div className={line.editing ? "counter-cost mostrador-price" : "counter-cost mostrador-price locked"}>
+              <label><span>Precio s/IVA</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={line.price} placeholder="0,00" readOnly={!line.editing} onChange={event => changePrice(line.item._id, onlyAmount(event.target.value))} aria-label={`Precio sin IVA de ${line.item.name}`} /></div></label>
+              <label><span>Precio c/IVA</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={line.priceVat} placeholder="IVA 21 %" readOnly={!line.editing} onChange={event => changePriceWithVat(line.item._id, onlyAmount(event.target.value))} aria-label={`Precio con IVA de ${line.item.name}`} /></div></label>
               <label><span>Desc. $</span><div className="money-input"><span className="money-prefix">$</span><input inputMode="decimal" value={line.discount} placeholder="0,00" onChange={event => updateLine(line.item._id, { discount: onlyAmount(event.target.value) })} aria-label={`Descuento de ${line.item.name}`} /></div></label>
-              {fiscal && priceCents > 0 && <small>Final c/IVA {money(finalUnitCents(voucher, priceCents))}</small>}
+              {line.editing
+                ? <button type="button" className="secondary-btn mostrador-price-btn" disabled={priceCents <= 0 || line.saving} title="Guardar este precio en Stock para las próximas ventas" onClick={() => { void savePrice(line.item._id, priceCents); }}><Save size={15} /> {line.saving ? "Guardando…" : "Guardar"}</button>
+                : <button type="button" className="secondary-btn mostrador-price-btn" title="Cambiar el precio de venta de este producto" onClick={() => updateLine(line.item._id, { editing: true })}><Edit3 size={15} /> Editar</button>}
+              {!fiscal && priceCents > 0 && <small>La Factura X no lleva IVA: se cobra el precio sin IVA.</small>}
             </div>
             <strong className="counter-line-total">{money(lineCents)}</strong>
             <div className="counter-line-actions">

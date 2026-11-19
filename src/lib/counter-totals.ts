@@ -15,7 +15,12 @@ export function counterTotals(voucherType: string, lines: Array<{ quantity: numb
   return { rows, netCents, vatPct, vatCents, amountCents: netCents + vatCents };
 }
 
-/** El precio final de una unidad, con el IVA que corresponde al comprobante. */
-export function finalUnitCents(voucherType: string, unitPriceCents: number) {
-  return voucherType === "factura_x" ? unitPriceCents : Math.round(unitPriceCents * 1.21);
+/** El precio con el 21 % de IVA, a partir del precio sin IVA. */
+export function withVatCents(unitPriceCents: number) {
+  return Math.round(unitPriceCents * 1.21);
+}
+
+/** El precio sin IVA a partir del precio con el 21 % de IVA (lo que se escribe en "Precio c/IVA"). */
+export function withoutVatCents(priceWithVatCents: number) {
+  return Math.round(priceWithVatCents / 1.21);
 }
