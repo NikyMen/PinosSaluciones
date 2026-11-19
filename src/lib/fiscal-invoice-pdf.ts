@@ -4,7 +4,7 @@ import { invoiceLineCents, invoicePrintLines, type InvoiceLine } from "./invoice
 import { invoiceLabel } from "./invoice-labels";
 import { plain, readPdfLogo } from "./pdf-brand";
 import { companyOf, type CompanyKey } from "./companies";
-import { ARCA_VOUCHER_CODE, arcaQrUrl, VAT_CONDITIONS, vatConditionFor, type ArcaVoucherType } from "./fiscal";
+import { ARCA_VOUCHER_CODE, arcaQrUrl, receiverDocument, VAT_CONDITIONS, vatConditionFor, type ArcaVoucherType } from "./fiscal";
 
 /**
  * La factura (o nota de débito o de crédito) A o B emitida en ARCA, en PDF: el formato del comprobante
@@ -26,6 +26,10 @@ export type FiscalInvoicePdfData = {
   /** Con remitos es venta de productos; si no, servicios (lleva el período facturado). */
   products: boolean;
   client: { name: string; cuit: string; address?: string; vatCondition?: string };
+  /** El DNI o CUIT que dio el comprador en el mostrador: va en lugar del CUIT del cliente genérico. */
+  buyerDocument?: string;
+  /** "Contado" en el mostrador; si no, cuenta corriente. */
+  saleCondition?: string;
 };
 
 const pesos = (cents: number) => plain((cents / 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
@@ -40,7 +44,9 @@ export function fiscalInvoicePdfData(invoice: Record<string, unknown>, client?: 
     discountCents: Number(invoice.discountCents || 0) || undefined,
     cae: String(invoice.cae || ""), caeDueDate: String(invoice.caeDueDate || ""), environment: String(invoice.arcaEnvironment || ""),
     products: Boolean(Array.isArray(invoice.remitoIds) && invoice.remitoIds.length) || Boolean(invoicePrintLines(invoice).length && invoicePrintLines(invoice).every(line => line.stockItemId)),
-    client: { name: String(client?.name || "Cliente"), cuit: String(client?.cuit || ""), address: String(client?.address || ""), vatCondition: client?.vatCondition ? String(client.vatCondition) : undefined },
+    client: { name: String(invoice.buyerName || client?.name || "Cliente"), cuit: String(client?.cuit || ""), address: String(client?.address || ""), vatCondition: client?.vatCondition ? String(client.vatCondition) : undefined },
+    buyerDocument: invoice.buyerDocument ? String(invoice.buyerDocument) : undefined,
+    saleCondition: invoice.origin === "mostrador" ? "Contado" : undefined,
   };
 }
 
@@ -94,11 +100,12 @@ export function buildFiscalInvoicePdf(doc: jsPDF, data: FiscalInvoicePdfData, me
 
   // Receptor.
   doc.rect(M, 76, W, 20);
-  kv("CUIT:", data.client.cuit.replace(/\D/g, ""), M + 3, 82);
+  const receiver = receiverDocument(data.client.cuit, data.buyerDocument);
+  kv(`${receiver.label}:`, receiver.number === "0" ? "-" : receiver.number, M + 3, 82);
   kv("Apellido y Nombre / Razón Social:", data.client.name.toUpperCase().slice(0, 48), 62, 82);
   kv("Condición frente al IVA:", VAT_CONDITIONS[vatConditionFor(data.voucherType, data.client.vatCondition)].label, M + 3, 88);
   kv("Domicilio:", (data.client.address || "-").slice(0, 50), 100, 88);
-  kv("Condición de venta:", "Cuenta Corriente", M + 3, 94);
+  kv("Condición de venta:", data.saleCondition || "Cuenta Corriente", M + 3, 94);
   if (data.associated) kv("Comprobante asociado:", data.associated, 100, 94);
 
   // Detalle: un renglón con la descripción. La A discrimina el IVA; la B lo lleva incluido.
@@ -223,7 +230,7 @@ export async function downloadFiscalInvoicePdf(data: FiscalInvoicePdfData) {
   const [pointOfSale, sequence] = data.number.split("-").map(Number);
   const qrUrl = arcaQrUrl({
     issueDate: new Date(data.issueDate).toISOString(), companyCuit: companyOf(data.company).cuit, pointOfSale, voucherCode: ARCA_VOUCHER_CODE[data.voucherType],
-    number: sequence, amountCents: data.amountCents, clientCuit: data.client.cuit, cae: data.cae,
+    number: sequence, amountCents: data.amountCents, clientCuit: data.client.cuit, buyerDocument: data.buyerDocument, cae: data.cae,
   });
   const [{ jsPDF }, QRCode, logo] = await Promise.all([import("jspdf"), import("qrcode"), readPdfLogo()]);
   const qr = await QRCode.toDataURL(qrUrl, { margin: 0, width: 360, errorCorrectionLevel: "M" });

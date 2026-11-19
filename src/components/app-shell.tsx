@@ -47,6 +47,7 @@ const groups: NavGroup[] = [
     { href: "/app/ruta-compras", label: "Ruta de compras", icon: Route, permission: "purchases" },
   ] },
   { id: "sales", label: "Ventas", icon: Store, items: [
+    { href: "/app/mostrador", label: "Mostrador (venta al público)", icon: Store, permission: "invoices" },
     { href: "/app/remitos", label: "Remitos de venta", icon: PackageOpen, permission: "stock" },
     { href: "/app/invoices", label: "Facturas de venta", icon: FileText, permission: "invoices" },
     { href: "/app/collections", label: "Cobranzas y recibos", icon: HandCoins, permission: "collections" },
@@ -91,6 +92,7 @@ const legacyGroups: NavGroup[] = [
   { id: "commercial", label: "Comercial", icon: CircleDollarSign, items: [
     { href: "/app/clients", label: "Clientes", icon: Users, permission: "clients" },
     { href: "/app/quotes", label: "Ventas y cotizaciones", icon: FileText, permission: "quotes" },
+    { href: "/app/mostrador", label: "Mostrador (venta al público)", icon: Store, permission: "invoices" },
     { href: "/app/remitos", label: "Remitos de venta", icon: PackageOpen, permission: "stock" },
   ] },
   { id: "works", label: "Obras", icon: HardHat, items: [

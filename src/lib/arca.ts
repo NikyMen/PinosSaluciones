@@ -5,7 +5,8 @@ import path from "node:path";
 import { ArcaTicket } from "./models";
 import { COMPANIES, type CompanyKey } from "./companies";
 import { HttpError } from "./api";
-import { ARCA_VOUCHER_CODE, VAT_CONDITIONS, type ArcaVoucherType, type VatCondition } from "./fiscal";
+import { ARCA_VOUCHER_CODE, CONSUMER_ID_THRESHOLD_CENTS, DOC_TYPES, receiverDocument, VAT_CONDITIONS, type ArcaVoucherType, type VatCondition } from "./fiscal";
+import { money } from "./format";
 import { formatVoucherNumber, voucherLabels } from "./invoice-labels";
 import { voucherBooks } from "./voucher-books";
 
@@ -241,6 +242,8 @@ export type CaeRequest = {
   /** 1 productos (se factura un remito), 2 servicios (obra, certificado). */
   concept: 1 | 2 | 3;
   clientCuit: string; vatCondition: VatCondition;
+  /** El DNI o CUIT de un consumidor final que no está cargado en el cliente (venta por mostrador). */
+  buyerDocument?: string;
   issueDate: Date; dueDate?: Date;
   netCents: number; vatPct: number; vatCents: number; amountCents: number;
 };
@@ -252,17 +255,32 @@ export function arcaDate(value: Date) {
 
 const pesos = (cents: number) => (cents / 100).toFixed(2);
 
-/** Revisa que la factura se pueda emitir y arma el detalle de FECAESolicitar. */
-export function buildCaeRequest(request: CaeRequest) {
+/**
+ * A quién se le puede hacer el comprobante y con qué documento. La A va a un
+ * responsable inscripto o monotributista, con CUIT. La B a un consumidor final
+ * puede ir con su DNI o sin identificarlo, hasta el tope de ARCA; al exento o
+ * no alcanzado, con CUIT.
+ */
+export function checkReceiver(request: Pick<CaeRequest, "voucherType" | "vatCondition" | "clientCuit" | "buyerDocument" | "amountCents">) {
   const { voucherType, vatCondition } = request;
   const letter = voucherType.endsWith("_b") ? "b" : "a";
   if (!RECEIVERS_BY_LETTER[letter].includes(vatCondition)) {
     throw new HttpError(`A un cliente ${VAT_CONDITIONS[vatCondition].label} no se le hace ${voucherLabels[voucherType]}: corresponde la letra ${letter === "a" ? "B" : "A"}`);
   }
+  const document = receiverDocument(request.clientCuit, request.buyerDocument);
+  if (vatCondition !== "consumidor_final" && document.type !== DOC_TYPES.cuit) throw new HttpError("El cliente no tiene un CUIT válido cargado: ARCA lo pide para emitir");
+  if (document.type === DOC_TYPES.sin_identificar && request.amountCents >= CONSUMER_ID_THRESHOLD_CENTS) {
+    throw new HttpError(`Desde ${money(CONSUMER_ID_THRESHOLD_CENTS)} ARCA pide identificar al consumidor final: cargá su DNI o CUIT`);
+  }
+  return document;
+}
+
+/** Revisa que la factura se pueda emitir y arma el detalle de FECAESolicitar. */
+export function buildCaeRequest(request: CaeRequest) {
+  const { voucherType, vatCondition } = request;
+  const document = checkReceiver(request);
   const isNote = voucherType.startsWith("nota_");
   if (isNote && !request.associated) throw new HttpError(`La ${voucherLabels[voucherType]} va asociada a una factura`);
-  const cuit = request.clientCuit.replace(/\D/g, "");
-  if (cuit.length !== 11) throw new HttpError("El cliente no tiene un CUIT válido cargado: ARCA lo pide para emitir");
   if (request.netCents <= 0) throw new HttpError("Para emitir en ARCA cargá el neto gravado de la factura");
   const rateId = VAT_RATE_IDS[String(request.vatPct)];
   if (rateId === undefined) throw new HttpError(`ARCA no tiene la alícuota de IVA ${request.vatPct} %`);
@@ -278,7 +296,7 @@ export function buildCaeRequest(request: CaeRequest) {
   })() : "";
 
   return `<ar:FeCAEReq><ar:FeCabReq><ar:CantReg>1</ar:CantReg><ar:PtoVta>${request.pointOfSale}</ar:PtoVta><ar:CbteTipo>${ARCA_VOUCHER_CODE[voucherType]}</ar:CbteTipo></ar:FeCabReq>`
-    + `<ar:FeDetReq><ar:FECAEDetRequest><ar:Concepto>${request.concept}</ar:Concepto><ar:DocTipo>80</ar:DocTipo><ar:DocNro>${cuit}</ar:DocNro>`
+    + `<ar:FeDetReq><ar:FECAEDetRequest><ar:Concepto>${request.concept}</ar:Concepto><ar:DocTipo>${document.type}</ar:DocTipo><ar:DocNro>${document.number}</ar:DocNro>`
     + `<ar:CbteDesde>${request.number}</ar:CbteDesde><ar:CbteHasta>${request.number}</ar:CbteHasta><ar:CbteFch>${arcaDate(issue)}</ar:CbteFch>`
     + `<ar:ImpTotal>${pesos(request.amountCents)}</ar:ImpTotal><ar:ImpTotConc>0.00</ar:ImpTotConc><ar:ImpNeto>${pesos(request.netCents)}</ar:ImpNeto><ar:ImpOpEx>0.00</ar:ImpOpEx><ar:ImpTrib>0.00</ar:ImpTrib><ar:ImpIVA>${pesos(request.vatCents)}</ar:ImpIVA>`
     + `${service}<ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIVAReceptorId>${VAT_CONDITIONS[vatCondition].id}</ar:CondicionIVAReceptorId>`

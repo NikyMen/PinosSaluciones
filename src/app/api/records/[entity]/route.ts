@@ -5,19 +5,15 @@ import { afterPaymentChange, refreshOrderPayment } from "@/lib/purchase-flow";
 import { schemas, sanitizeSearch } from "@/lib/schemas";
 import { requireSession } from "@/lib/auth";
 import { canApprovePurchases, canRead, canViewWorkBudget, canWrite } from "@/lib/permissions";
-import { apiError, HttpError } from "@/lib/api";
+import { apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { resolveTaskAssignee, taskScope } from "@/lib/tasks";
 import { applyCollection, applyPayment } from "@/lib/balances";
-import { applyCreditNote, checkNote, checkSubstitution, completeSubstitution, emitInvoiceInArca, prepareInvoice } from "@/lib/invoice-service";
+import { createInvoice } from "@/lib/invoice-create";
 import { beforeCreate } from "@/lib/document-rules";
-import { Types } from "mongoose";
-import { attachRemitos, checkRemitosForInvoice, claimRemitos, invoiceRemitoLines, unclaimRemitos } from "@/lib/sales-remitos";
-import { checkInvoiceExcess } from "@/lib/quote-billing-service";
 import { ensureAccountCatalog } from "@/lib/account-service";
 import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
-import { closeCertificate } from "@/lib/certificate-billing";
 import { cashAccountBalances, type CashAccountDoc } from "@/lib/cash-accounts";
 import { invoiceListSummary, pendingInvoiceFilter } from "@/lib/invoice-summary";
 import { workHolidays } from "@/lib/work-calendar";
@@ -116,56 +112,19 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     if (entity === "quotes") data.version = await nextQuoteVersion(String(data.title || ""));
     if (entity === "tasks") await resolveTaskAssignee(session, data);
     if (entity === "workers") { data.name = composeWorkerName(data); await prepareNewWorker(data); }
+    const ip = request.headers.get("x-forwarded-for") || undefined;
+    // La factura tiene su propio circuito (remitos, ARCA, sustitución): src/lib/invoice-create.ts.
+    if (entity === "invoices") return Response.json(await createInvoice(data, session, ip), { status: 201 });
     await beforeCreate(entity, data, session);
-    const replaced = entity === "invoices" ? await checkSubstitution(data) : null;
-    // La factura referencia los remitos de venta que factura: no vuelve a descontar stock.
-    if (entity === "invoices") await checkRemitosForInvoice(data);
-    // La fiscal que sustituye una X factura lo mismo que la X de sus remitos.
-    if (replaced) data.remitoLines = replaced.remitoLines;
-    if (entity === "invoices") await prepareInvoice(data);
-    // Una nota de débito o de crédito: con su factura asociada, del mismo cliente y la misma letra.
-    if (entity === "invoices") await checkNote(data);
-    // No pasa de lo que queda por facturar de su cotización, su certificado o sus remitos (salvo que Gerencia lo autorice).
-    if (entity === "invoices") await checkInvoiceExcess(data, session);
     if (entity === "collections") { if (!data.number) data.number = await nextReceiptNumber(); data.userName = session.name; }
-    // Emitir en ARCA: primero se revisa que la factura se pueda guardar, después se pide el CAE.
-    const emitInArca = entity === "invoices" && data.arcaEmit === true;
-    delete data.arcaEmit;
-    // Los remitos se toman antes de emitir y guardar: dos facturas no pueden llevarse el mismo.
-    // En una sustitución ya los tiene la X y pasan a la fiscal después de guardarla.
-    const remitoIds = entity === "invoices" && Array.isArray(data.remitoIds) ? data.remitoIds : [];
-    const remitoLines = entity === "invoices" ? invoiceRemitoLines(data) : [];
-    const claim = remitoLines.length > 0 && !replaced;
-    if (claim) { data._id = new Types.ObjectId(); await claimRemitos(data._id, remitoLines); }
-    let item;
-    try {
-      if (emitInArca) {
-        await new model({ ...data, number: data.number || "por-emitir" }).validate();
-        await emitInvoiceInArca(data);
-      }
-      item = await model.create(data as never).catch(error => {
-        if (!emitInArca) throw error;
-        // Ya está autorizada en ARCA: que no se pierda el dato aunque no se haya podido guardar.
-        console.error("Factura emitida en ARCA que no se pudo guardar", { company: data.company, number: data.number, cae: data.cae, error });
-        throw new HttpError(`La factura quedó emitida en ARCA (${String(data.number)}, CAE ${String(data.cae)}) pero no se pudo guardar en el sistema. Cargala a mano con esos datos.`, 500);
-      });
-    } catch (error) {
-      // Emitida en ARCA, los remitos quedan tomados: la factura existe aunque haya que cargarla a mano.
-      if (claim && !data.cae) await unclaimRemitos(data._id, remitoLines);
-      throw error;
-    }
+    const item = await model.create(data as never);
 
-    if (replaced) await completeSubstitution(replaced, item);
-    if (entity === "invoices" && remitoIds.length && !claim) await attachRemitos(item._id, remitoIds, replaced?._id);
-    // La nota de crédito descuenta su importe de lo que se debe de la factura asociada.
-    if (entity === "invoices") await applyCreditNote(item.toObject(), 1);
     if (entity === "collections") await applyCollection(item, 1);
     if (entity === "payments") await applyPayment(item.toObject(), 1);
     if (entity === "payments") await afterPaymentChange(null, item.toObject(), session);
     // Una factura de una OC ya pagada de contado o con anticipo queda cubierta por ese pago.
     if (entity === "expenses" && item.purchaseId) await refreshOrderPayment(item.purchaseId);
-    if (entity === "invoices" && item.workId && (item.certificateId || item.certificateNumber)) await closeCertificate(item.toObject());
-    await audit(session, "create", entity, item._id, null, item.toObject(), request.headers.get("x-forwarded-for") || undefined);
+    await audit(session, "create", entity, item._id, null, item.toObject(), ip);
     return Response.json(item, { status: 201 });
   } catch (error) { return apiError(error); }
 }

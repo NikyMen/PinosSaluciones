@@ -59,7 +59,7 @@ Verificado leyendo el código, no estimado.
 | **Stock** | Catálogo de productos, ingreso por compra, egreso por remito, valorización, mínimos | 2 |
 | **Logística** | Tareas del día, ruta, remito con firma | 3 |
 | **Bienes de uso** | Vehículos, equipamiento, mantenimiento preventivo | 3 |
-| **Venta mostrador** | Egreso de stock a venta directa | 4 |
+| **Venta mostrador** | Egreso de stock a venta directa. Hecho: Ventas › Mostrador (`docs/decisiones/2026-11-mostrador.md`) | 4 |
 
 ---
 

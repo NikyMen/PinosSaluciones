@@ -12,7 +12,7 @@ Reemplaza a **Tango**, que la empresa dejó de renovar. *"Nadie quiere trabajar 
 | STK-4 | **Egreso contra remito** cuando el material sale a la obra → descuenta stock y carga costo en [[obras]]. Hecho: carrito en Stock → Caja, registro en Salidas a obra y PDF con costos (pedido de Jorge, Compras y logística, 28/10/2026) | P1 |
 | STK-5 | **NO se debita automáticamente** al aprobar la obra. Decisión explícita del cliente | P1 |
 | STK-6 | **Alerta de stock mínimo** → notificación a compras | P2 |
-| STK-7 | **Venta rápida / mostrador**: vender productos del stock sin pasar por obra | P2 |
+| STK-7 | **Venta rápida / mostrador**: vender productos del stock sin pasar por obra. Hecho: Ventas › Mostrador, remito + factura + recibo en un paso (ver [[../decisiones/2026-11-mostrador]]) | P2 |
 
 ## Valorización
 

@@ -13,7 +13,8 @@ import type { Session } from "./auth";
 /*
  * Remitos de venta (punto 6 de la especificación). La venta al público sigue
  * Galpón → transferencia → Salón de Ventas → remito al cliente →
- * factura. El remito es lo que descuenta el stock del Salón; la factura (A, B
+ * factura (con el recibo, todo junto desde Ventas › Mostrador: src/lib/counter-sales.ts).
+ * El remito es lo que descuenta el stock del Salón; la factura (A, B
  * o X) lo referencia y no vuelve a descontar. Una factura puede juntar varios
  * remitos del mismo cliente y la misma empresa. Una devolución del cliente es
  * un remito de entrada que vuelve el material al Salón.

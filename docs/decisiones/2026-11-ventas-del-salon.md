@@ -9,3 +9,5 @@ Etapa 5 de la reunión del 10/11/2026.
 - La importación del catálogo del Salón está pendiente del Excel que envíe Cristian.
 
 Las facturas y los materiales anteriores conservan sus datos. Para la emisión mixta se informa a ARCA el concepto de productos y servicios con las fechas que requiere el servicio. [Manual WSFE de ARCA](https://www.arca.gob.ar/fe/documentos/manual-desarrollador-ARCA-COMPG-v4-0.pdf)
+
+Desde el 19/11/2026 la venta al público se puede hacer en un solo paso desde Ventas › Mostrador (remito, factura y recibo juntos): ver `docs/decisiones/2026-11-mostrador.md`.

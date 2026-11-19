@@ -94,7 +94,56 @@ export function printTicket(ticket: TicketData, width: PaperWidth) {
   return printHtml(ticketHtml(ticket, width));
 }
 
-export type LabelData = { name: string; code: string; unit?: string; copies?: number };
+/** Una venta por mostrador (src/lib/counter-sales.ts), para el ticket del cliente. */
+export type SaleTicketData = {
+  number: string; date: string; createdAt?: string; company?: string; voucherType?: string;
+  invoiceLabel?: string; remitoNumber?: string; receiptNumber?: string;
+  clientName?: string; buyerName?: string; buyerDocument?: string;
+  lines: Array<{ name: string; unit: string; quantity: number; unitPriceCents?: number; discountCents?: number; totalCents?: number; barcode?: string; sku?: string }>;
+  netCents: number; vatPct?: number; vatCents: number; amountCents: number;
+  payments?: Array<{ method: string; label?: string; amountCents: number }>;
+  changeCents?: number; userName?: string; status?: string;
+};
+
+export function saleTicketHtml(sale: SaleTicketData, width: PaperWidth, options: { companyName?: string; methodLabel?: (method: string) => string } = {}) {
+  const lines = sale.lines.map(line => {
+    const discount = line.discountCents ? `<div class="row small"><span>Descuento</span><span>-${money(line.discountCents)}</span></div>` : "";
+    return `<div class="line"><div class="name">${escape(line.name)}</div><div class="row small"><span>${qty(line.quantity)} ${escape(line.unit)} x ${money(line.unitPriceCents || 0)}</span><b>${money(Math.round(line.quantity * Number(line.unitPriceCents || 0)))}</b></div>${discount}</div>`;
+  }).join("");
+  const units = sale.lines.reduce((total, line) => total + Number(line.quantity || 0), 0);
+  const buyer = sale.buyerName || sale.clientName;
+  const payments = (sale.payments || []).map(payment => `<div class="row"><span>${escape(payment.label || options.methodLabel?.(payment.method) || payment.method)}</span><span>${money(payment.amountCents)}</span></div>`).join("");
+  const body = `
+    <div class="center"><b class="big">${escape(COMPANY.brand.toUpperCase())}</b>${options.companyName ? `<div class="small">${escape(options.companyName)}</div>` : ""}<div class="small">${escape(COMPANY.address)}</div></div>
+    <div class="rule"></div>
+    <div class="center"><b>VENTA POR MOSTRADOR</b><div>Comprobante <b>${escape(sale.number)}</b></div><div>${escape(dateTime(sale.createdAt || sale.date))} hs</div></div>
+    <div class="rule"></div>
+    ${sale.invoiceLabel ? `<div>Factura: <b>${escape(sale.invoiceLabel)}</b></div>` : ""}
+    ${sale.remitoNumber ? `<div>Remito: ${escape(sale.remitoNumber)}</div>` : ""}
+    ${sale.receiptNumber ? `<div>Recibo: ${escape(sale.receiptNumber)}</div>` : ""}
+    ${buyer ? `<div>Cliente: ${escape(buyer)}${sale.buyerDocument ? ` · ${sale.buyerDocument.length === 11 ? "CUIT" : "DNI"} ${escape(sale.buyerDocument)}` : ""}</div>` : ""}
+    <div class="rule"></div>
+    ${lines}
+    <div class="rule"></div>
+    <div class="row small"><span>Productos: ${sale.lines.length}</span><span>Unidades: ${qty(units)}</span></div>
+    ${sale.vatCents ? `<div class="row"><span>Subtotal sin IVA</span><span>${money(sale.netCents)}</span></div><div class="row"><span>IVA ${sale.vatPct ?? 21}%</span><span>${money(sale.vatCents)}</span></div>` : ""}
+    <div class="row big"><b>TOTAL</b><b>${money(sale.amountCents)}</b></div>
+    ${payments ? `<div class="rule"></div>${payments}` : ""}
+    ${sale.changeCents ? `<div class="row"><b>Vuelto</b><b>${money(sale.changeCents)}</b></div>` : ""}
+    ${sale.status === "sin_cobro" ? `<div class="small"><b>Cobro pendiente de registrar</b></div>` : ""}
+    <div class="rule"></div>
+    <div class="small">Atendió: ${escape(sale.userName || "")}</div>
+    <div class="barcode" style="margin-top:8px">${code128Svg(sale.number, { height: 50 })}</div>
+    <div class="center small">${escape(sale.number)}${sale.voucherType === "factura_x" ? " · Documento no válido como factura" : ""}</div>
+    <div class="center small">¡Gracias por su compra!</div>`;
+  return page(width, `Venta ${sale.number}`, body);
+}
+
+export function printSaleTicket(sale: SaleTicketData, width: PaperWidth, options?: Parameters<typeof saleTicketHtml>[2]) {
+  return printHtml(saleTicketHtml(sale, width, options));
+}
+
+export type LabelData ={ name: string; code: string; unit?: string; copies?: number };
 
 /** Etiquetas con el código de barras, una debajo de la otra en el rollo, con corte entre cada una. */
 export function labelsHtml(labels: LabelData[], width: PaperWidth) {

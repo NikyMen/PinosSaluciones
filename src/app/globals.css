@@ -2095,6 +2095,25 @@ tr.row-inactive td { color: var(--muted); background: #fafbfc; }
 .counter-side footer .primary-btn { flex: 1; min-height: 48px; justify-content: center; }
 .counter-confirm-text { flex-basis: 100%; color: #9e2630; font-size: .7rem; font-weight: 750; }
 .counter-recent .task-history-state { padding: 18px 20px; }
+/* Mostrador (venta al público): usa la misma base que la Caja. El nombre va arriba, los controles abajo. */
+.counter-line.mostrador-line { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.mostrador-line .counter-line-info { grid-column: 1 / -1; }
+.mostrador-price { display: grid; grid-template-columns: 112px 92px; gap: 3px 8px; }
+.mostrador-price label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mostrador-price .money-input input { min-width: 0; width: 100%; }
+.mostrador-price small { grid-column: 1 / -1; color: var(--muted-2); font-size: .62rem; font-weight: 700; }
+.mostrador-change { color: #0c6b3f; font-size: .78rem; }
+.mostrador-day { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mostrador-summary { padding: 0 20px 14px; display: flex; flex-wrap: wrap; gap: 10px; }
+.mostrador-summary > div { min-width: 130px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; border-radius: 10px; background: #f4f8fb; }
+.mostrador-summary > div.muted { background: #fbfcfe; border: 1px solid var(--line); }
+.mostrador-summary > div.warn { background: var(--warning-soft); }
+.mostrador-summary span { color: var(--muted-2); font-size: .6rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.mostrador-summary b { color: var(--brand-navy-deep); font-size: .95rem; }
+@media (max-width: 720px) {
+  .counter-line.mostrador-line { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .mostrador-line .mostrador-price { grid-column: 1 / -1; grid-row: 3; grid-template-columns: 1fr 1fr; }
+}
 
 /* La cámara leyendo */
 .scanner-modal { width: min(560px, 100%); }

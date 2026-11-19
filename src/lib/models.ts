@@ -642,6 +642,37 @@ const StockTicketSchema = new Schema({
 StockTicketSchema.index({ createdAt: -1 });
 
 /*
+ * Una venta por mostrador (Ventas › Mostrador): lo que se le vendió al público
+ * en el Salón, en un solo paso. Ata el remito que bajó el stock, la factura y el
+ * recibo del cobro, y guarda la foto para el ticket y el cierre del día. Ver
+ * src/lib/counter-sales.ts.
+ */
+const CounterSaleSchema = new Schema({
+  number: { type: String, required: true, unique: true },
+  date: { type: Date, required: true },
+  company: { type: String, enum: ["tvp", "constructora"], default: "tvp" },
+  voucherType: String,
+  clientId: { type: Schema.Types.ObjectId, ref: "Client" }, clientName: String,
+  buyerName: String, buyerDocument: String,
+  remitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito" }, remitoNumber: String,
+  invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice" }, invoiceLabel: String,
+  collectionId: { type: Schema.Types.ObjectId, ref: "Collection" }, receiptNumber: String,
+  lines: [{
+    _id: false,
+    stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem" },
+    name: String, sku: String, barcode: String, unit: String, quantity: Number,
+    unitPriceCents: Number, discountCents: Number, totalCents: Number,
+  }],
+  netCents: { type: Number, default: 0 }, vatPct: Number, vatCents: { type: Number, default: 0 }, amountCents: { type: Number, default: 0 },
+  payments: [{ _id: false, method: String, account: String, amountCents: Number }],
+  // "cobrada" con su recibo; "sin_cobro" si se facturó y el recibo no se pudo guardar (se carga en Cobranzas).
+  status: { type: String, enum: ["cobrada", "sin_cobro"], default: "cobrada" },
+  warning: String, note: String,
+  userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+}, options);
+CounterSaleSchema.index({ date: -1, createdAt: -1 });
+
+/*
  * Bienes de uso: la camioneta, los andamios, la hidrolavadora. Cada uno lleva
  * lo que se le hizo (services, arreglos) y lo que toca hacerle: "dentro de 3
  * meses, service de los 10.000 km". Lo que se programa avisa solo antes de
@@ -900,6 +931,11 @@ const InvoiceSchema = new Schema({
   // Emitida desde el sistema en ARCA: el CAE y su vencimiento. Con CAE, lo fiscal ya no se cambia
   // (para anularla hace falta una nota de crédito) y la factura no se borra.
   cae: String, caeDueDate: Date, arcaEnvironment: { type: String, enum: ["produccion", "homologacion"] },
+  // Una venta por mostrador a consumidor final: el nombre y el DNI (o CUIT) que dio el comprador, si los dio.
+  // Va a ARCA en lugar del documento del cliente genérico "Consumidor Final" (src/lib/counter-sales.ts).
+  buyerName: String, buyerDocument: String,
+  // De dónde salió: "mostrador" es la venta al público, cobrada en el momento (condición de venta contado).
+  origin: { type: String, enum: ["mostrador"] },
 }, options);
 // El mismo número puede existir en las dos empresas, o en una A y una X: lo único es empresa + tipo + número (+ cliente, como antes).
 // El índice viejo (solo número y cliente) lo saca src/lib/db.ts al conectar.
@@ -1190,6 +1226,7 @@ export const CashAccount = mongoose.models.CashAccount || mongoose.model("CashAc
 export const Task = mongoose.models.Task || mongoose.model("Task", TaskSchema);
 export const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditSchema);
 export const StockTicket = mongoose.models.StockTicket || mongoose.model("StockTicket", StockTicketSchema);
+export const CounterSale = mongoose.models.CounterSale || mongoose.model("CounterSale", CounterSaleSchema);
 export const Asset = mongoose.models.Asset || mongoose.model("Asset", AssetSchema);
 export const StockTrash = mongoose.models.StockTrash || mongoose.model("StockTrash", StockTrashSchema);
 export const Notification = mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);

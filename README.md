@@ -144,6 +144,7 @@ El sistema se conecta con ARCA por web services (WSAA + WSFEv1) con un certifica
 - Para probar la conexión: Perfil › Configuración › Empresas y comprobantes › "Probar conexión" en cada empresa. Solo consulta (puntos de venta, último número de cada comprobante y por qué punto de venta se emite cada tipo): no emite nada.
 - Emisión: en Facturas de venta, un comprobante nuevo de una empresa conectada (Factura, Nota de Débito o Nota de Crédito, A o B) se emite al guardar ("Emitir ahora en ARCA (con CAE)"): ARCA pone el número y el CAE. El número no se escribe: el formulario muestra el que sigue en ARCA (último autorizado + 1, `/api/arca/next`) y ARCA asigna el definitivo al guardar. También se puede elegir "Ya la emití en Tango" y cargar el número a mano. El punto de venta es el del talonario habilitado de ese tipo (Perfil › Configuración › Empresas y comprobantes) que ARCA tiene de alta para web services; sin ese talonario no se emite. En producción el sistema emite por puntos de venta propios, distintos de los de Tango: TV Pino por el 0004 y Constructora por el 0003 (Tango usa el 0003 y el 0002).
 - La condición frente al IVA del cliente va en su ficha; sin cargar, la A se emite a responsable inscripto y la B a consumidor final. Concepto: productos si factura remitos, servicios si no (con el mes de la factura como período).
+- Documento del comprador: con CUIT, el CUIT. A un consumidor final (la B del Mostrador) se le factura con su DNI o sin identificar (DocTipo 99); desde $ 10.000.000 ARCA pide identificarlo y el sistema no emite sin DNI o CUIT.
 - Las notas de débito y crédito van asociadas a una factura (o nota de débito) del mismo cliente, empresa y letra, y usan el talonario y punto de venta de la factura de su letra. La nota de crédito resta: descuenta de lo que se debe de la factura asociada (queda "aplicada", no puede ser por más de ese saldo) y resta en tablero, reportes, seguimiento y libro IVA.
 - Un comprobante con CAE no se borra, no se anula y no cambia cliente, fecha, número ni importes: una factura se anula con una nota de crédito. Una factura con notas asociadas no se borra. Su PDF, con CAE y QR, sale del botón "PDF fiscal" de la lista.
 - El servidor de WSFEv1 ofrece primero Diffie-Hellman de 1024 bits, que Node rechaza; `src/lib/arca.ts` pide solo cifrados ECDHE con AES-GCM o ChaCha20.
@@ -172,6 +173,14 @@ Requerimiento integral v4, con lo acordado en el grupo de PINO (`src/lib/purchas
 **Indicadores de facturas y cobranzas.** Compras y Ventas muestran la cantidad de comprobantes vigentes y el importe pendiente. El indicador Pendientes filtra por saldo en todo el listado. La cotización y su obra muestran el facturado neto, los recibos aplicados y el saldo por cobrar. Perfil › Configuración › Empresas y comprobantes guarda el nombre y cargo impresos en los recibos y órdenes de pago. Ver `docs/decisiones/2026-11-indicadores-y-recibos.md`.
 
 **Ventas del Salón.** Facturas de venta permite cargar productos con precio de venta de Stock, conceptos de texto libre y observaciones, dar de alta un cliente en el formulario y bajar el PDF fiscal o de gestión. Remitos de venta permite destinar insumos del Salón a una obra y registrar a quien recibe. Aprobar una cotización avisa a Compras, Obras y Administración. El aviso de Compras enumera los materiales faltantes para que arme la solicitud. Ver `docs/decisiones/2026-11-ventas-del-salon.md`.
+
+## Mostrador (venta al público)
+
+- **Ventas › Mostrador** (`/app/mostrador`, `src/lib/counter-sales.ts`): la venta al público del Salón de Ventas en un solo paso. Se escanean (lector o cámara) o se buscan los productos; el precio es el de venta sin IVA de Stock y se puede cambiar, con descuento en pesos por renglón.
+- Se elige la empresa que vende, el cliente (sin elegir, **consumidor final**, con nombre y DNI opcionales), el comprobante (**Factura B o A** emitida en ARCA, o **Factura X** interna) y con qué paga (uno o varios medios, con el vuelto del efectivo).
+- Al cobrar se hacen juntos el remito de venta (baja el stock del Salón), la factura del remito y el recibo a `CI - VENTA DE MATERIALES`. La venta queda como `VM-n`, con su ticket para la ticketera y el PDF de la factura.
+- Abajo, el **cierre del día**: las ventas, el total por medio de cobro y por comprobante. Si una factura salió y el cobro no se pudo registrar, la venta figura "Sin cobro" y se cobra en Cobranzas y recibos.
+- Vende quien puede mover stock, cargar facturas y cobrar. Ver `docs/decisiones/2026-11-mostrador.md`.
 
 ## Papeles de compras y adjuntos
 

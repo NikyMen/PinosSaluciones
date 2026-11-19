@@ -144,6 +144,7 @@ export async function emitInvoiceInArca(data: Record<string, unknown>) {
     } : undefined,
     concept,
     clientCuit: String(client.cuit || ""), vatCondition: vatConditionFor(voucherType, client.vatCondition),
+    buyerDocument: data.buyerDocument ? String(data.buyerDocument) : undefined,
     issueDate: new Date(data.issueDate as string | Date), dueDate: data.dueDate ? new Date(data.dueDate as string | Date) : undefined,
     netCents: Number(data.netCents || 0), vatPct: Number(data.vatPct ?? 21), vatCents: Number(data.vatCents || 0), amountCents: Number(data.amountCents || 0),
   });
