@@ -41,7 +41,7 @@ export async function purchaseInvoiceReceipts(supplierId: string, purchaseId: st
   if (!supplierId) return [];
   if (purchaseId && !await Purchase.exists({ _id: purchaseId, supplierId })) throw new HttpError("La orden no pertenece al proveedor");
   const eligible = [{ supplierId, purchaseId: null }, ...(purchaseId ? [{ purchaseId }] : [])];
-  const receipts = await PurchaseReceipt.find({ $or: eligible }).sort({ date: -1 }).lean<Array<{ _id: unknown }>>();
+  const receipts = await PurchaseReceipt.find({ $or: eligible, cancellation: null }).sort({ date: -1 }).lean<Array<{ _id: unknown }>>();
   const used = await Expense.find({
     purchaseReceiptIds: { $in: receipts.map(receipt => receipt._id) }, status: { $ne: "anulado" },
     ...(expenseId ? { _id: { $ne: expenseId } } : {}),

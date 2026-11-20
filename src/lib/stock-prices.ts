@@ -2,7 +2,7 @@ import type { Types } from "mongoose";
 import { PriceList, PriceListItem, Supplier } from "./models";
 import { discounted } from "./price-lists";
 
-type StockRow = Record<string, unknown> & { supplierId?: unknown; sku?: unknown; movements?: Array<{ kind?: string; unitCostCents?: number; date?: Date | string; createdAt?: Date | string }> };
+type StockRow = Record<string, unknown> & { supplierId?: unknown; sku?: unknown; movements?: Array<{ kind?: string; unitCostCents?: number; purchaseId?: unknown; date?: Date | string; createdAt?: Date | string }> };
 type PriceItem = { supplierId: Types.ObjectId; code?: string; listPriceCents: number; priceListId: Types.ObjectId };
 
 /**
@@ -29,7 +29,9 @@ export async function withLastPrices<T extends StockRow>(items: T[]): Promise<Ar
     const price = item.supplierId ? byKey.get(`${item.supplierId}|${String(item.sku || "").trim().toLowerCase()}`) : undefined;
     const validFrom = price ? listDate.get(String(price.priceListId)) : undefined;
     if (price && validFrom) return { ...item, lastPriceCents: discounted(price.listPriceCents, discount.get(String(price.supplierId)) || 0), lastPriceDate: new Date(validFrom).toISOString(), lastPriceSource: "lista" as const };
-    const purchase = [...(item.movements || [])].reverse().find(movement => movement.kind === "ingreso" && Number(movement.unitCostCents) > 0);
+    // Una compra anulada no cuenta como último precio.
+    const cancelled = new Set((item.movements || []).filter(movement => movement.kind === "ingreso_anulado").map(movement => String(movement.purchaseId)));
+    const purchase = [...(item.movements || [])].reverse().find(movement => movement.kind === "ingreso" && Number(movement.unitCostCents) > 0 && !cancelled.has(String(movement.purchaseId)));
     if (purchase) return { ...item, lastPriceCents: Number(purchase.unitCostCents), lastPriceDate: new Date(purchase.date || purchase.createdAt || Date.now()).toISOString(), lastPriceSource: "compra" as const };
     return { ...item, lastPriceCents: 0, lastPriceDate: null, lastPriceSource: null };
   });

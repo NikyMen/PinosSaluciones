@@ -16,6 +16,7 @@ const recordRoute = await import("../src/app/api/records/[entity]/[id]/route");
 const emitRoute = await import("../src/app/api/purchases/[id]/emit/route");
 const decisionRoute = await import("../src/app/api/purchases/[id]/decision/route");
 const cancelRoute = await import("../src/app/api/purchases/[id]/cancel/route");
+const correctRoute = await import("../src/app/api/purchases/[id]/correct/route");
 const paymentOrderRoute = await import("../src/app/api/purchases/[id]/payment-order/route");
 const receiveRoute = await import("../src/app/api/purchases/[id]/receive/route");
 const detailRoute = await import("../src/app/api/purchases/[id]/detail/route");
@@ -193,7 +194,7 @@ describe("orden de pago contra la orden de compra", () => {
     const detail = await call(await detailRoute.GET(new Request("http://test"), params({ id: request._id })));
     expect(detail.body).toMatchObject({ request: { number: request.number }, order: { number: ocNumber }, totals: { totalCents: 300_000_00, paidCents: 300_000_00, pendingCents: 0 } });
     expect(detail.body.payments).toHaveLength(2);
-    expect(detail.body.can).toMatchObject({ paymentOrder: false, receive: true, cancel: false });
+    expect(detail.body.can).toMatchObject({ paymentOrder: false, receive: true, cancel: true, correct: true });
   });
 });
 
@@ -231,13 +232,13 @@ describe("remitos del proveedor", () => {
 });
 
 describe("anulación y facturas de compra", () => {
-  it("sólo Gerencia anula, con motivo; no lo que ya tiene pagos; las OP emitidas caen con la orden", async () => {
+  it("anula quien la podría aprobar, con motivo; no lo que ya tiene pagos; las OP emitidas caen con la orden", async () => {
     const request = await newRequest(50_000_00);
     await emitAndApprove(request._id);
     as("administracion", "Tesorería");
     const op = await action(paymentOrderRoute, request._id, { amountCents: 50_000_00, date: "2026-10-08", method: "transferencia", accountId: materiales });
 
-    as("compras", "Compras");
+    as("ventas", "Ventas");
     expect((await action(cancelRoute, request._id, { reason: "Ya no hace falta" })).status).toBe(403);
     as("gerencia", "Gerencia");
     expect((await action(cancelRoute, request._id, { reason: "x" })).status).toBe(400);
@@ -523,6 +524,101 @@ describe("solicitudes para stock", () => {
     expect(results.map(result => result.status).sort()).toEqual([200, 409]);
     const item = await StockItem.findOne({ name: "Compra editada al Galpón" });
     expect(item.toObject()).toMatchObject({ quantity: 4, qty_central: 4, qty_salon: 0, avgCostCents: 2500 });
+  });
+
+  it("Gerencia anula una carga a stock aprobada: el remito se anula y el stock vuelve a salir", async () => {
+    const item = await StockItem.create({ name: "Membrana para anular", sku: "ANU-1", category: "materiales", unit: "rollo" });
+    const { applyStockMovement } = await import("../src/lib/stock-service");
+    as("gerencia", "Gerencia");
+    await applyStockMovement(item, { kind: "ingreso", warehouse: "central", quantity: 2, unitCostCents: 1000, owner: "tvp" }, session);
+    const request = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ stockItemId: String(item._id), name: item.name, unit: "rollo", quantity: 3, unitCents: 2000, vatPct: 0 }] });
+    await emitAndApprove(request._id);
+    const orderId = String((await Purchase.findById(request._id).lean<{ orderId: unknown }>())!.orderId);
+    expect((await StockItem.findById(item._id)).toObject()).toMatchObject({ quantity: 5, qty_central: 5, avgCostCents: 1600 });
+
+    as("ventas", "Ventas");
+    expect((await action(cancelRoute, orderId, { reason: "Proveedor equivocado" })).status).toBe(403);
+    as("gerencia", "Gerencia");
+    const cancelled = await action(cancelRoute, orderId, { reason: "Proveedor equivocado" });
+    expect(cancelled.status).toBe(200);
+    expect(await Purchase.findById(orderId).lean()).toMatchObject({ status: "anulada" });
+    expect(await Purchase.findById(request._id).lean()).toMatchObject({ status: "anulada" });
+    const after = (await StockItem.findById(item._id)).toObject();
+    expect(after).toMatchObject({ quantity: 2, qty_central: 2, avgCostCents: 1000 });
+    expect(after.movements.at(-1)).toMatchObject({ kind: "ingreso_anulado", quantity: 3, warehouse: "central", purchaseId: new Types.ObjectId(orderId) });
+    expect(await PurchaseReceipt.findOne({ purchaseId: orderId }).lean()).toMatchObject({ cancellation: { reason: "Proveedor equivocado", userName: "Gerencia" } });
+    expect((await action(cancelRoute, orderId, { reason: "Otra vez" })).status).toBe(409);
+    expect((await StockItem.findById(item._id)).quantity).toBe(2);
+  });
+
+  it("no anula la carga a stock si lo ingresado ya no está en el depósito o ya llegó la factura", async () => {
+    const { applyStockMovement } = await import("../src/lib/stock-service");
+    const used = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Material ya usado", unit: "kg", quantity: 5, unitCents: 1000, vatPct: 0 }] });
+    await emitAndApprove(used._id);
+    as("gerencia", "Gerencia");
+    const item = await StockItem.findOne({ name: "Material ya usado" });
+    await applyStockMovement(item, { kind: "ajuste", warehouse: "central", quantity: 2 }, session);
+    const blocked = await action(cancelRoute, used._id, { reason: "Proveedor equivocado" });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error).toContain("ya no está en el depósito");
+    expect(await Purchase.findById(used._id).lean()).toMatchObject({ status: "autorizada" });
+    expect(await PurchaseReceipt.findOne({ purchaseId: (await Purchase.findById(used._id).lean<{ orderId: unknown }>())!.orderId }).lean()).toMatchObject({ cancellation: null });
+
+    const invoiced = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Material facturado", unit: "kg", quantity: 1, unitCents: 1000, vatPct: 0 }] });
+    await emitAndApprove(invoiced._id);
+    const orderId = (await Purchase.findById(invoiced._id).lean<{ orderId: unknown }>())!.orderId;
+    const { Expense } = await import("../src/lib/models");
+    await Expense.collection.insertOne({ purchaseId: orderId, description: "Factura del proveedor", amountCents: 1000, status: "pendiente" });
+    as("gerencia", "Gerencia");
+    const withInvoice = await action(cancelRoute, invoiced._id, { reason: "Proveedor equivocado" });
+    expect(withInvoice.status).toBe(409);
+    expect(withInvoice.body.error).toContain("factura");
+  });
+
+  it("Corregir anula la compra aprobada y deja una solicitud nueva en borrador con los mismos datos, que se edita", async () => {
+    const request = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Material a corregir", unit: "kg", quantity: 2, unitCents: 1500, vatPct: 21 }] });
+    await emitAndApprove(request._id);
+    as("ventas", "Ventas");
+    expect((await action(correctRoute, request._id, { reason: "Proveedor equivocado" })).status).toBe(403);
+    as("gerencia", "Gerencia");
+    const corrected = await action(correctRoute, request._id, { reason: "Proveedor equivocado" });
+    expect(corrected.status).toBe(200);
+    const draft = corrected.body.draft;
+    expect(draft).toMatchObject({ stage: "solicitud", status: "borrador", stockOnApproval: true, deliverTo: "central", amountCents: request.amountCents, supplierId, workId });
+    expect(draft.number).not.toBe(request.number);
+    expect(draft.items).toMatchObject([{ name: "Material a corregir", quantity: 2, unitCents: 1500, receivedQty: 0 }]);
+    expect(draft.approval ?? null).toBeNull();
+    expect(draft.orderId ?? null).toBeNull();
+    expect(await Purchase.findById(request._id).lean()).toMatchObject({ status: "anulada" });
+    expect((await StockItem.findOne({ name: "Material a corregir" })).quantity).toBe(0);
+
+    const other = String((await Supplier.create({ name: "Proveedor correcto" }))._id);
+    const edited = await call(await recordRoute.PATCH(json("PATCH", { supplierId: other }), params({ entity: "purchases", id: String(draft._id) })));
+    expect(edited.status).toBe(200);
+    expect(edited.body).toMatchObject({ supplierId: other, status: "borrador" });
+    await emitAndApprove(String(draft._id));
+    expect((await StockItem.findOne({ name: "Material a corregir" })).toObject()).toMatchObject({ quantity: 2, qty_central: 2 });
+  });
+
+  it("Compras anula y corrige lo que podría aprobar (hasta $500.000); por encima, sólo Gerencia", async () => {
+    const small = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Compra chica", unit: "kg", quantity: 1, unitCents: 121_000_00, vatPct: 0 }] });
+    await emitAndApprove(small._id);
+    as("compras", "Compras");
+    const corrected = await action(correctRoute, small._id, { reason: "Proveedor equivocado" });
+    expect(corrected.status).toBe(200);
+    expect(corrected.body.draft).toMatchObject({ status: "borrador", amountCents: 121_000_00 });
+    expect((await StockItem.findOne({ name: "Compra chica" })).quantity).toBe(0);
+
+    const big = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Compra grande", unit: "kg", quantity: 1, unitCents: 600_000_00, vatPct: 0 }] });
+    await emitAndApprove(big._id);
+    as("compras", "Compras");
+    const blocked = await action(cancelRoute, big._id, { reason: "Proveedor equivocado" });
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error).toContain("sólo las anula Gerencia");
+    expect((await action(correctRoute, big._id, { reason: "Proveedor equivocado" })).status).toBe(403);
+    const detail = await call(await detailRoute.GET(new Request("http://test"), params({ id: big._id })));
+    expect(detail.body.can).toMatchObject({ cancel: false, correct: false });
+    expect((await StockItem.findOne({ name: "Compra grande" })).quantity).toBe(1);
   });
 
 });

@@ -259,7 +259,7 @@ export async function checkExpenseDelete(expenseId: unknown) {
 }
 
 type ReceiptForExpense = {
-  _id: unknown; number?: string; supplierRemito?: string; purchaseId?: unknown; supplierId?: unknown; workId?: unknown; quoteId?: unknown;
+  _id: unknown; number?: string; supplierRemito?: string; purchaseId?: unknown; supplierId?: unknown; workId?: unknown; quoteId?: unknown; cancellation?: unknown;
   lines?: Array<{ name?: string; quantity: number; unitCents?: number }>;
 };
 type ReceiptPrice = { receiptId: string; line: number; unitCents: number };
@@ -281,6 +281,8 @@ async function checkExpenseReceipts(data: Record<string, unknown>, before: Recor
       : comparable(receipt.supplierId) !== comparable(supplierId))) {
       throw new HttpError("Los remitos tienen que ser de la orden elegida o remitos sin OC del mismo proveedor");
     }
+    const cancelled = receipts.find(receipt => receipt.cancellation);
+    if (status !== "anulado" && cancelled) throw new HttpError(`El remito ${cancelled.supplierRemito || cancelled.number} se anuló con su orden de compra: no se factura`, 409);
     if (status !== "anulado" && await Expense.exists({
       _id: { $ne: before._id ?? null }, status: { $ne: "anulado" }, purchaseReceiptIds: { $in: ids },
     })) throw new HttpError("Uno de los remitos ya se incluyó en otra factura", 409);

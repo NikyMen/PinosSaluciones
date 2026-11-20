@@ -51,7 +51,7 @@ La etapa 3 está desarrollada, con el circuito del grupo:
   - Una OC admite varias OP parciales y muestra total, pagado y saldo.
 - Compras recibe el aviso. Carga los remitos en Compras › Remitos de compra. Los de una OC pueden ser parciales, suman al stock y el final cierra la orden. También se pueden cargar remitos sin OC con proveedor y cotización u obra.
 - Las facturas de compras de menos de $500.000 las puede cargar Compras; las de compras mayores, Tesorería. Las OP las emite sólo Tesorería.
-- Una solicitud o una OC emitida sólo la anula Gerencia, con motivo. No se anula lo que ya tiene pagos o mercadería recibida.
+- Una solicitud o una OC emitida la anula, con motivo, quien la podría aprobar (hasta $500.000 quien gestiona compras o tiene Autorizar compras; por encima, sólo Gerencia). No se anula lo que ya tiene pagos o mercadería recibida del proveedor. La compra a stock aprobada sí, deshaciendo el ingreso, y se puede **Corregir** (anular y rehacer en borrador): ver `docs/decisiones/2026-11-anular-y-corregir-compras.md`.
 - Cada pago parcial es una OP propia; no hay OP "ejecutada parcialmente".
 
 La etapa 4 está desarrollada:
@@ -110,7 +110,7 @@ Donde el PDF y lo conversado en el grupo no coinciden, seguimos lo del grupo:
 > **Actualizado el 15/10/2026:** en la reunión con Tesorería se cambió el punto de la OC. Ahora **la OC nace al autorizarse la solicitud** y la OP paga (de contado o anticipo contra la OC, o las facturas cuando llegan). Ver [[../decisiones/2026-10-orden-de-pago-varias-facturas]].
 
 1. **Compras** genera la solicitud según la necesidad, con su condición de compra (contado, cuenta
-   corriente o plazo). Una vez generada queda en **sólo lectura**: no se modifica, sólo la anula Gerencia, con motivo.
+   corriente o plazo). Una vez generada queda en **sólo lectura**: no se modifica, sólo la anula (o la corrige), con motivo, quien la podría aprobar.
 2. Todas las compras requieren aprobación explícita. Hasta $500.000 aprueba quien puede gestionar compras (o tiene Autorizar compras); por encima de $500.000 sólo el rol Gerencia, aunque otro usuario tenga ese permiso. El límite se mide sobre el total final con impuestos.
 3. **Tesorería** emite la Orden de Pago, y con ella **se genera la Orden de Compra**.
    - De contado, el pago se registra enseguida con su comprobante.

@@ -14,6 +14,8 @@ import type { Session } from "./auth";
  *
  * - entrada (una compra): al Galpón (o al Salón, si la orden se pidió para ahí), a nombre de la empresa
  *   que compró (CUIT propietario). Recalcula el costo promedio.
+ * - entrada anulada: si se anula la orden de compra, lo que entró vuelve a
+ *   salir del mismo depósito y se saca del costo promedio.
  * - salida a obra: resta de uno o de los dos depósitos (primero del Galpón),
  *   carga el costo a la obra, consume lo reservado para esa obra y deja un
  *   remito por depósito. No es una venta: no hay factura.
@@ -49,7 +51,9 @@ export type MovementInput =
   | Common & { kind: "devolucion"; quantity: number; clientId: string; remito: string; salesRemitoId?: string; destinationLabel?: string; ownerParts?: OwnerPart[]; warehouse?: WarehouseKey }
   | Common & { kind: "ajuste"; warehouse: WarehouseKey; quantity: number; owner?: CompanyKey }
   | Common & { kind: "envio"; warehouse: WarehouseKey; quantity: number; remito: string; shipmentId: string; destinationLabel: string; workId?: string; owner?: CompanyKey }
-  | Common & { kind: "envio_anulado"; warehouse: WarehouseKey; quantity: number; remito: string; shipmentId: string; ownerParts?: OwnerPart[] };
+  | Common & { kind: "envio_anulado"; warehouse: WarehouseKey; quantity: number; remito: string; shipmentId: string; ownerParts?: OwnerPart[] }
+  // Deshace el ingreso de una orden de compra anulada: sale del mismo depósito, a su costo.
+  | Common & { kind: "ingreso_anulado"; warehouse: WarehouseKey; quantity: number; unitCostCents: number; owner?: CompanyKey; purchaseId: string; reference?: string };
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
@@ -207,6 +211,17 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
     const parts = input.ownerParts?.length ? input.ownerParts : [{ owner: "sin_asignar" as OwnerKey, quantity: input.quantity }];
     addOwners(owners, input.warehouse, parts);
     created.push({ kind: "envio_anulado", quantity: input.quantity, warehouse: input.warehouse, remito: input.remito, shipmentId: input.shipmentId, ownerParts: parts, reference: input.remito, note: input.note, ...who });
+  }
+
+  if (input.kind === "ingreso_anulado") {
+    ensureAvailable(item, levels, input.warehouse, input.quantity);
+    const totalCents = Math.round(input.quantity * input.unitCostCents);
+    levels[input.warehouse] = round(levels[input.warehouse] - input.quantity);
+    const ownerParts = takeOwners(owners, input.warehouse, input.quantity, input.owner);
+    // Saca del promedio lo que había sumado esa compra.
+    const remaining = totalOf(levels) + transit;
+    item.avgCostCents = remaining > 0 ? Math.max(0, Math.round((item.valueCents - totalCents) / remaining)) : 0;
+    created.push({ kind: "ingreso_anulado", quantity: input.quantity, warehouse: input.warehouse, ownerParts, unitCostCents: input.unitCostCents, totalCents, purchaseId: input.purchaseId, reference: input.reference, note: input.note, ...who });
   }
 
   if (input.kind === "ajuste") {

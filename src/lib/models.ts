@@ -447,7 +447,8 @@ const StockMovementSchema = new Schema({
   // transferencia: sale de un depósito y queda en tránsito; recepcion: llega al otro depósito.
   // venta: remito al cliente desde el Salón; devolucion: el cliente devuelve; no_utilizable: llegó dañado.
   // envio: sale por transporte (encomienda) a un destino de afuera; envio_anulado: vuelve al depósito.
-  kind: { type: String, enum: ["ingreso", "egreso", "transferencia", "recepcion", "ajuste", "venta", "devolucion", "no_utilizable", "envio", "envio_anulado"], required: true },
+  // ingreso_anulado: sale lo que había entrado con una orden de compra que se anuló.
+  kind: { type: String, enum: ["ingreso", "egreso", "transferencia", "recepcion", "ajuste", "venta", "devolucion", "no_utilizable", "envio", "envio_anulado", "ingreso_anulado"], required: true },
   quantity: { type: Number, required: true },
   // De qué depósito sale (o a cuál entra) y, en un pase entre depósitos, a cuál va.
   warehouse: { type: String, enum: WAREHOUSE_KEYS },
@@ -878,6 +879,8 @@ const PurchaseReceiptSchema = new Schema({
   attachment: String, notes: String,
   files: { type: [FileRefSchema], default: undefined },
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
+  // Se anula con su orden de compra: lo que había sumado al stock vuelve a salir.
+  cancellation: { type: new Schema({ userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String, at: Date, reason: String }, { _id: false }), default: null },
 }, options);
 
 /*

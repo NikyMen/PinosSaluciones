@@ -7,7 +7,7 @@ import { cancelPurchase } from "@/lib/purchase-flow";
 
 const schema = z.object({ reason: z.string().trim().min(3, "Poné el motivo de la anulación").max(500) });
 
-/** Anular una solicitud o una orden de compra emitida: sólo Gerencia, con motivo. Queda en la bitácora. */
+/** Anular una solicitud o una orden de compra emitida: quien la podría aprobar (hasta $500.000 Compras; por encima, Gerencia), con motivo. Queda en la bitácora. */
 export async function POST(request: Request, context: RouteContext<"/api/purchases/[id]/cancel">) {
   try {
     const session = await requireSession();

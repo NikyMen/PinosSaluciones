@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Archive, Ban, CheckCircle2, ClipboardList, Download, FileStack, FileText, HandCoins, PackagePlus, Paperclip, ReceiptText, Send, X, XCircle } from "lucide-react";
+import { Archive, Ban, CheckCircle2, ClipboardList, Download, FileStack, FileText, HandCoins, PackagePlus, Paperclip, PencilLine, ReceiptText, Send, X, XCircle } from "lucide-react";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { downloadDossierZip, downloadOrderWithAttachments } from "@/lib/purchase-dossier";
 import { downloadPaymentOrderPdf, paymentMethodLabels, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
@@ -22,7 +22,7 @@ type Line = { code?: string; name: string; presentation?: string; quantity: numb
 type Detail = {
   request: Doc | null; order: Doc | null; payments: Doc[]; receipts: Doc[]; expenses: Doc[]; supplier: Doc | null; work: Doc | null; quote: Doc | null;
   totals: { totalCents: number; paidCents: number; committedCents: number; withoutOrderCents: number; pendingCents: number };
-  can: { edit: boolean; emit: boolean; decide: boolean; cancel: boolean; paymentOrder: boolean; receive: boolean; invoice: boolean; attachPayments: boolean; attachPurchase: boolean };
+  can: { edit: boolean; emit: boolean; decide: boolean; cancel: boolean; correct: boolean; paymentOrder: boolean; receive: boolean; invoice: boolean; attachPayments: boolean; attachPurchase: boolean };
 };
 
 const paymentStatusLabels: Record<string, string> = { emitida: "Emitida, sin pagar", pagada: "Pagada", anulada: "Anulada" };
@@ -42,7 +42,7 @@ async function upload(file: File | null) {
  * pago con sus comprobantes, los remitos y las facturas, con lo que puede hacer
  * quien la mira según su permiso (requerimiento integral v4, punto 2).
  */
-export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purchaseId: string; onClose: () => void; onChanged: () => void }) {
+export function PurchaseDetailModal({ purchaseId, onClose, onChanged, onEdit }: { purchaseId: string; onClose: () => void; onChanged: () => void; onEdit?: (draft: Doc) => void }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -91,9 +91,24 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
   }
 
   async function cancel() {
-    const reason = prompt("¿Por qué se anula? Queda en el historial y en la bitácora.") || "";
+    const stocked = detail?.receipts.some(receipt => !receipt.cancellation);
+    const reason = prompt(`¿Por qué se anula? Queda en el historial y en la bitácora.${stocked ? " Lo que entró a stock con esta compra vuelve a salir del depósito." : ""}`) || "";
     if (reason.trim().length < 3) return;
     await act("cancel", { reason }, "Anulada.");
+  }
+
+  /** Anula esta compra y abre una solicitud nueva en borrador con los mismos datos, para editarla y volver a emitirla. */
+  async function correct() {
+    const stocked = detail?.receipts.some(receipt => !receipt.cancellation);
+    const reason = prompt(`¿Qué hay que corregir? Esta compra se anula${stocked ? " (lo que entró a stock vuelve a salir)" : ""} y se abre una solicitud nueva con los mismos datos para editarla y volver a aprobarla.`) || "";
+    if (reason.trim().length < 3) return;
+    setBusy(true); setError(""); setNotice("");
+    const response = await fetch(`/api/purchases/${purchaseId}/correct`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }) });
+    const result = await response.json();
+    setBusy(false);
+    if (!response.ok) { setError(result.error || "No se pudo corregir"); return; }
+    onChanged();
+    onEdit?.(result.draft as Doc);
   }
 
   async function pdf(doc: Doc) {
@@ -166,6 +181,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
             {detail.can.paymentOrder && <button type="button" className="primary-btn" onClick={() => setPanel(panel === "pay" ? "" : "pay")}><HandCoins size={15} /> Pago de contado o anticipo</button>}
             {detail.can.receive && <button type="button" className="primary-btn" onClick={() => setPanel(panel === "receive" ? "" : "receive")}><PackagePlus size={15} /> Cargar remito</button>}
             {detail.can.invoice && order && <Link className="secondary-btn" href={`/app/expenses?oc=${order._id}`}><ReceiptText size={15} /> Cargar factura</Link>}
+            {detail.can.correct && onEdit && <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void correct(); }} title="Anula esta compra y abre una solicitud nueva con los mismos datos para editarla"><PencilLine size={15} /> Corregir</button>}
             {detail.can.cancel && <button type="button" className="secondary-btn danger" disabled={busy} onClick={() => { void cancel(); }}><Ban size={15} /> Anular</button>}
           </div>
 
@@ -204,7 +220,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged }: { purcha
                 <td data-label="Remito"><b>{String(receipt.supplierRemito || receipt.number)}</b><small className="tracking-sub">{String(receipt.number)} · {String(receipt.userName || "")}</small></td>
                 <td data-label="Fecha">{date(String(receipt.date))}</td>
                 <td data-label="Llegó">{((receipt.lines as Array<{ name: string; quantity: number; unit?: string }>) || []).map(line => `${qty(line.quantity)} ${line.unit || ""} ${line.name}`).join(" · ") || "—"}<small className="tracking-sub">{warehouseLabel(String(receipt.warehouse || "central"))}</small></td>
-                <td data-label="Estado">{receipt.status === "observada" ? `Observada: ${String(receipt.notes || "")}` : "Conforme"}{receipt.final ? <small className="tracking-sub">Final</small> : null}</td>
+                <td data-label="Estado">{receipt.cancellation ? <>Anulado<small className="tracking-sub">El stock volvió a salir</small></> : <>{receipt.status === "observada" ? `Observada: ${String(receipt.notes || "")}` : "Conforme"}{receipt.final ? <small className="tracking-sub">Final</small> : null}</>}</td>
                 <td data-label="Archivo"><button type="button" className="row-action-wide" onClick={() => setFilesOf(filesOf === receipt._id ? "" : receipt._id)}><Paperclip size={14} /> {((receipt.files as unknown[] | undefined)?.length || 0) + (receipt.attachment ? 1 : 0) || "Adjuntar"}</button></td>
               </tr>)}
             </tbody></table>}

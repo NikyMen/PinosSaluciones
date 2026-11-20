@@ -892,6 +892,7 @@ td b { color: #273449; }
 .badge.ingreso { color: #15654a; background: var(--success-soft); }
 .badge.egreso { color: #8a6115; background: var(--warning-soft); }
 .badge.ajuste { color: var(--brand-navy); background: #e8f1f8; }
+.badge.ingreso_anulado { color: #4a5568; background: #eef2f7; }
 
 @media (max-width: 860px) {
   .stock-overview { grid-template-columns: 1fr; }

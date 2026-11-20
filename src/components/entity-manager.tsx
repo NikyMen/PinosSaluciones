@@ -801,7 +801,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
       onClose={() => setConvertFor(null)} onDone={() => { setConvertFor(null); void load(); }} />}
 
     {attachmentsFor && <AttachmentsModal entity={attachmentsFor.entity} id={attachmentsFor.id} label={attachmentsFor.label} canEdit={canEdit} onClose={() => { setAttachmentsFor(null); void load(); }} />}
-    {purchaseFor && <PurchaseDetailModal purchaseId={purchaseFor} onClose={() => setPurchaseFor(null)} onChanged={() => { void load(); }} />}
+    {purchaseFor && <PurchaseDetailModal purchaseId={purchaseFor} onClose={() => setPurchaseFor(null)} onChanged={() => { void load(); }} onEdit={draft => { setPurchaseFor(null); open(draft as unknown as Item); }} />}
     {movementFor && <StockMovementModal item={movementFor.item} initialKind={movementFor.kind}
       onClose={() => setMovementFor(null)}
       onSaved={updated => { setItems(current => current.map(row => row._id === updated._id ? { ...row, ...updated } as Item : row)); setMovementFor({ item: updated, kind: movementFor.kind }); }} />}

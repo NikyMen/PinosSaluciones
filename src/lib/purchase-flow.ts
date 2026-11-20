@@ -11,9 +11,10 @@ import { applyExpensePayment, paidByPayment, paymentAllocations } from "./balanc
 import { isCreditNote } from "./invoice-labels";
 import { worklessAccount } from "./account-service";
 import { beforeCreate } from "./document-rules";
-import { applyStockMovement, stockItemForPurchaseLine } from "./stock-service";
+import { applyStockMovement, StockError, stockItemForPurchaseLine } from "./stock-service";
+import { levelsOf } from "./stock-levels";
 import type { CompanyKey } from "./companies";
-import type { WarehouseKey } from "./warehouses";
+import { warehouseLabel, type WarehouseKey } from "./warehouses";
 import type { Session } from "./auth";
 import { purchaseApprovalState, purchaseTermsText, requestStatusLabels } from "./purchase-flow-labels";
 import { PURCHASE_TAX_PCT_KEYS, purchaseLineNetCents, purchaseTaxFields, storedPurchaseTaxes, type TaxedLine } from "./purchase-taxes";
@@ -32,7 +33,7 @@ import { PURCHASE_TAX_PCT_KEYS, purchaseLineNetCents, purchaseTaxFields, storedP
  *  5. Tesorería paga con la orden de pago: la de las facturas del proveedor o,
  *     de contado o como anticipo, contra la OC. Una OC puede tener varias OP.
  *
- * Una solicitud emitida sólo la anula Gerencia, con motivo.
+ * Una solicitud emitida la anula (o la corrige) quien la podría aprobar, con motivo.
  */
 
 type Lean = Record<string, unknown> & { _id: Types.ObjectId };
@@ -40,7 +41,7 @@ type PurchaseLine = { stockItemId?: Types.ObjectId; code?: string; name: string;
 type PurchaseDoc = Lean & {
   number: string; stage: string; status: string; company?: CompanyKey; supplierId?: Types.ObjectId; amountCents?: number;
   requestId?: Types.ObjectId; orderId?: Types.ObjectId; items?: PurchaseLine[]; paymentTerms?: string; termDays?: number;
-  deliverTo?: string; stockedAt?: Date; receptionStatus?: string; paidCents?: number; userId?: Types.ObjectId;
+  deliverTo?: string; stockedAt?: Date; receptionStatus?: string; paidCents?: number; userId?: Types.ObjectId; stockOnApproval?: boolean;
 };
 
 /** Tolerancia por redondeo al comparar lo pagado con el total de la orden: un peso. */
@@ -160,25 +161,87 @@ export async function decideRequest(id: string, input: { approve: boolean; reaso
 
 /* ── Anular ─────────────────────────────────────────────────────────────────── */
 
+/** Anula (o corrige) una compra quien la podría aprobar: el mismo límite de $500.000 sobre el total final. */
+export function canCancelPurchase(session: Session, purchase: { amountCents?: unknown }) {
+  return canApprovePurchases(session, Number(purchase.amountCents || 0));
+}
+
+type ReceiptDoc = Lean & { number: string; warehouse?: WarehouseKey; lines?: Array<{ name: string; unit?: string; quantity: number; unitCents: number; stockItemId?: Types.ObjectId }> };
+
 /**
- * Anula una solicitud (y su orden, si ya la tiene) o una orden. Sólo Gerencia,
- * con motivo. No se anula lo que ya tiene pagos ejecutados o mercadería
- * recibida: eso se resuelve con el proveedor (nota de crédito, devolución).
- * Las órdenes de pago emitidas sin pagar se anulan con ella.
+ * Lo que entró con una compra "cargar a stock después de aprobar" se puede
+ * sacar si la factura del proveedor todavía no llegó y lo ingresado sigue en
+ * el depósito. Si ya se usó, se resuelve con un ajuste o con el proveedor.
+ */
+async function checkStockReversal(order: PurchaseDoc, receipts: ReceiptDoc[]) {
+  const ids = receipts.map(receipt => receipt._id);
+  if (await Expense.exists({ status: { $ne: "anulado" }, $or: [{ purchaseId: order._id }, { purchaseReceiptIds: { $in: ids } }] })) {
+    throw new HttpError(`La orden ${order.number} ya tiene la factura del proveedor: primero anulá la factura`, 409);
+  }
+  const needed = new Map<string, { stockItemId: string; warehouse: WarehouseKey; name: string; unit: string; quantity: number }>();
+  for (const receipt of receipts) for (const line of receipt.lines || []) {
+    if (!line.stockItemId || !(Number(line.quantity) > 0)) continue;
+    const warehouse: WarehouseKey = receipt.warehouse === "salon" ? "salon" : "central";
+    const key = `${String(line.stockItemId)}|${warehouse}`;
+    const entry = needed.get(key) || { stockItemId: String(line.stockItemId), warehouse, name: line.name, unit: line.unit || "", quantity: 0 };
+    entry.quantity = round(entry.quantity + Number(line.quantity));
+    needed.set(key, entry);
+  }
+  const items = await StockItem.find({ _id: { $in: [...new Set([...needed.values()].map(entry => entry.stockItemId))] } }).select("-movements").lean<Lean[]>();
+  const byId = new Map(items.map(item => [String(item._id), item]));
+  const short = [...needed.values()].flatMap(entry => {
+    const item = byId.get(entry.stockItemId);
+    const available = item ? levelsOf(item)[entry.warehouse] : 0;
+    return available + 1e-9 < entry.quantity ? [`${entry.name}: entraron ${qty(entry.quantity)} ${entry.unit} y en ${warehouseLabel(entry.warehouse)} quedan ${qty(available)}`.replace(/\s+/g, " ")] : [];
+  });
+  if (short.length) throw new HttpError(`Parte de lo que entró con la orden ${order.number} ya no está en el depósito (${short.join("; ")}). Corregilo con un ajuste de stock antes de anular.`, 409);
+}
+
+/**
+ * Anula una solicitud (y su orden, si ya la tiene) o una orden, con motivo. La
+ * anula quien la podría aprobar: hasta $500.000 quien gestiona compras (o tiene
+ * Autorizar compras); por encima, sólo Gerencia. No se anula lo que ya tiene pagos ejecutados o mercadería
+ * recibida del proveedor: eso se resuelve con él (nota de crédito, devolución).
+ * La compra "cargar a stock después de aprobar" sí se anula mientras no tenga
+ * factura y lo ingresado siga en el depósito: su remito se anula y el stock
+ * vuelve a salir. Las órdenes de pago emitidas sin pagar se anulan con ella.
  */
 export async function cancelPurchase(id: string, reasonInput: string, session: Session) {
-  if (session.role !== "gerencia") throw new HttpError("Una solicitud o una orden de compra emitida sólo la anula Gerencia", 403);
+  const purchase = await load(id);
+  if (!canCancelPurchase(session, purchase)) throw new HttpError(Number(purchase.amountCents || 0) > PURCHASE_APPROVAL_LIMIT_CENTS ? "Las compras mayores a $500.000 sólo las anula Gerencia" : "No tenés permiso para anular compras", 403);
   const reason = String(reasonInput || "").trim();
   if (reason.length < 3) throw new HttpError("Poné el motivo de la anulación");
-  const purchase = await load(id);
   if (purchase.status === "anulada" || purchase.status === "cancelada") throw new HttpError(`${purchase.number} ya está anulada`, 409);
   const { request, order } = await pair(purchase);
+  const cancellation = { userId: session.userId, userName: session.name, at: new Date(), reason };
   if (order) {
     const paid = await Payment.exists({ purchaseId: order._id, status: { $nin: ["emitida", "anulada"] } });
     if (paid) throw new HttpError(`La orden ${order.number} ya tiene pagos hechos: no se anula`, 409);
-    if (await PurchaseReceipt.exists({ purchaseId: order._id })) throw new HttpError(`La orden ${order.number} ya tiene mercadería recibida: no se anula`, 409);
+    const receipts = await PurchaseReceipt.find({ purchaseId: order._id, cancellation: null }).lean<ReceiptDoc[]>();
+    if (receipts.length) {
+      if (!order.stockOnApproval && !request?.stockOnApproval) throw new HttpError(`La orden ${order.number} ya tiene mercadería recibida: no se anula`, 409);
+      await checkStockReversal(order, receipts);
+      for (const receipt of receipts) {
+        // Se toma el remito antes de mover el stock: dos anulaciones a la vez no lo sacan dos veces.
+        const claimed = await PurchaseReceipt.updateOne({ _id: receipt._id, cancellation: null }, { $set: { cancellation } });
+        if (!claimed.modifiedCount) throw new HttpError(`El remito ${receipt.number} ya se está anulando: actualizá la compra`, 409);
+        for (const line of receipt.lines || []) {
+          if (!line.stockItemId || !(Number(line.quantity) > 0)) continue;
+          const item = await StockItem.findById(line.stockItemId);
+          if (!item) continue;
+          try {
+            await applyStockMovement(item, {
+              kind: "ingreso_anulado", warehouse: receipt.warehouse === "salon" ? "salon" : "central", quantity: Number(line.quantity), unitCostCents: Number(line.unitCents || 0),
+              owner: (order.company || "tvp") as CompanyKey, purchaseId: String(order._id), reference: order.number, note: `Orden ${order.number} anulada: ${reason}`,
+            }, session);
+          } catch (error) {
+            if (error instanceof StockError) throw new HttpError(error.message, 409);
+            throw error;
+          }
+        }
+      }
+    }
   }
-  const cancellation = { userId: session.userId, userName: session.name, at: new Date(), reason };
   const ids = [request?._id, order?._id].filter(Boolean);
   await Purchase.updateMany({ _id: { $in: ids } }, { $set: { status: "anulada", cancellation }, $push: { history: history("Anulada", session, reason) } });
   if (order) {
@@ -188,6 +251,28 @@ export async function cancelPurchase(id: string, reasonInput: string, session: S
   }
   await notify({ title: `${purchase.number} anulada`, body: `${session.name}: ${reason}`, kind: "compra", href: `/app/purchases?ver=${purchase._id}`, roles: ["compras", "administracion"], event: "compra.anulada" });
   return Purchase.find({ _id: { $in: ids } }).lean();
+}
+
+/**
+ * Corregir una compra ya emitida o aprobada: se anula (con las mismas reglas
+ * que Anular, y deshaciendo el stock si lo cargó la aprobación) y nace una
+ * solicitud nueva en borrador con los mismos datos, para editarla y volver a
+ * emitirla. La anulada queda en el historial con su motivo.
+ */
+export async function correctPurchase(id: string, reasonInput: string, session: Session) {
+  if (!canWrite(session, "purchases")) throw new HttpError("Para corregir hace falta poder cargar solicitudes de compra", 403);
+  const purchase = await load(id);
+  const { request, order } = await pair(purchase);
+  const source = request || order!;
+  await cancelPurchase(id, reasonInput, session);
+  const data: Record<string, unknown> = { ...source };
+  for (const key of ["_id", "__v", "createdAt", "updatedAt", "files"]) delete data[key];
+  if (Array.isArray(data.items)) data.items = (data.items as PurchaseLine[]).map(line => ({ ...line, receivedQty: 0 }));
+  await prepareNewRequest(data, session);
+  (data.history as unknown[]).push(history(`Corrige la ${source.number}${order && order !== source ? ` (orden ${order.number})` : ""}, anulada`, session, String(reasonInput || "").trim()));
+  const copy = await Purchase.create(data);
+  await Purchase.updateMany({ _id: { $in: [request?._id, order?._id].filter(Boolean) } }, { $push: { history: history(`Reemplazada por la ${String(data.number)}`, session) } });
+  return copy.toObject();
 }
 
 /* ── 3 y 5: la orden de compra y la orden de pago contra ella ──────────────── */
@@ -476,7 +561,7 @@ export function checkPurchaseChanges(before: Record<string, unknown>, changes: R
   const same = (key: string) => key in stored ? Math.abs(Number(changes[key] ?? 0) - stored[key]) < 0.005 : String(changes[key] ?? "") === String(before[key] ?? "");
   const blocked = Object.keys(changes).filter(key => !allowed.includes(key) && !same(key));
   if (blocked.length) throw new HttpError(before.stage === "solicitud"
-    ? `La solicitud ${String(before.number)} ya se emitió: queda en sólo lectura. Si hay que cambiarla, Gerencia la anula y se hace una nueva.`
+    ? `La solicitud ${String(before.number)} ya se emitió: queda en sólo lectura. Si hay que cambiarla, usá Corregir en la ficha de la compra.`
     : `La orden ${String(before.number)} ya está emitida: sólo se cambian la entrega esperada y las notas`, 409);
   for (const key of Object.keys(changes)) if (!allowed.includes(key)) delete changes[key];
 }
@@ -526,7 +611,7 @@ export async function preparePurchaseQuote(data: Record<string, unknown>, before
 
 /** Sólo se borra una solicitud en borrador; lo emitido se anula. */
 export function checkPurchaseDelete(before: Record<string, unknown>) {
-  if (!(before.stage === "solicitud" && before.status === "borrador")) throw new HttpError(`${String(before.number)} ya se emitió: no se borra, Gerencia la anula con motivo`, 409);
+  if (!(before.stage === "solicitud" && before.status === "borrador")) throw new HttpError(`${String(before.number)} ya se emitió: no se borra, se anula con motivo`, 409);
 }
 
 /** Tesorería (Administración) y Gerencia cargan cualquier factura de compra; Compras, las de compras por debajo del límite. */

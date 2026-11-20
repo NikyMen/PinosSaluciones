@@ -12,7 +12,7 @@ import { ownerLabels, ownersOf, ownerTotals, type OwnerKey } from "@/lib/stock-o
 import { fetchAllRecords } from "@/lib/fetch-all-records";
 
 export type StockMovement = {
-  _id?: string; kind: "ingreso" | "egreso" | "transferencia" | "ajuste" | "recepcion" | "venta" | "devolucion" | "no_utilizable" | "envio" | "envio_anulado"; quantity: number;
+  _id?: string; kind: "ingreso" | "egreso" | "transferencia" | "ajuste" | "recepcion" | "venta" | "devolucion" | "no_utilizable" | "envio" | "envio_anulado" | "ingreso_anulado"; quantity: number;
   warehouse?: string; toWarehouse?: string; remito?: string; destinationLabel?: string; quoteNumber?: string;
   unitCostCents?: number; totalCents?: number; reference?: string; note?: string;
   date?: string; userName?: string; createdAt?: string;
@@ -32,7 +32,7 @@ const tabs: Array<{ kind: Kind; label: string; icon: typeof ArrowDownToLine; hel
   { kind: "ajuste", label: "Ajustar inventario", icon: Scale, help: "Fija lo que contaste físicamente en un depósito. No mueve plata." },
 ];
 
-const movementLabels: Record<StockMovement["kind"], string> = { ingreso: "Entrada", egreso: "Salida a obra", transferencia: "Transferencia", recepcion: "Recepción", ajuste: "Ajuste", venta: "Venta", devolucion: "Devolución", no_utilizable: "No utilizable", envio: "Envío por transporte", envio_anulado: "Envío anulado" };
+const movementLabels: Record<StockMovement["kind"], string> = { ingreso: "Entrada", egreso: "Salida a obra", transferencia: "Transferencia", recepcion: "Recepción", ajuste: "Ajuste", venta: "Venta", devolucion: "Devolución", no_utilizable: "No utilizable", envio: "Envío por transporte", envio_anulado: "Envío anulado", ingreso_anulado: "Compra anulada" };
 const warehouseOptions: Option[] = WAREHOUSES.map(warehouse => ({ value: warehouse.key, label: warehouse.label }));
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
