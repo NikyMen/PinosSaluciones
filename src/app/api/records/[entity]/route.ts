@@ -125,7 +125,8 @@ export async function POST(request: Request, context: RouteContext<"/api/records
     if (entity === "payments") await afterPaymentChange(null, item.toObject(), session);
     // Una factura de una OC ya pagada de contado o con anticipo queda cubierta por ese pago.
     if (entity === "expenses" && item.purchaseId) await refreshOrderPayment(item.purchaseId);
-    if (entity === "stock" && item.salePriceCents) await recordSalePriceChange(item._id, undefined, item.salePriceCents, session, "alta");
+    // El precio cargado en el alta (si lo tomó de la lista de un proveedor, ya lo anotó el modelo).
+    if (entity === "stock" && Number(data.salePriceCents) > 0) await recordSalePriceChange(item._id, undefined, item.salePriceCents, session, "alta");
     await audit(session, "create", entity, item._id, null, item.toObject(), ip);
     return Response.json(item, { status: 201 });
   } catch (error) { return apiError(error); }

@@ -28,7 +28,8 @@ import { downloadFiscalInvoicePdf, fiscalInvoicePdfData } from "@/lib/fiscal-inv
    Ver src/lib/counter-sales.ts.
    ───────────────────────────────────────────────────────────────────────────── */
 
-type Product = { _id: string; name: string; unit: string; sku?: string; barcode?: string; salePriceCents?: number } & Record<string, unknown>;
+/** Un producto de Stock, o uno de la lista del proveedor que no está en Stock (`listOnly`: se ve, no se vende). */
+type Product = { _id: string; name: string; unit: string; sku?: string; barcode?: string; salePriceCents?: number; listOnly?: boolean } & Record<string, unknown>;
 /**
  * Un renglón de la venta. `price` es el precio sin IVA y `priceVat` el mismo con
  * el 21 %: se calculan uno del otro. Con precio guardado en Stock, los dos quedan
@@ -180,7 +181,8 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
     const text = query.trim();
     if (!text) return;
     if (await handleCode(text)) { setQuery(""); return; }
-    if (catalog?.items.length === 1) { addItem(catalog.items[0]); setQuery(""); }
+    const sellable = catalog?.items.filter(item => !item.listOnly) || [];
+    if (sellable.length === 1) { addItem(sellable[0]); setQuery(""); }
   }
 
   function pick(item: Product) {
@@ -386,6 +388,13 @@ export function CounterSale({ canSell }: { canSell: boolean }) {
             {catalog?.items.map(item => {
               const levels = levelsOf(item as Record<string, unknown>);
               const taken = inSale.get(item._id);
+              if (item.listOnly) return <div key={item._id} className="mostrador-catalog-row list-only" title="Está en la lista del proveedor pero no en Stock: se puede vender cuando entre (toma este precio solo)">
+                <span className="mostrador-catalog-name"><b>{item.name}</b>{codeOf(item) && <small>Cód. {codeOf(item)} · lista del proveedor</small>}</span>
+                <span data-label="Salón">—</span>
+                <span data-label="Galpón">—</span>
+                <span data-label="Precio">{money(Number(item.salePriceCents))}</span>
+                <span className="mostrador-catalog-add"><span className="badge">Sin stock</span></span>
+              </div>;
               return <button type="button" key={item._id} className={taken ? "mostrador-catalog-row taken" : "mostrador-catalog-row"} onClick={() => pick(item)}>
                 <span className="mostrador-catalog-name"><b>{item.name}</b>{codeOf(item) && <small>Cód. {codeOf(item)}</small>}</span>
                 <span data-label="Salón">{qty(levels.salon)}</span>

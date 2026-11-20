@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { z } from "zod";
-import { CashAccount, Client, Counter, CounterSale, StockItem } from "./models";
+import { CashAccount, Client, Counter, CounterSale, PriceListItem, StockItem } from "./models";
+import { listCode, listCodesFor, saleCentsFromGross } from "./list-price-match";
 import { HttpError } from "./api";
 import { audit } from "./audit";
 import { schemas } from "./schemas";
@@ -253,9 +254,17 @@ export async function counterCatalog(search: string, from: (typeof SALE_SOURCES)
   const legacy = { qty_central: { $exists: false }, qty_salon: { $exists: false }, quantity: { $gt: 0 } };
   const inStock = from === "salon" ? [{ qty_salon: { $gt: 0 } }] : from === "central" ? [{ qty_central: { $gt: 0 } }, legacy] : [{ qty_salon: { $gt: 0 } }, { qty_central: { $gt: 0 } }, legacy];
   const filter = { $and: [{ active: { $ne: false } }, { $or: inStock }, ...byWords] };
-  const [items, total] = await Promise.all([
+  const [items, total, withStock, listItems] = await Promise.all([
     StockItem.find(filter, { name: 1, unit: 1, sku: 1, barcode: 1, category: 1, salePriceCents: 1, quantity: 1, qty_salon: 1, qty_central: 1 }).collation({ locale: "es", strength: 1 }).sort({ name: 1 }).limit(limit).lean(),
     StockItem.countDocuments(filter),
+    StockItem.find({ active: { $ne: false }, $or: inStock }, { sku: 1 }).lean<Array<{ sku?: string }>>(),
+    PriceListItem.find({ current: true, consumerGrossCents: { $gt: 0 }, $and: words.map(word => ({ $or: [{ name: { $regex: word, $options: "i" } }, { code: { $regex: word, $options: "i" } }, { presentation: { $regex: word, $options: "i" } }] })) })
+      .select("code name presentation consumerGrossCents").lean<Array<{ _id: unknown; code?: string; name: string; presentation?: string; consumerGrossCents: number }>>(),
   ]);
-  return { items, total };
+  // Los productos de la lista con precio final (Protex) que no están en Stock: se ven "Sin stock", para consultar el precio.
+  const covered = new Set(withStock.flatMap(item => listCodesFor(item.sku)));
+  const listOnly = listItems.filter(item => !covered.has(listCode(item.code)))
+    .map(item => ({ _id: `lista-${String(item._id)}`, name: [item.name, item.presentation].filter(Boolean).join(" · "), sku: item.code, unit: "unidad", salePriceCents: saleCentsFromGross(item.consumerGrossCents), quantity: 0, qty_salon: 0, qty_central: 0, listOnly: true }))
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  return { items: [...items, ...listOnly.slice(0, Math.max(0, limit - items.length))], total: total + listOnly.length, listOnlyTotal: listOnly.length };
 }

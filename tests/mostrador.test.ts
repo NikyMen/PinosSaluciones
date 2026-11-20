@@ -288,3 +288,42 @@ describe("servicios en el mostrador", () => {
     expect((await call(await post({ company: "tvp", voucherType: "factura_x", method: "efectivo", services: [{ description: "Flete", quantity: 1, unitPriceCents: 0 }] }))).status).toBe(400);
   });
 });
+
+describe("precio final de la lista del proveedor (Protex)", () => {
+  it("lo pasa a Stock, lo toma un material nuevo, y lo que no está en Stock se ve sin stock en el Mostrador", async () => {
+    const { PriceList, PriceListItem, Supplier, StockPriceChange } = await import("../src/lib/models");
+    const { applyListSalePrices } = await import("../src/lib/sale-prices");
+    const { counterCatalog } = await import("../src/lib/counter-sales");
+    const supplier = await Supplier.create({ name: "PROKRETE ARGENTINA SA" });
+    const list = await PriceList.create({ supplierId: supplier._id, validFrom: new Date("2026-09-01"), fileName: "protex.xlsx", current: true, itemCount: 4 });
+    const listItem = (code: string, name: string, gross: number, presentation = "Balde 20 KG") => ({ supplierId: supplier._id, priceListId: list._id, current: true, code, name, presentation, listPriceCents: gross, consumerGrossCents: gross });
+    await PriceListItem.insertMany([
+      listItem("JUE905", "PROTEX SEAL 77", 5_735_520, "Kit 33 KG"),
+      listItem("10032/25", "PROTEX TAP", 1_210_000, "Balde 25 KG"),
+      listItem("10030/20", "PROTEX LATEX", 2_420_000),
+      listItem("", "ECOFIX HD", 999_999),
+    ]);
+    // En Stock: una variante (JUE905-BIDON), uno exacto, y uno de otra marca sin código.
+    const bidon = await StockItem.create({ name: "PROTEX SEAL 77 BIDÓN", sku: "JUE905-BIDON", unit: "unidad", category: "materiales", qty_salon: 4, quantity: 4 });
+    expect(bidon.salePriceCents).toBe(4_740_099); // Un material nuevo toma el precio de la lista solo.
+    const tap = await StockItem.collection.insertOne({ name: "PROTEX TAP · Balde 25 KG", sku: "10032/25", unit: "unidad", category: "materiales", qty_salon: 6, quantity: 6, movements: [] });
+    const alba = await StockItem.create({ name: "ALBALATEX X20LTS", unit: "unidad", category: "materiales", qty_salon: 3, quantity: 3 });
+
+    // La carga inicial: sólo el que todavía no tenía precio; el de otra marca no se toca.
+    const preview = await applyListSalePrices({ apply: false, actor: { name: "Lista de precios" } });
+    expect(preview.map(change => [change.sku, change.salePriceCents])).toEqual([["10032/25", 1_000_000]]);
+    await applyListSalePrices({ apply: true, actor: { name: "Lista de precios" } });
+    expect(await StockItem.findById(tap.insertedId).lean()).toMatchObject({ salePriceCents: 1_000_000 });
+    expect((await StockItem.findById(alba._id).lean() as { salePriceCents?: number }).salePriceCents).toBeUndefined();
+    expect(await StockPriceChange.find({ stockItemId: { $in: [bidon._id, tap.insertedId] } }).lean()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: "lista", userName: "Lista de precios", salePriceCents: 4_740_099 }),
+      expect.objectContaining({ source: "lista", userName: "Lista de precios", salePriceCents: 1_000_000 }),
+    ]));
+
+    // En el Mostrador: el Látex de la lista no está en Stock y se ve "sin stock" con su precio; el Seal 77 y el Tap ya están.
+    const catalog = await counterCatalog("protex");
+    const listOnly = catalog.items.filter(item => (item as { listOnly?: boolean }).listOnly);
+    expect(listOnly.map(item => [item.name, item.salePriceCents])).toEqual([["PROTEX LATEX · Balde 20 KG", 2_000_000]]);
+    expect(catalog.items.filter(item => !(item as { listOnly?: boolean }).listOnly).map(item => item.name)).toEqual(expect.arrayContaining(["PROTEX SEAL 77 BIDÓN", "PROTEX TAP · Balde 25 KG"]));
+  });
+});

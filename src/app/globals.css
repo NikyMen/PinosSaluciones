@@ -2125,6 +2125,10 @@ tr.row-inactive td { color: var(--muted); background: #fafbfc; }
 .mostrador-catalog-row:first-child { border-top: 0; }
 .mostrador-catalog-row:hover, .mostrador-catalog-row:focus-visible { background: #f4f8fb; outline: 0; }
 .mostrador-catalog-row.taken { background: #f0f8f3; }
+.mostrador-catalog-row.list-only { color: var(--muted); background: #fbfcfe; cursor: default; }
+.mostrador-catalog-row.list-only:hover { background: #fbfcfe; }
+.mostrador-catalog-row.list-only .mostrador-catalog-name b { color: #4a5568; font-weight: 700; }
+.mostrador-catalog-row.list-only .badge { color: #80590f; background: var(--warning-soft); white-space: nowrap; }
 .mostrador-catalog-name { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 6px 0; }
 .mostrador-catalog-name b { overflow: hidden; color: var(--brand-navy-deep); text-overflow: ellipsis; white-space: nowrap; }
 .mostrador-catalog-name small { color: var(--muted-2); font-size: .62rem; }

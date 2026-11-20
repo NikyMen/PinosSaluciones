@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { PriceList, PriceListItem, Supplier } from "./models";
+import { applyListSalePrices } from "./sale-prices";
 import {
   compareLists, discounted, escapeRegex, markBest, matchLists, measureOf, normalize, relevance, searchTextOf, searchTokens, STALE_AFTER_DAYS, withoutVat,
   type Measure, type MeasureUnit, type ParsedPriceItem, type PriceLayout, type PriceRow,
@@ -100,6 +101,8 @@ export async function saveImport({ supplierId, items, layout, legend, validFrom,
   list.current = true;
   await list.save();
   if (rememberLayout) await Supplier.updateOne({ _id: supplierId }, { $set: { priceFormat: layout } });
+  // Los materiales de Stock que están en la lista toman el precio final al consumidor (si la lista lo trae).
+  await applyListSalePrices({ supplierId, apply: true, actor: { userId: session.userId, name: session.name } });
   return { list: list.toObject(), summary };
 }
 

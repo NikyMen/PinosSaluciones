@@ -10,6 +10,7 @@ import { CASH_ACCOUNT_COMPANIES, CASH_ACCOUNT_TYPES, CASH_CURRENCIES } from "./c
 import { PERIOD_PATTERN, periodOf } from "./period";
 import { COMPANY_KEYS } from "./companies";
 import { COLLECTION_METHODS, PAYMENT_METHODS, RETENTION_TYPES } from "./cash-methods";
+import { indexListItems, listCodesFor, matchListItem, saleCentsFromGross, type ListPriceItem } from "./list-price-match";
 
 const options = { timestamps: true, strict: true } as const;
 const money = { type: Number, min: 0, default: 0 };
@@ -500,6 +501,28 @@ const StockItemSchema = new Schema({
   movements: [StockMovementSchema],
 }, options);
 StockItemSchema.index({ barcode: 1 }, { sparse: true });
+/*
+ * Un material nuevo sin precio de venta que está en una lista vigente con precio
+ * final al consumidor (Protex) toma ese precio, sin IVA, y queda en su historial
+ * de precios. Vale para cualquier alta: ficha de Stock, Caja, recepción de una
+ * compra. Ver src/lib/list-price-match.ts.
+ */
+StockItemSchema.pre("save", async function () {
+  if (!this.isNew || Number(this.get("salePriceCents")) > 0) return;
+  const codes = listCodesFor(this.get("sku"));
+  if (!codes.length) return;
+  const items = await PriceListItem.find({ current: true, consumerGrossCents: { $gt: 0 }, code: { $in: codes.map(code => new RegExp(`^\\s*${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i")) } })
+    .select("supplierId code consumerGrossCents").lean<ListPriceItem[]>();
+  const match = matchListItem({ sku: this.get("sku"), supplierId: this.get("supplierId") }, indexListItems(items));
+  if (!match) return;
+  this.set("salePriceCents", saleCentsFromGross(Number(match.consumerGrossCents)));
+  this.$locals.salePriceFromList = true;
+});
+StockItemSchema.post("save", async function () {
+  if (!this.$locals.salePriceFromList) return;
+  delete this.$locals.salePriceFromList;
+  await StockPriceChange.create({ stockItemId: this._id, salePriceCents: this.get("salePriceCents"), source: "lista", userName: "Lista de precios" });
+});
 
 /*
  * Un pase entre depósitos (Galpón → Salón, o al revés). Sale del origen y
@@ -685,7 +708,8 @@ CounterSaleSchema.index({ date: -1, createdAt: -1 });
 const StockPriceChangeSchema = new Schema({
   stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true, index: true },
   previousCents: Number, salePriceCents: Number,
-  source: { type: String, enum: ["stock", "mostrador", "alta"], default: "stock" },
+  // "lista": lo tomó de la lista del proveedor con precio final (Protex), al cargarla o al dar de alta el material.
+  source: { type: String, enum: ["stock", "mostrador", "alta", "lista"], default: "stock" },
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
 }, options);
 

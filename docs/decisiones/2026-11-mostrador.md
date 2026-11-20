@@ -50,3 +50,12 @@ La venta al público del Salón se podía hacer, pero en tres pantallas: Ventas 
 - Una venta puede ser sólo de servicios (sin remito: la factura lleva los servicios como conceptos) o de productos y servicios juntos: el remito lleva los productos y la factura, además, los servicios como renglones sueltos. Para eso la factura con remito ahora acepta renglones sin stock (`prepareInvoice`); el neto es lo de los remitos más los servicios y `checkInvoiceExcess` controla que no pase de eso.
 - En ARCA el concepto sale de lo que se vende: productos (1), servicios (2) o productos y servicios (3), con el período del mes que piden los servicios.
 - Los servicios no se guardan en un catálogo: se escriben en cada venta.
+
+## Precio final de la lista del proveedor (Protex), 20/11/2026
+
+- Pedido de Cristian: ver en el Mostrador la lista de Protex con el precio final de mostrador de la planilla (`consumerGrossCents`, con IVA); a los productos que no son de Protex el precio se lo ponen ellos (Guardar/Editar).
+- **Precio de venta desde la lista** (`applyListSalePrices` en `src/lib/sale-prices.ts`): los materiales de Stock que están en una lista vigente con precio final toman ese precio, sin IVA (precio final / 1,21). Se reconocen por el código interno igual al de la lista o por el código antes del guion: "JUE905-BIDON" y "JUE905-BOLSA" son el "JUE905" de la lista (`src/lib/list-price-match.ts`). Si el material tiene proveedor, tiene que ser el de la lista; un material sin código no se cruza.
+- **Automático**: al cargar una lista nueva del proveedor, los materiales de esa lista toman el precio nuevo; y un material que se da de alta en Stock (ficha, Caja o recepción de una compra) sin precio toma el de la lista. Los cambios quedan en el historial de precios como "Lista del proveedor".
+- **Carga inicial**: `pnpm prices:from-list` (sin `--apply` sólo muestra lo que haría).
+- **Sin stock**: en la lista del Mostrador, después de los productos de Stock, se ven los productos de la lista que no están en Stock (o no tienen existencia), con su precio y "Sin stock". Sirven para consultar el precio; no se pueden vender hasta que entren a Stock.
+- Un precio que se cambia a mano en el Mostrador o en Stock queda hasta la próxima lista del proveedor, que lo vuelve a poner.

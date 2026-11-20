@@ -29,7 +29,8 @@
     "cash:codes": "tsx --env-file-if-exists=.env scripts/load-cash-accounts.ts",
     "migrate:party-codes": "tsx --env-file-if-exists=.env scripts/migrate-party-codes.ts",
     "parties:import": "tsx --env-file-if-exists=.env scripts/import-parties.ts",
-    "quotes:import": "tsx --env-file-if-exists=.env scripts/import-quotes.ts"
+    "quotes:import": "tsx --env-file-if-exists=.env scripts/import-quotes.ts",
+    "prices:from-list": "tsx --env-file-if-exists=.env scripts/sale-prices-from-list.ts"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",
