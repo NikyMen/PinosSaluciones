@@ -278,7 +278,9 @@ export function ExpenseFields({ fields, fieldProps, editing, draft, orders }: {
       ? <label className="readonly-field" key={field.key}><span>{field.label}</span><output>{
         field.relation ? fieldProps(field).relationOptions.find(option => option.value === String(orderRecord?.[field.key] ?? (field.key === "purchaseId" ? purchaseId : "")))?.label || "—"
           : field.optionLabels?.[String(orderRecord?.[field.key])] || "—"
-      }</output></label>
+      }</output>
+        {/* La OC fija (abierta desde "Cargar factura" de la orden) igual viaja: de ella salen el proveedor, la empresa y la obra. */}
+        {field === purchaseField && <input type="hidden" name="purchaseId" value={purchaseId} />}</label>
       : modern && field === purchaseField
         ? <FormField key={field.key} {...fieldProps(field)} relationOptions={fieldProps(field).relationOptions.filter(option => orders.some(item => item._id === option.value && item.stage !== "solicitud" && !["anulada", "cancelada"].includes(String(item.status))))} onCreateRelation={undefined} />
       : modern && field.key === "receiptRef" && mode === true
