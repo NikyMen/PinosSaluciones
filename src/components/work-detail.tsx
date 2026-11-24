@@ -12,6 +12,7 @@ import { downloadHref, extensionOf, UPLOAD_ACCEPT } from "@/lib/upload-types";
 import { WorkInspections } from "@/components/work-inspections";
 import { QuoteBillingPanel } from "@/components/quote-billing";
 import { ProjectMediaPanel } from "@/components/project-media";
+import { ThreadButton } from "@/components/document-thread";
 import type { ProjectLocation } from "@/lib/project-location";
 
 type Checklist = { _id: string; title: string; done: boolean; completedAt?: string; createdAt?: string; updatedAt?: string };
@@ -178,6 +179,7 @@ export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false, 
         <a className="secondary-btn" href="#gastos" onClick={event => { event.preventDefault(); document.getElementById("gastos")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><ReceiptText size={17} /> Gastos de obra</a>
         {canSeeStock && <Link className="secondary-btn" href={`/app/salidas?obra=${id}`}><HardHat size={17} /> Material entregado</Link>}
         {canEdit && <button className="secondary-btn" onClick={() => setInvoicing(true)}><FileCheck2 size={17} /> Facturar</button>}
+        <ThreadButton kind="work" id={id} className="secondary-btn" label="Historial de documentos" />
       </div>
     </div>
     {error && <div className="notice error">{error}</div>}

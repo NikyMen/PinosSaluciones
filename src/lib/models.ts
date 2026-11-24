@@ -825,6 +825,8 @@ const PurchaseSchema = new Schema({
   // El número que tenía antes de que la solicitud tuviera numeración propia.
   legacyNumber: String,
   requestId: { type: Schema.Types.ObjectId, ref: "Purchase" }, orderId: { type: Schema.Types.ObjectId, ref: "Purchase" },
+  // La solicitud que nace de Corregir apunta a la compra que reemplaza: el historial del hilo la sigue.
+  correctsId: { type: Schema.Types.ObjectId, ref: "Purchase" },
   // La condición de compra: contado, cuenta corriente o a plazo (con los días), y si hay que pagar antes de la entrega.
   paymentTerms: { type: String, enum: ["contado", "cuenta_corriente", "plazo"], default: "contado" }, termDays: Number,
   requiresAdvance: { type: Boolean, default: false },

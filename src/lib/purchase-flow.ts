@@ -269,6 +269,7 @@ export async function correctPurchase(id: string, reasonInput: string, session: 
   for (const key of ["_id", "__v", "createdAt", "updatedAt", "files"]) delete data[key];
   if (Array.isArray(data.items)) data.items = (data.items as PurchaseLine[]).map(line => ({ ...line, receivedQty: 0 }));
   await prepareNewRequest(data, session);
+  data.correctsId = source._id;
   (data.history as unknown[]).push(history(`Corrige la ${source.number}${order && order !== source ? ` (orden ${order.number})` : ""}, anulada`, session, String(reasonInput || "").trim()));
   const copy = await Purchase.create(data);
   await Purchase.updateMany({ _id: { $in: [request?._id, order?._id].filter(Boolean) } }, { $push: { history: history(`Reemplazada por la ${String(data.number)}`, session) } });
@@ -541,7 +542,7 @@ export async function registerPurchaseReceipt(id: string, input: PurchaseReceipt
 /* ── Reglas de los cambios a mano ───────────────────────────────────────────── */
 
 /** Lo que el sistema escribe solo y no se toca desde el formulario. */
-const SYSTEM_FIELDS = ["stage", "status", "number", "legacyNumber", "requestId", "orderId", "emittedAt", "approval", "rejection", "cancellation", "paidCents", "paymentStatus", "receptionStatus", "closedAt", "history", "stockedAt", "stockedWarehouse", "stockedByName"];
+const SYSTEM_FIELDS = ["stage", "status", "number", "legacyNumber", "requestId", "orderId", "correctsId", "emittedAt", "approval", "rejection", "cancellation", "paidCents", "paymentStatus", "receptionStatus", "closedAt", "history", "stockedAt", "stockedWarehouse", "stockedByName"];
 /** De una orden emitida se puede retocar sólo la entrega esperada y las notas. */
 const ORDER_EDITABLE = ["expectedDate", "notes", "receiptNotes"];
 

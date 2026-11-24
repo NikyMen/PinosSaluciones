@@ -11,6 +11,7 @@ import { invoicedQtyOf, remitoPendingCents } from "@/lib/remito-billing";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
 import { StockPicker, type PickedItem } from "@/components/stock-picker";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
+import { ThreadButton } from "@/components/document-thread";
 
 type Line = { stockItemId: string; name: string; unit: string; quantity: number; unitPriceCents: number; totalCents: number; invoicedQty?: number };
 type Remito = {
@@ -50,6 +51,12 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
   const [notice, setNotice] = useState("");
   const [creating, setCreating] = useState(false);
   const [returning, setReturning] = useState<Remito | null>(null);
+  // El historial y otros links llegan con ?buscar=<número>: se muestra ese remito.
+  const [only, setOnly] = useState("");
+  useEffect(() => {
+    const initial = new URLSearchParams(window.location.search).get("buscar");
+    if (initial) { const timer = window.setTimeout(() => { setOnly(initial); setFilter(""); }, 0); return () => window.clearTimeout(timer); }
+  }, []);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/remitos");
@@ -58,7 +65,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
   }, []);
   useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, [load]);
 
-  const visible = useMemo(() => (rows || []).filter(row => filter === "" ? true : filter === "devolucion" ? row.kind === "devolucion" : row.kind === "salida" && (filter === "pendiente" ? billable(row.status) : row.status === filter)), [rows, filter]);
+  const visible = useMemo(() => (rows || []).filter(row => only ? row.number === only : filter === "" ? true : filter === "devolucion" ? row.kind === "devolucion" : row.kind === "salida" && (filter === "pendiente" ? billable(row.status) : row.status === filter)), [rows, filter, only]);
   const chosen = (rows || []).filter(row => selected.includes(row._id));
   const mixed = new Set(chosen.map(row => `${row.clientId}-${row.company}`)).size > 1;
 
@@ -84,11 +91,12 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
     </div>{canEdit && <button className="primary-btn" onClick={() => setCreating(true)}><Plus size={18} /> Nuevo remito</button>}</div>
     <div className="toolbar">
       <div className="tracking-filter" role="group" aria-label="Estado">
-        {filters.map(option => <button key={option.value} type="button" className={filter === option.value ? "active" : ""} onClick={() => { setFilter(option.value); setSelected([]); }}>{option.label}</button>)}
+        {filters.map(option => <button key={option.value} type="button" className={filter === option.value ? "active" : ""} onClick={() => { setFilter(option.value); setSelected([]); setOnly(""); }}>{option.label}</button>)}
       </div>
       {canInvoice && filter === "pendiente" && <button type="button" className="primary-btn" disabled={!chosen.length || mixed} title={mixed ? "Una factura junta remitos de un solo cliente y una sola empresa" : undefined}
         onClick={() => router.push(`/app/invoices?remitos=${selected.join(",")}`)}><FileCheck2 size={17} /> Facturar {chosen.length ? `${chosen.length} remito${chosen.length > 1 ? "s" : ""} · ${money(chosen.reduce((total, row) => total + remitoPendingCents(row), 0))}` : "seleccionados"}</button>}
     </div>
+    {only && <div className="notice">Se muestra el remito {only}. <button type="button" className="link-btn" onClick={() => setOnly("")}>Ver todos</button></div>}
     {mixed && <div className="notice warning">Elegiste remitos de distintos clientes o empresas: una factura junta los de un solo cliente y una sola empresa.</div>}
     {error && <div className="notice error">{error}</div>}
     {notice && <div className="notice success" role="status">{notice}</div>}
@@ -106,6 +114,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
             <td data-label="Estado">{row.kind === "devolucion" ? <span className="badge devolucion">Devolución</span> : <span className={`badge remito-${row.status}`}>{statusLabels[row.status]}</span>}</td>
             <td className="row-actions">
               <button className="row-action-wide" onClick={() => { void downloadRemitoPdf(pdfData(row)); }}><FileText size={15} /> PDF</button>
+              <ThreadButton kind="sales_remito" id={row._id} />
               {canEdit && row.kind === "salida" && row.status !== "anulado" && !row.work && <button className="row-action-wide" title="El cliente devuelve material: vuelve al Salón" onClick={() => setReturning(row)}><Undo2 size={15} /> Devolución</button>}
               {canEdit && row.kind === "salida" && ["pendiente", "entregado"].includes(row.status) && <button title="Anular: el material vuelve al Salón" onClick={() => { void cancel(row); }}><Trash2 size={16} /></button>}
             </td>

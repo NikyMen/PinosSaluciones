@@ -175,6 +175,12 @@ Requerimiento integral v4, con lo acordado en el grupo de PINO (`src/lib/purchas
 
 **Ventas del Salón.** Facturas de venta permite cargar productos con precio de venta de Stock, conceptos de texto libre y observaciones, dar de alta un cliente en el formulario y bajar el PDF fiscal o de gestión. Remitos de venta permite destinar insumos del Salón a una obra y registrar a quien recibe. Aprobar una cotización avisa a Compras, Obras y Administración, y a Gerencia (sólo aviso, con el importe y quién la aprobó). El aviso de Compras enumera los materiales faltantes para que arme la solicitud. Ver `docs/decisiones/2026-11-ventas-del-salon.md`.
 
+## Historial del hilo de documentos
+
+Cada documento del circuito tiene un botón **Historial**: cotización (**Documentos vinculados**), obra (**Historial de documentos**), solicitud y OC, remito de compra, factura de compra, remito de venta, factura de venta, orden de pago y recibo. El botón abre una línea de tiempo con todo lo vinculado, en orden de fecha. Los documentos se dividen en cuatro conjuntos con colores distintos: Cotización / Obra, Compras, Ventas y Tesorería. Cada uno muestra quién lo cargó, el importe y el estado, y arriba van los totales del hilo.
+
+Como los documentos se asocian en cualquier orden, lo que se vinculó después aparece en su fecha con la marca "Asociado a … el dd/mm por …", que sale de la bitácora. El hilo no se guarda: se arma en cada consulta con los vínculos de cada documento (`src/lib/document-thread.ts`, `GET /api/thread/[kind]/[id]`). Desde un comprobante se ven su cotización y su obra, pero no el resto de la obra. Sólo aparece lo que la persona puede leer. La compra que nace de **Corregir** queda atada a la que reemplaza (`Purchase.correctsId`). Las listas aceptan `?buscar=<número>` para abrirse filtradas. Ver `docs/decisiones/2026-11-historial-de-documentos.md`.
+
 ## Mostrador (venta al público)
 
 - **Ventas › Mostrador** (`/app/mostrador`, `src/lib/counter-sales.ts`): la venta al público en un solo paso. Los productos con stock (en el Salón o en el Galpón) se ven en una **lista que se filtra con cada letra**, sin Enter, por nombre o código (`GET /api/mostrador/productos`). También se escanean con el lector o la cámara. Cada renglón tiene precio sin IVA y con IVA (se calculan uno del otro) y descuento en pesos. El precio sale de Stock; **Guardar** lo graba en Stock para la próxima venta y, si ya tenía precio, queda fijo con el botón **Editar**.

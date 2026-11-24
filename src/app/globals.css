@@ -2389,3 +2389,49 @@ td > .company-badge:first-child { margin-left: 0; }
 .badge.notif-en_gestion, .badge.notif-pospuesta, .badge.notif-leida { background: #eef2f7; color: #4a5568; }
 .badge.notif-resuelta, .badge.notif-hecha { background: #e6f6ec; color: #1d7a45; }
 .badge.notif-descartada { background: #fdecec; color: #b42318; }
+
+/* Historial del hilo de documentos (src/components/document-thread.tsx). Un color por conjunto. */
+.thread-modal { --thread-cotizacion: #6a4fc4; --thread-compras: #0f7f69; --thread-ventas: #c4502a; --thread-tesoreria: #00305b; }
+.thread-body { padding: 20px 24px 4px; display: grid; gap: 16px; }
+.thread-empty { margin: 0; color: var(--muted); }
+.thread-totals { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.thread-totals div { padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-muted); }
+.thread-totals dt { color: var(--muted); font-size: .62rem; font-weight: 700; }
+.thread-totals dd { margin: 3px 0 0; color: var(--ink); font-size: .86rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.thread-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.thread-filters button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: 100px; color: var(--ink); background: #fff; font-size: .7rem; font-weight: 700; cursor: pointer; }
+.thread-filters button b { color: var(--muted); font-weight: 800; }
+.thread-filters button[data-group] svg { color: var(--thread-color); }
+.thread-filters button.active { border-color: var(--brand-navy); color: #fff; background: var(--brand-navy); }
+.thread-filters button.active b, .thread-filters button.active svg { color: #fff; }
+.thread-filters button:disabled { opacity: .45; cursor: default; }
+.thread-list { margin: 0; padding: 0; list-style: none; display: grid; }
+.thread-item { position: relative; display: grid; grid-template-columns: 68px 18px 1fr; gap: 10px; padding-bottom: 12px; }
+.thread-item::before { content: ""; position: absolute; top: 18px; bottom: -2px; left: 86px; width: 2px; background: var(--line); }
+.thread-item:last-child::before { display: none; }
+[data-group="cotizacion"] { --thread-color: var(--thread-cotizacion); }
+[data-group="compras"] { --thread-color: var(--thread-compras); }
+[data-group="ventas"] { --thread-color: var(--thread-ventas); }
+[data-group="tesoreria"] { --thread-color: var(--thread-tesoreria); }
+.thread-date { padding-top: 10px; color: var(--muted); font-size: .7rem; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.thread-dot { position: relative; z-index: 1; width: 14px; height: 14px; margin: 11px 0 0 2px; border: 3px solid #fff; border-radius: 50%; background: var(--thread-color); box-shadow: 0 0 0 1px var(--thread-color); }
+.thread-card { min-width: 0; padding: 9px 12px; border: 1px solid var(--line); border-left: 4px solid var(--thread-color); border-radius: 0 10px 10px 0; background: #fff; }
+.thread-item.current .thread-card { background: #f4f8fc; border-color: var(--brand-navy-light); border-left-color: var(--thread-color); }
+.thread-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; }
+.thread-type { color: var(--thread-color); font-size: .64rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.thread-number { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-navy-deep); font-size: .84rem; font-weight: 800; text-decoration: none; }
+.thread-number:hover { text-decoration: underline; }
+.thread-here { padding: 3px 7px; border-radius: 100px; color: #fff; background: var(--brand-navy); font-size: .56rem; font-weight: 800; }
+.thread-line .badge { text-transform: none; }
+.thread-amount { margin-left: auto; color: var(--ink); font-size: .8rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.thread-meta { margin: 4px 0 0; color: var(--muted); font-size: .7rem; overflow-wrap: anywhere; }
+.thread-event { margin: 5px 0 0; padding: 4px 8px; border-radius: 7px; color: #80590f; background: var(--warning-soft); font-size: .68rem; font-weight: 700; }
+.thread-item.voided .thread-number, .thread-item.voided .thread-amount { color: var(--muted-2); text-decoration: line-through; }
+.thread-note { margin: 0; padding: 9px 12px; border-radius: 9px; color: var(--muted); background: var(--surface-muted); font-size: .7rem; }
+.thread-footer { margin: 12px 0 0 !important; bottom: 0 !important; }
+@media (max-width: 640px) {
+  .thread-body { padding: 16px 16px 4px; }
+  .thread-item { grid-template-columns: 52px 16px 1fr; gap: 7px; }
+  .thread-item::before { left: 66px; }
+  .thread-amount { margin-left: 0; width: 100%; }
+}

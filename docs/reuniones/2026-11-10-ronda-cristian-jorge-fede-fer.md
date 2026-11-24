@@ -59,6 +59,7 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 - La **cotización y la obra son lo mismo**. Donde diga obra, conviene mostrar "Cotización / Obra".
 - Desde la factura se tiene que ver todo: la OC, la cotización, la OP y los remitos. Desde la OP solo se ve la factura que paga.
 - El remito se asocia a la factura y a la OC, para controlar lo pedido contra lo recibido y lo facturado (faltantes, NC o ND).
+- **Historial del hilo (23/11):** cada documento tiene un botón Historial con todo lo vinculado, en orden de fecha, marcando lo que se asoció después. Ver `docs/decisiones/2026-11-historial-de-documentos.md`.
 - **El orden no siempre es el mismo.** Hay que poder asociar documentos en cualquier sentido:
   - **Factura sin OC**: Seba compra por su cuenta para arrancar una obra. La factura se carga y se paga, y la cotización y la OC se hacen después y se vinculan.
   - **OP sin factura**: se paga en octubre y la factura llega en noviembre (por el cierre de ARCA). Se emite la OP con el casillero de factura vacío y después se le asocia.

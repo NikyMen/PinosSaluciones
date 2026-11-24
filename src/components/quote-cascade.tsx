@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Calculator, ChevronDown, ChevronRight, History, Layers, LockOpen, Plus, Save, Target, Trash2, Wallet } from "lucide-react";
 import { MoneyInput } from "@/components/fields";
 import { HistoryModal } from "@/components/record-history";
+import { ThreadButton } from "@/components/document-thread";
 import { money, preciseMoney, qty as formatQty } from "@/lib/format";
 import { computeCascade, defaultCascadeParams, insumosSummary, parseCoef, rubroLabels, solveBenefitPct, targetPriceFromUnitPrice } from "@/lib/cascada";
 import type { CascadeParams, Insumo, OverheadLine, QuoteItem, Rubro } from "@/lib/cascada";
@@ -153,6 +154,7 @@ export function QuoteCascade({ id, canEdit, canForceUnlock }: { id: string; canE
           <b>{result.k ? result.k.toFixed(3).replace(".", ",") : "—"}</b>
         </div>
         <button className="secondary-btn" onClick={() => setShowHistory(true)}><History size={16} /> Historial</button>
+        <ThreadButton kind="quote" id={id} className="secondary-btn" label="Documentos vinculados" />
         {!locked && <button className="primary-btn" onClick={() => { void save(); }} disabled={saving}>
           <Save size={16} /> {saving ? "Guardando…" : "Guardar costeo"}
         </button>}

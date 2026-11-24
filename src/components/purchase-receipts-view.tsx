@@ -10,6 +10,7 @@ import { companyOf } from "@/lib/companies";
 import { warehouseLabel } from "@/lib/warehouses";
 import { fetchAllRecords } from "@/lib/fetch-all-records";
 import { StandaloneReceiptForm } from "@/components/standalone-receipt-form";
+import { ThreadButton } from "@/components/document-thread";
 
 type Receipt = {
   _id: string; number: string; supplierRemito?: string; date: string; warehouse?: string; status: string; final?: boolean; cancellation?: { reason?: string } | null; notes?: string; attachment?: string; userName?: string;
@@ -76,7 +77,7 @@ export function PurchaseReceiptsView({ canReceive }: { canReceive: boolean }) {
             <td data-label="Proveedor">{row.supplierName || "—"}</td>
             <td data-label="Llegó"><ul className="transfer-lines">{row.lines.map((line, index) => <li key={index}>{qty(line.quantity)} {line.unit || ""} · {line.name}</li>)}</ul><small className="tracking-sub">{row.order && warehouseLabel(row.warehouse || "central")}</small></td>
             <td data-label="Estado"><span className={`badge ${row.cancellation ? "remito-anulado" : row.status === "observada" ? "remito-pendiente" : "remito-facturado"}`}>{row.cancellation ? "Anulado" : row.status === "observada" ? "Observada" : "Conforme"}</span>{row.final && <small className="tracking-sub">Final</small>}{row.status === "observada" && row.notes && <small className="tracking-sub">{row.notes}</small>}</td>
-            <td className="row-actions" onClick={event => event.stopPropagation()}>{row.attachment && <a className="row-action-wide" href={row.attachment} target="_blank" rel="noreferrer"><Paperclip size={14} /> Remito</a>}</td>
+            <td className="row-actions" onClick={event => event.stopPropagation()}>{row.attachment && <a className="row-action-wide" href={row.attachment} target="_blank" rel="noreferrer"><Paperclip size={14} /> Remito</a>}<ThreadButton kind="purchase_receipt" id={row._id} /></td>
           </tr>)}
         </tbody></table></div>}
     </section>

@@ -32,6 +32,8 @@ import { ProjectMediaFields } from "@/components/project-media";
 import { WorkScheduleFields } from "@/components/work-schedule-fields";
 import type { ProjectLocation } from "@/lib/project-location";
 import { ExpenseLinks } from "@/components/expense-links";
+import { ThreadButton } from "@/components/document-thread";
+import type { ThreadKind } from "@/lib/document-thread";
 import { SalesInvoiceReceiptPicker } from "@/components/sales-invoice-receipt-picker";
 import { ExpenseFields, PurchaseFields } from "@/components/purchase-fields";
 import { purchaseTaxRows, storedPurchaseTaxes } from "@/lib/purchase-taxes";
@@ -107,6 +109,8 @@ function workRowStyle(item: Item) {
   } as CSSProperties;
 }
 
+/** Las listas de documentos del circuito, con su botón Historial. */
+const threadKinds: Partial<Record<Entity, ThreadKind>> = { quotes: "quote", works: "work", purchases: "purchase", expenses: "expense", invoices: "invoice", payments: "payment", collections: "collection" };
 const feminine = new Set(["factura", "obra", "cotización", "orden", "tarea", "orden de pago", "cuenta", "factura de compra", "caja o cuenta", "solicitud"]);
 
 function itemLabel(item: Item) {
@@ -144,8 +148,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
   const [items, setItems] = useState<Item[]>([]);
   const [relations, setRelations] = useState<Record<string, Item[]>>({});
   const [search, setSearch] = useState("");
+  // Los links que traen ?buscar= (el historial, Vinculado, los avisos) abren la lista ya filtrada.
   useEffect(() => {
-    if (entity !== "payments") return;
     const initial = new URLSearchParams(window.location.search).get("buscar");
     if (initial) { const timer = window.setTimeout(() => setSearch(initial), 0); return () => window.clearTimeout(timer); }
   }, [entity]);
@@ -689,6 +693,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
           {entity === "works" && <button title="Estado de obra" aria-label={`Estado de ${itemLabel(item)}`} onClick={() => setWorkStatusFor(item)}><Percent size={15} /></button>}
           {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
+          {threadKinds[entity] && <ThreadButton kind={threadKinds[entity]!} id={item._id} />}
           {entity === "quotes" && <Link className="row-action-wide" title="Abrir el análisis de precios y la cascada" href={`/app/quotes/${item._id}`}><Calculator size={15} /> Costear</Link>}
           {entity === "quotes" && <button className="row-action-wide" title="Descargar la cotización en PDF para mandarla o imprimirla" onClick={() => { void downloadQuote(item); }}><Download size={15} /> PDF</button>}
           {entity === "suppliers" && <Link className="row-action-wide" title="Subir y ver las listas de precios del proveedor" href={`/app/suppliers/${item._id}`}><FileSpreadsheet size={15} /> Listas de precios</Link>}

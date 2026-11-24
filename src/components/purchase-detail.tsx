@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Archive, Ban, CheckCircle2, ClipboardList, Download, FileStack, FileText, HandCoins, PackagePlus, Paperclip, PencilLine, ReceiptText, Send, X, XCircle } from "lucide-react";
 import { AttachmentsPanel } from "@/components/attachments-panel";
+import { ThreadButton } from "@/components/document-thread";
 import { downloadDossierZip, downloadOrderWithAttachments } from "@/lib/purchase-dossier";
 import { downloadPaymentOrderPdf, paymentMethodLabels, type PaymentOrderPdfData } from "@/lib/payment-order-pdf";
 import { DateInput, MoneyInput, SearchSelect } from "@/components/fields";
@@ -175,6 +176,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged, onEdit }: 
             {order && <button type="button" className="secondary-btn" onClick={() => { void pdf(order); }}><Download size={15} /> PDF orden</button>}
             <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void papers("pdf"); }} title="Un solo PDF con la orden y sus adjuntos (PDF y fotos)"><FileStack size={15} /> {order ? "OC" : "Solicitud"} con adjuntos</button>
             <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void papers("zip"); }} title="Solicitud, orden, órdenes de pago, comprobantes, remitos, facturas y adjuntos"><Archive size={15} /> Expediente ZIP</button>
+            <ThreadButton kind="purchase" id={String((order || request)?._id || purchaseId)} className="secondary-btn" />
             {detail.can.emit && <button type="button" className="primary-btn" disabled={busy} onClick={() => { void emit(); }}><Send size={15} /> Emitir</button>}
             {detail.can.decide && <><button type="button" className="primary-btn" disabled={busy} onClick={() => { void decide(true); }}><CheckCircle2 size={15} /> Aprobar</button>
               {request?.status === "pendiente_autorizacion" && <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void decide(false); }}><XCircle size={15} /> Rechazar</button>}</>}
