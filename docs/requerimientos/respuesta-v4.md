@@ -51,7 +51,7 @@ La etapa 3 está desarrollada, con el circuito del grupo:
   - Una OC admite varias OP parciales y muestra total, pagado y saldo.
 - Compras recibe el aviso. Carga los remitos en Compras › Remitos de compra. Los de una OC pueden ser parciales, suman al stock y el final cierra la orden. También se pueden cargar remitos sin OC con proveedor y cotización u obra.
 - Las facturas de compras de menos de $500.000 las puede cargar Compras; las de compras mayores, Tesorería. Las OP las emite sólo Tesorería.
-- Una solicitud o una OC emitida la anula, con motivo, quien la podría aprobar (hasta $500.000 quien gestiona compras o tiene Autorizar compras; por encima, sólo Gerencia). No se anula lo que ya tiene pagos o mercadería recibida del proveedor. La compra a stock aprobada sí, deshaciendo el ingreso, y se puede **Corregir** (anular y rehacer en borrador): ver `docs/decisiones/2026-11-anular-y-corregir-compras.md`.
+- Una solicitud o una OC emitida la anula, con motivo, quien la podría aprobar (hasta $500.000 quien gestiona compras o tiene Autorizar compras; por encima, sólo Gerencia). No se anula lo que ya tiene pagos o mercadería recibida del proveedor. La compra a stock aprobada sí, deshaciendo el ingreso, y se puede **Corregir** (anular y rehacer en borrador) o, si sólo está mal el proveedor, **Cambiar proveedor** mientras no tenga OP ni facturas: ver `docs/decisiones/2026-11-anular-y-corregir-compras.md`.
 - Cada pago parcial es una OP propia; no hay OP "ejecutada parcialmente".
 
 La etapa 4 está desarrollada:

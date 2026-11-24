@@ -46,6 +46,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/purchas
         decide: canApprovePurchases(session, total) && purchaseApprovalState(request || order || {}) === "pending",
         cancel: canCancelPurchase(session, { amountCents: total }) && (live(order) || (live(request) && request?.status !== "borrador")),
         correct: canCancelPurchase(session, { amountCents: total }) && canWrite(session, "purchases") && (live(order) || (live(request) && request?.status !== "borrador")),
+        supplier: canCancelPurchase(session, { amountCents: total }) && (live(order) || (live(request) && request?.status !== "borrador")) && !["rechazada"].includes(String((order || request)?.status)) && !payments.some(payment => payment.status !== "anulada") && !expenses.some(expense => expense.status !== "anulado"),
         paymentOrder: canWrite(session, "payments") && Boolean((order || request)?.supplierId) && (order ? live(order) : request?.status === "autorizada") && total - committedCents > 100,
         receive: canWrite(session, "purchases") && canWrite(session, "stock") && Boolean(order) && live(order) && order!.status !== "cerrada",
         invoice: canWrite(session, "expenses") && Boolean(order) && live(order),

@@ -36,6 +36,7 @@ export const NOTIFICATION_EVENTS = {
   "compra.pago": { label: "OP, pago o comprobante · Compras: ver la OC y seguir la recepción", hours: 72 },
   "compra.rechazada": { label: "Solicitud rechazada · Compras", hours: 72 },
   "compra.anulada": { label: "Compra anulada · Compras y Tesorería", hours: 72 },
+  "compra.proveedor": { label: "Cambió el proveedor de una compra · Compras y Tesorería", hours: 72 },
   "compra.remito_observado": { label: "Remito observado · Compras y Administración", hours: 48 },
   "certificado.cargado": { label: "Certificado cargado · Producción: revisar y gestionar la aprobación del cliente", hours: 72 },
   "certificado.aprobado": { label: "Certificado aprobado · Ventas y Administración: facturar y proyectar la cobranza", hours: 72 },

@@ -621,4 +621,49 @@ describe("solicitudes para stock", () => {
     expect((await StockItem.findOne({ name: "Compra grande" })).quantity).toBe(1);
   });
 
+  it("Cambiar proveedor: la solicitud, la orden, el remito y el ingreso a stock pasan al proveedor nuevo, sin rehacer la compra", async () => {
+    const request = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Material de otro proveedor", unit: "kg", quantity: 3, unitCents: 1000, vatPct: 21 }] });
+    await emitAndApprove(request._id);
+    const orderId = String((await Purchase.findById(request._id).lean<{ orderId: unknown }>())!.orderId);
+    const right = String((await Supplier.create({ name: "Proveedor bien elegido" }))._id);
+    const supplierRoute = await import("../src/app/api/purchases/[id]/supplier/route");
+
+    as("ventas", "Ventas");
+    expect((await action(supplierRoute, request._id, { supplierId: right })).status).toBe(403);
+    as("compras", "Compras");
+    expect((await call(await detailRoute.GET(new Request("http://test"), params({ id: orderId })))).body.can.supplier).toBe(true);
+    expect((await action(supplierRoute, orderId, { supplierId: supplierId })).status).toBe(409);
+    const changed = await action(supplierRoute, orderId, { supplierId: right });
+    expect(changed.status).toBe(200);
+    expect(changed.body).toMatchObject({ previous: "Protex", supplier: "Proveedor bien elegido" });
+
+    for (const id of [request._id, orderId]) {
+      const purchase = await Purchase.findById(id).lean<{ supplierId: unknown; status: string; history: Array<{ action: string; note?: string }> }>();
+      expect(String(purchase!.supplierId)).toBe(right);
+      expect(purchase!.status).not.toBe("anulada");
+      expect(purchase!.history.at(-1)).toMatchObject({ action: "Proveedor cambiado", note: "Protex → Proveedor bien elegido" });
+    }
+    expect(String((await PurchaseReceipt.findOne({ purchaseId: orderId }).lean<{ supplierId: unknown }>())!.supplierId)).toBe(right);
+    const item = await StockItem.findOne({ name: "Material de otro proveedor" }).lean<{ quantity: number; supplierId: unknown; movements: Array<{ kind: string; purchaseId?: unknown; supplierId?: unknown }> }>();
+    expect(item!.quantity).toBe(3);
+    expect(String(item!.supplierId)).toBe(right);
+    expect(String(item!.movements.find(move => move.kind === "ingreso" && String(move.purchaseId) === orderId)!.supplierId)).toBe(right);
+    expect(await Notification.exists({ event: "compra.proveedor", roles: "administracion" })).toBeTruthy();
+
+    // Con una orden de pago ya no se cambia: queda a nombre del proveedor.
+    as("gerencia", "Gerencia");
+    expect((await action(paymentOrderRoute, orderId, { amountCents: 1_00, date: "2026-10-08", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, attachment: "/api/uploads/comprobante.pdf" })).status).toBe(201);
+    expect((await action(supplierRoute, orderId, { supplierId: supplierId })).status).toBe(409);
+    expect((await call(await detailRoute.GET(new Request("http://test"), params({ id: orderId })))).body.can.supplier).toBe(false);
+  });
+
+  it("Corregir deja la solicitud nueva atada a la que reemplaza (correctsId)", async () => {
+    const request = await newRequest(1, { stockOnApproval: true, deliverTo: "central", items: [{ name: "Material con correctsId", unit: "kg", quantity: 1, unitCents: 1000, vatPct: 21 }] });
+    await emitAndApprove(request._id);
+    as("gerencia", "Gerencia");
+    const corrected = await action(correctRoute, request._id, { reason: "Precio equivocado" });
+    expect(corrected.status).toBe(200);
+    expect(String(corrected.body.draft.correctsId)).toBe(request._id);
+  });
+
 });

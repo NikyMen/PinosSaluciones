@@ -9,3 +9,5 @@ Verificar en una base de prueba que una solicitud con destino Galpón o Salón d
 Actualización de aprobaciones: no requiere migración. Toda nueva solicitud espera aprobación explícita. Verificar hasta $500.000 con Compras y por encima sólo con Gerencia; el permiso Autorizar compras no habilita importes superiores. Las filas muestran el botón y el desglose del total final. Las órdenes existentes ya recibidas no se vuelven a ingresar.
 
 Anular y corregir compras aprobadas (20/11/2026, `docs/decisiones/2026-11-anular-y-corregir-compras.md`): no requiere migración; los remitos existentes quedan sin anular (`cancellation` vacío). Verificar en una base de prueba que Compras anule una compra a stock aprobada de hasta $500.000 (y por encima sólo Gerencia) y el stock vuelva a lo de antes, que se rechace si ya tiene factura o el material no está, y que Corregir deje una SC nueva en borrador. En producción la anulación mueve stock de verdad: hacer el backup manual antes de la primera.
+
+Cambiar proveedor (24/11/2026): no requiere migración. Cambia el proveedor de la compra, sus remitos y sus ingresos a stock sin mover cantidades.

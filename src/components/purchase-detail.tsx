@@ -15,6 +15,7 @@ import { companyOf } from "@/lib/companies";
 import { warehouseLabel } from "@/lib/warehouses";
 import { orderStatusLabels, paymentTermLabels, purchaseTermsText, requestStatusLabels } from "@/lib/purchase-flow-labels";
 import { lineVatPct, pctLabel, purchaseTaxRows } from "@/lib/purchase-taxes";
+import { fetchAllRecords } from "@/lib/fetch-all-records";
 import { downloadPurchaseOrderPdf, purchaseOrderPdfData } from "@/lib/purchase-order-pdf";
 import { PURCHASE_APPROVAL_LIMIT_CENTS } from "@/lib/constants";
 
@@ -23,7 +24,7 @@ type Line = { code?: string; name: string; presentation?: string; quantity: numb
 type Detail = {
   request: Doc | null; order: Doc | null; payments: Doc[]; receipts: Doc[]; expenses: Doc[]; supplier: Doc | null; work: Doc | null; quote: Doc | null;
   totals: { totalCents: number; paidCents: number; committedCents: number; withoutOrderCents: number; pendingCents: number };
-  can: { edit: boolean; emit: boolean; decide: boolean; cancel: boolean; correct: boolean; paymentOrder: boolean; receive: boolean; invoice: boolean; attachPayments: boolean; attachPurchase: boolean };
+  can: { edit: boolean; emit: boolean; decide: boolean; cancel: boolean; correct: boolean; supplier: boolean; paymentOrder: boolean; receive: boolean; invoice: boolean; attachPayments: boolean; attachPurchase: boolean };
 };
 
 const paymentStatusLabels: Record<string, string> = { emitida: "Emitida, sin pagar", pagada: "Pagada", anulada: "Anulada" };
@@ -48,7 +49,7 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged, onEdit }: 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [panel, setPanel] = useState<"" | "pay" | "receive">("");
+  const [panel, setPanel] = useState<"" | "pay" | "receive" | "supplier">("");
   // Qué fila muestra sus adjuntos (una OP o un remito).
   const [filesOf, setFilesOf] = useState("");
 
@@ -184,10 +185,12 @@ export function PurchaseDetailModal({ purchaseId, onClose, onChanged, onEdit }: 
             {detail.can.receive && <button type="button" className="primary-btn" onClick={() => setPanel(panel === "receive" ? "" : "receive")}><PackagePlus size={15} /> Cargar remito</button>}
             {detail.can.invoice && order && <Link className="secondary-btn" href={`/app/expenses?oc=${order._id}`}><ReceiptText size={15} /> Cargar factura</Link>}
             {detail.can.correct && onEdit && <button type="button" className="secondary-btn" disabled={busy} onClick={() => { void correct(); }} title="Anula esta compra y abre una solicitud nueva con los mismos datos para editarla"><PencilLine size={15} /> Corregir</button>}
+            {detail.can.supplier && <button type="button" className="secondary-btn" disabled={busy} onClick={() => setPanel(panel === "supplier" ? "" : "supplier")} title="Cambia el proveedor de la solicitud, la orden y sus remitos, sin rehacer la compra"><PencilLine size={15} /> Cambiar proveedor</button>}
             {detail.can.cancel && <button type="button" className="secondary-btn danger" disabled={busy} onClick={() => { void cancel(); }}><Ban size={15} /> Anular</button>}
           </div>
 
           {panel === "pay" && <PaymentOrderForm detail={detail} busy={busy} onSubmit={body => act("payment-order", body, "Orden de pago emitida.")} onError={setError} />}
+          {panel === "supplier" && <SupplierForm current={String((order || request)?.supplierId || "")} busy={busy} onSubmit={supplierId => act("supplier", { supplierId }, "Proveedor cambiado en la solicitud, la orden y sus remitos.")} />}
           {panel === "receive" && order && <ReceiveForm order={order} items={items} busy={busy} onSubmit={body => act("receive", body, "Remito cargado: la mercadería sumó al stock.")} onError={setError} />}
 
           {items.length > 0 && <><h3 className="purchase-section">Productos</h3>
@@ -295,6 +298,26 @@ function PaymentOrderForm({ detail, busy, onSubmit, onError }: { detail: Detail;
       <label className="wide"><span>Notas</span><input name="notes" /></label>
     </div>
     <footer><button className="primary-btn" disabled={busy}>{busy ? "Guardando…" : detail.order ? "Emitir la orden de pago" : "Emitir la orden de pago y generar la OC"}</button></footer>
+  </form>;
+}
+
+/** Cambiar el proveedor de una compra emitida o aprobada, sin pagos ni facturas. */
+function SupplierForm({ current, busy, onSubmit }: { current: string; busy: boolean; onSubmit: (supplierId: string) => Promise<boolean> }) {
+  const [suppliers, setSuppliers] = useState<Array<{ value: string; label: string; code?: string }>>([]);
+  const [supplierId, setSupplierId] = useState("");
+  useEffect(() => {
+    void fetchAllRecords<{ _id: string; name?: string; code?: string | number }>("suppliers").then(rows => setSuppliers(rows
+      .filter(row => row._id !== current)
+      .map(row => ({ value: row._id, label: [row.code, row.name].filter(value => value !== undefined && value !== "").join(" · "), code: row.code === undefined ? undefined : String(row.code) }))));
+  }, [current]);
+
+  return <form className="purchase-panel" onSubmit={event => { event.preventDefault(); if (supplierId) void onSubmit(supplierId); }}>
+    <p className="eyebrow">CAMBIAR PROVEEDOR</p>
+    <div className="form-grid">
+      <label className="wide"><span>Proveedor nuevo *<em className="field-hint">Cambia en la solicitud, la orden, sus remitos y lo que entró a stock</em></span>
+        <SearchSelect name="supplierId" options={suppliers} value={supplierId} onChange={setSupplierId} required placeholder="Elegí el proveedor…" /></label>
+    </div>
+    <footer><button className="primary-btn" disabled={busy || !supplierId}>{busy ? "Guardando…" : "Cambiar proveedor"}</button></footer>
   </form>;
 }
 

@@ -276,6 +276,46 @@ export async function correctPurchase(id: string, reasonInput: string, session: 
   return copy.toObject();
 }
 
+/**
+ * Cambiar el proveedor de una compra emitida o aprobada, sin rehacerla. Lo
+ * hace quien la podría aprobar (o anular) y sólo mientras no haya órdenes de
+ * pago ni facturas: esas ya quedaron a nombre del proveedor. Cambia la
+ * solicitud, la orden, sus remitos, los ingresos a stock que dejó y los
+ * materiales que se dieron de alta con ella. La lista de precios del
+ * proveedor anterior deja de figurar; los precios cargados quedan.
+ */
+export async function changePurchaseSupplier(id: string, supplierIdInput: string, session: Session) {
+  const purchase = await load(id);
+  if (!canCancelPurchase(session, purchase)) throw new HttpError(Number(purchase.amountCents || 0) > PURCHASE_APPROVAL_LIMIT_CENTS ? "En las compras mayores a $500.000 el proveedor sólo lo cambia Gerencia" : "No tenés permiso para cambiar el proveedor de esta compra", 403);
+  if (!Types.ObjectId.isValid(supplierIdInput)) throw new HttpError("Elegí el proveedor");
+  const supplier = await Supplier.findById(supplierIdInput).select("name").lean<{ _id: Types.ObjectId; name?: string }>();
+  if (!supplier) throw new HttpError("El proveedor no existe");
+  const { request, order } = await pair(purchase);
+  const main = order || request!;
+  if (["anulada", "cancelada", "rechazada"].includes(String(main.status))) throw new HttpError(`${main.number} está ${main.status}: no se cambia`, 409);
+  if (request && request.status === "borrador") throw new HttpError("La solicitud todavía es borrador: cambiá el proveedor editándola", 409);
+  const previous = main.supplierId ? String(main.supplierId) : "";
+  if (previous === String(supplier._id)) throw new HttpError(`La compra ya es de ${supplier.name || "ese proveedor"}`, 409);
+  if (order) {
+    if (await Payment.exists({ purchaseId: order._id, status: { $ne: "anulada" } })) throw new HttpError(`La orden ${order.number} ya tiene órdenes de pago a nombre del proveedor: anulalas primero o usá Corregir`, 409);
+    const receiptIds = (await PurchaseReceipt.find({ purchaseId: order._id }).select("_id").lean<Array<{ _id: Types.ObjectId }>>()).map(receipt => receipt._id);
+    if (await Expense.exists({ status: { $ne: "anulado" }, $or: [{ purchaseId: order._id }, ...(receiptIds.length ? [{ purchaseReceiptIds: { $in: receiptIds } }] : [])] })) {
+      throw new HttpError(`La orden ${order.number} ya tiene la factura del proveedor: no se cambia el proveedor`, 409);
+    }
+  }
+  const previousName = previous ? (await Supplier.findById(previous).select("name").lean<{ name?: string }>())?.name || "" : "";
+  const note = `${previousName || "Sin proveedor"} → ${supplier.name || ""}`;
+  const ids = [request?._id, order?._id].filter(Boolean);
+  await Purchase.updateMany({ _id: { $in: ids } }, { $set: { supplierId: supplier._id }, $unset: { priceListId: 1, priceListDate: 1 }, $push: { history: history("Proveedor cambiado", session, note) } });
+  if (order) {
+    await PurchaseReceipt.updateMany({ purchaseId: order._id }, { $set: { supplierId: supplier._id } });
+    await StockItem.updateMany({ "movements.purchaseId": order._id }, { $set: { "movements.$[move].supplierId": supplier._id } }, { arrayFilters: [{ "move.purchaseId": order._id, "move.kind": "ingreso" }] });
+    if (previous) await StockItem.updateMany({ supplierId: previous, notes: `Alta automática desde la orden ${order.number}` }, { $set: { supplierId: supplier._id } });
+  }
+  await notify({ title: `${main.number}: cambió el proveedor`, body: `${session.name}: ${note}`, kind: "compra", href: `/app/purchases?ver=${main._id}`, roles: ["compras", "administracion"], event: "compra.proveedor" });
+  return { items: await Purchase.find({ _id: { $in: ids } }).lean(), previous: previousName, supplier: supplier.name || "" };
+}
+
 /* ── 3 y 5: la orden de compra y la orden de pago contra ella ──────────────── */
 
 const id24 = z.string().regex(/^[a-f\d]{24}$/i);
