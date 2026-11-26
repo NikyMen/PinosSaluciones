@@ -131,7 +131,7 @@ footer { color: var(--muted); font-size: .85rem; }
   <div class="wrap">
     <div class="eyebrow">Pino Gestión · Plan de trabajo · 26/11/2026</div>
     <h1>Lo que quedó pendiente <span>y cómo lo voy a hacer</span></h1>
-    <p class="lead">Lo que sigue abierto de la ronda del 10/11 con Cristian, Jorge, Fede y Fer, y de los pedidos por WhatsApp. Hay cuatro cosas para programar, una que espera el Excel de Cristian y una que sólo necesita una confirmación. Para cada una va dónde aparece, qué botón nuevo se suma y qué hace.</p>
+    <p class="lead">Lo que seguía abierto de la ronda del 10/11 con Cristian, Jorge, Fede y Fer, y de los pedidos por WhatsApp. Los cuatro puntos para programar ya están hechos y probados (26/11), y la importación de Stock quedó lista para cuando llegue el Excel de Cristian. Para cada uno va dónde aparece, qué botón nuevo se sumó y qué hace.</p>
   </div>
 </header>
 
@@ -143,16 +143,16 @@ footer { color: var(--muted); font-size: .85rem; }
       <table>
         <thead><tr><th>#</th><th>Pendiente</th><th>Lo pidió</th><th>Dónde aparece</th><th>Tamaño</th><th>Estado</th></tr></thead>
         <tbody>
-          <tr><td class="n">1</td><td><a href="#envio-venta">Envío por transporte de un remito de venta</a></td><td>Jorge y Ventas (J6)</td><td>Ventas › Remitos de venta</td><td><span class="pill s">Chico</span></td><td>Listo para hacer</td></tr>
-          <tr><td class="n">2</td><td><a href="#notas-venta">Notas de crédito y débito sin referencia y saldo a favor del cliente</a></td><td>Fer (V2)</td><td>Ventas › Facturas de venta y Cobranzas</td><td><span class="pill l">Grande</span></td><td>Listo para hacer</td></tr>
-          <tr><td class="n">3</td><td><a href="#planificar-obra">Planificar la obra al aprobar la cotización</a></td><td>Fede (F8)</td><td>Cotizaciones y Obras</td><td><span class="pill m">Mediano</span></td><td>Listo para hacer</td></tr>
-          <tr><td class="n">4</td><td><a href="#bien-de-uso">Salida de materiales a un utilitario o equipo</a></td><td>Jorge (J2)</td><td>Stock › Caja y Bienes de uso</td><td><span class="pill m">Mediano</span></td><td>Listo para hacer</td></tr>
-          <tr><td class="n">5</td><td><a href="#excel-salon">Productos del Salón desde el Excel</a></td><td>Cristian (C6)</td><td>Stock › Importar</td><td><span class="pill s">Chico</span></td><td><span class="pill w">Espera el Excel</span></td></tr>
+          <tr><td class="n">1</td><td><a href="#envio-venta">Envío por transporte de un remito de venta</a></td><td>Jorge y Ventas (J6)</td><td>Ventas › Remitos de venta</td><td><span class="pill s">Chico</span></td><td><span class="pill s">Hecho 26/11</span></td></tr>
+          <tr><td class="n">2</td><td><a href="#notas-venta">Notas de crédito y débito sin referencia y saldo a favor del cliente</a></td><td>Fer (V2)</td><td>Ventas › Facturas de venta y Cobranzas</td><td><span class="pill l">Grande</span></td><td><span class="pill s">Hecho 26/11</span></td></tr>
+          <tr><td class="n">3</td><td><a href="#planificar-obra">Planificar la obra al aprobar la cotización</a></td><td>Fede (F8)</td><td>Cotizaciones y Obras</td><td><span class="pill m">Mediano</span></td><td><span class="pill s">Hecho 26/11</span></td></tr>
+          <tr><td class="n">4</td><td><a href="#bien-de-uso">Salida de materiales a un utilitario o equipo</a></td><td>Jorge (J2)</td><td>Stock › Caja y Bienes de uso</td><td><span class="pill m">Mediano</span></td><td><span class="pill s">Hecho 26/11</span></td></tr>
+          <tr><td class="n">5</td><td><a href="#excel-salon">Productos del Salón desde el Excel</a></td><td>Cristian (C6)</td><td>Stock › Importar</td><td><span class="pill s">Chico</span></td><td><span class="pill w">Importación lista · espera el Excel</span></td></tr>
           <tr><td class="n">6</td><td><a href="#rubros">Lista definitiva de rubros</a></td><td>Fer</td><td>Perfil › Configuración</td><td><span class="pill s">Sin programar</span></td><td><span class="pill w">Espera a Fer</span></td></tr>
         </tbody>
       </table>
     </div>
-    <p class="note" style="margin-top:.7rem">Primero va el envío de una venta porque es chico y Ventas lo usa todos los días para Correo Argentino y Mercado Libre. Después, las notas de crédito, que tocan importes y ARCA y llevan más pruebas.</p>
+    <p class="note" style="margin-top:.7rem">Cada punto quedó en su propio commit, con sus pruebas y su documentación, sin subir a producción. Lo que se decidió en cada uno está en <code>docs/decisiones/2026-11-pendientes-ronda-10-11.md</code>.</p>
   </section>
 
   <!-- 1 -->
@@ -336,17 +336,17 @@ footer { color: var(--muted); font-size: .85rem; }
       <div class="today"><div class="label">Cómo está hoy</div>
         <p>Stock ya tiene Importar con el botón Plantilla (nombre, código, código de barras, categoría, unidad, proveedor, precio de venta y cantidad). Los productos de Protex toman el precio de la lista vigente. Falta que Cristian mande su Excel. Mientras tanto, el precio se carga en la ficha o desde el Mostrador.</p></div>
       <div>
-        <div class="label">Qué hago cuando llegue el Excel</div>
+        <div class="label">Qué quedó listo para cuando llegue el Excel</div>
         <div class="buttons">
           <div class="b"><span class="path where">Stock › Importar</span>
             <span class="btn field">Depósito · Empresa propietaria</span>
-            <p>Dos columnas más en la plantilla, para que la cantidad entre al Salón de Ventas y a nombre de Constructora (o de quien corresponda).</p></div>
+            <p>La plantilla suma Cantidad, Depósito, Empresa propietaria y Costo unitario, para que la cantidad entre al Salón de Ventas y a nombre de Constructora (o de quien corresponda). La cantidad es lo contado: volver a subir la planilla no suma dos veces.</p></div>
           <div class="b"><span class="path where">Stock › Importar, antes de confirmar</span>
             <span class="btn primary">Revisar e importar</span>
             <p>Muestra cuántos productos son nuevos, cuántos se actualizan y qué filas tienen error. Un producto que ya existe (mismo código o código de barras) se actualiza en vez de duplicarse. El precio queda en el historial de precios como "Importación".</p></div>
         </div>
       </div>
-      <p class="note">Si las columnas del Excel no coinciden con la plantilla, armo la correspondencia una vez y lo cargo yo, como se hizo con las cotizaciones de la planilla.</p>
+      <p class="note">Ya acepta los encabezados habituales (Código, Producto, Descripción, Precio, Precio final). Si el Excel de Cristian trae otros, se suma la correspondencia una vez y se carga.</p>
     </div>
   </article>
 
@@ -364,7 +364,7 @@ footer { color: var(--muted); font-size: .85rem; }
   </article>
 
   <section>
-    <div class="section-title"><h2>Preguntas antes de cerrar</h2><small>Mientras tanto, se programa con lo que dice "Hoy"</small></div>
+    <div class="section-title"><h2>Preguntas que siguen abiertas</h2><small>Quedó programado con lo que dice "Hoy"; se ajusta cuando respondan</small></div>
     <div class="qgrid" style="margin-top:1rem">
       <div class="q"><h3>Para Jorge · envíos</h3>
         <ol>
@@ -387,12 +387,13 @@ footer { color: var(--muted); font-size: .85rem; }
   </section>
 
   <section>
-    <div class="section-title"><h2>Cómo lo entrego</h2></div>
+    <div class="section-title"><h2>Cómo quedó entregado</h2></div>
     <ol class="steps" style="margin-top:1rem">
       <li>Un commit por punto, en la rama <code>feat/tesoreria-reunion-10-11</code>, en el orden del resumen.</li>
       <li>Cada punto con pruebas de servidor, revisión de tipos y lint sin errores nuevos, y probado en la app local con datos de ejemplo.</li>
       <li>Documentación al día: README, AGENTS, una decisión en <code>docs/decisiones/</code> y el estado en el acta del 10/11 (de ◐ a ✅ con la fecha).</li>
       <li>Sin subir a producción hasta que lo pidas. Antes del deploy, el backup manual del README.</li>
+      <li>Probado también en pantalla, con una base de prueba aparte: envío de un remito, nota sin referencia y saldo a favor (desde la nota y desde el recibo), planificación de una obra, salida a un bien de uso e importación de Stock.</li>
     </ol>
   </section>
 

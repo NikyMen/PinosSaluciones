@@ -633,9 +633,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
       if (!confirm(`La planilla tiene ${preview.total} filas:\n\n· ${summary.join("\n· ")}\n\n¿Importar?`)) { setLoading(false); if (fileRef.current) fileRef.current.value = ""; return; }
     }
     const response = await fetch(`/api/import/${entity}`, { method: "POST", body: form }); const result = await response.json();
-    if (!response.ok) setError(result.error); else if (result.errors?.length) setError(`Se importaron ${result.imported} de ${result.total} filas${result.updated ? ` y se actualizaron ${result.updated}` : ""}. ${result.errors.length} tuvieron errores: ${result.errors.slice(0, 3).map((row: { row: number; error: string }) => `fila ${row.row}: ${row.error}`).join(" · ")}`);
-    else setNotice(`Listo: ${result.imported} ${result.imported === 1 ? "nuevo" : "nuevos"}${result.updated ? ` y ${result.updated} ${result.updated === 1 ? "actualizado" : "actualizados"}` : ""}.`);
-    await load(); if (fileRef.current) fileRef.current.value = "";
+    const problem = !response.ok ? String(result.error || "No se pudo importar") : result.errors?.length ? `Se importaron ${result.imported} de ${result.total} filas${result.updated ? ` y se actualizaron ${result.updated}` : ""}. ${result.errors.length} tuvieron errores: ${result.errors.slice(0, 3).map((row: { row: number; error: string }) => `fila ${row.row}: ${row.error}`).join(" · ")}` : "";
+    if (!problem) setNotice(`Listo: ${result.imported} ${result.imported === 1 ? "nuevo" : "nuevos"}${result.updated ? ` y ${result.updated} ${result.updated === 1 ? "actualizado" : "actualizados"}` : ""}.`);
+    // Recargar la lista limpia el aviso de error: el de la importación se pone después, para que no se pierda.
+    await load(); if (problem) setError(problem); if (fileRef.current) fileRef.current.value = "";
   }
 
   const statusField = config.fields.find(field => field.key === "status");
