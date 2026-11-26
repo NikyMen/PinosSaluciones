@@ -17,7 +17,7 @@ Estado de cada pedido: ✅ ya está en el sistema · ◐ está a medias · 🆕 
 | C3 | **Venta con remito** para sacar insumos del salón hacia una obra: se elige la obra, Jorge firma el remito y baja el stock (sirve de control) | ✅ 16/11 |
 | C4 | Cristian **aprueba** la cotización o la venta, y al aprobarla **les avisa a Jorge, Fede y Fer**. Ellos solo la consultan, no la aprueban. Recién ahí Fer puede facturar | ✅ 16/11, avisos por rol |
 | C5 | En la cotización, cargar los **insumos** que va a necesitar la obra (tachos, rodillos, lija, sellador, fijador) **aunque no estén en stock**. Si falta algo, **se le avisa a Jorge** | ✅ 16/11 |
-| C6 | Cargar los productos del **Salón de Ventas** desde el Excel que va a pasar Cristian | 🆕 falta el Excel |
+| C6 | Cargar los productos del **Salón de Ventas** desde el Excel que va a pasar Cristian | ◐ 26/11: la importación de Stock ya está lista (vista previa, actualiza sin duplicar, cantidad por depósito); falta que Cristian mande el Excel para cargarlo |
 
 ## 2. Jorge: compras
 

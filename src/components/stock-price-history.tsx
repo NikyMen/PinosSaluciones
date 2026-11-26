@@ -12,7 +12,7 @@ import { dateTime, money } from "@/lib/format";
 
 type PriceChange = { _id: string; previousCents?: number; salePriceCents?: number; source?: string; userName?: string; createdAt: string };
 
-const sourceLabels: Record<string, string> = { stock: "Ficha de Stock", mostrador: "Mostrador", alta: "Alta del material", lista: "Lista del proveedor" };
+const sourceLabels: Record<string, string> = { stock: "Ficha de Stock", mostrador: "Mostrador", alta: "Alta del material", lista: "Lista del proveedor", importacion: "Importación" };
 
 export function StockPriceHistory({ itemId, embedded = false }: { itemId: string; embedded?: boolean }) {
   const [items, setItems] = useState<PriceChange[] | null>(null);

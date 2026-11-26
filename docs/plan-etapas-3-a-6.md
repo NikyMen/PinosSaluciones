@@ -157,7 +157,7 @@ Implementadas 5.1 a 5.4 el 16/11. Sigue pendiente el Excel de Cristian para 5.5.
 
 ### 5.5 Productos del salón desde el Excel (C6)
 
-- **Bloqueado:** Cristian tiene que mandar el Excel. Cuando llegue, usar la importación genérica (botón Plantilla en Stock, `src/app/api/import/[entity]/route.ts`) o un script como `scripts/import-galpon-stock.ts`.
+- **Bloqueado:** Cristian tiene que mandar el Excel. Cuando llegue, se carga desde Stock › Importar: desde el 26/11 muestra la vista previa, actualiza lo que ya existe y carga la cantidad por depósito (`src/lib/stock-import.ts`, ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`).
 
 **Hecho cuando:** se factura desde Ventas con productos y conceptos y se baja el PDF, el remito hacia obra baja stock, y al aprobar una cotización les llegan los avisos a Compras, Obras y Administración, con lo que falta en stock para Compras.
 

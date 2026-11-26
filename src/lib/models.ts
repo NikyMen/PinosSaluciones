@@ -719,7 +719,8 @@ const StockPriceChangeSchema = new Schema({
   stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true, index: true },
   previousCents: Number, salePriceCents: Number,
   // "lista": lo tomó de la lista del proveedor con precio final (Protex), al cargarla o al dar de alta el material.
-  source: { type: String, enum: ["stock", "mostrador", "alta", "lista"], default: "stock" },
+  // "importacion": vino en la planilla de Stock (src/lib/stock-import.ts).
+  source: { type: String, enum: ["stock", "mostrador", "alta", "lista", "importacion"], default: "stock" },
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
 }, options);
 

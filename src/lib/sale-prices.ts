@@ -11,7 +11,7 @@ import { indexListItems, matchListItem, saleCentsFromGross, type ListPriceItem }
  * (colección `stockpricechanges`).
  */
 
-export type PriceSource = "stock" | "mostrador" | "alta" | "lista";
+export type PriceSource = "stock" | "mostrador" | "alta" | "lista" | "importacion";
 /** Quién hizo el cambio: el usuario o, si lo hizo el sistema, sólo un nombre. */
 type Actor = { userId?: string; name: string };
 

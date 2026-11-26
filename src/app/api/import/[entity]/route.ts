@@ -11,6 +11,7 @@ import { beforeCreate } from "@/lib/document-rules";
 import { listWorkCategories } from "@/lib/work-categories";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
+import { importStockRows, STOCK_HEADER_ALIASES, STOCK_IMPORT_COLUMNS } from "@/lib/stock-import";
 
 function parseCsv(text:string){text=text.replace(/^﻿/,"");const firstLine=text.split(/\r?\n/,1)[0];const delimiter=firstLine.split(";").length>firstLine.split(",").length?";":",";const result:string[][]=[];let row:string[]=[];let cell="";let quoted=false;for(let i=0;i<text.length;i++){const char=text[i];if(char==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(char===delimiter&&!quoted){row.push(cell);cell=""}else if((char==="\n"||char==="\r")&&!quoted){if(char==="\r"&&text[i+1]==="\n")i++;row.push(cell);if(row.some(Boolean))result.push(row);row=[];cell=""}else cell+=char}row.push(cell);if(row.some(Boolean))result.push(row);return result}
 
@@ -22,7 +23,10 @@ function fixMojibake(value:string){if(!/[ÃÂ]/.test(value))return value;try{ret
 function normalizeHeader(value:string){return fixMojibake(value).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"")}
 
 // Acepta como encabezado la clave del campo o su etiqueta (la que usa la exportación).
-function headerMap(entity:Entity){const map=new Map<string,string>();if(entity==="quotes"){map.set("rubrodeobra","workCategoryId");map.set("workcategoryid","workCategoryId")}for(const field of entityConfig[entity].fields){map.set(normalizeHeader(field.key),field.key);map.set(normalizeHeader(field.label),field.key)}for(const[key,label]of Object.entries(columnLabels))if(!map.has(normalizeHeader(label)))map.set(normalizeHeader(label),key);if(entity==="workers")for(const alias of["legajo","nlegajo","nrolegajo","numerodelegajo","nodelegajo"])map.set(alias,"fileNumber");return map}
+function headerMap(entity:Entity){const map=new Map<string,string>();if(entity==="quotes"){map.set("rubrodeobra","workCategoryId");map.set("workcategoryid","workCategoryId")}for(const field of entityConfig[entity].fields){map.set(normalizeHeader(field.key),field.key);map.set(normalizeHeader(field.label),field.key)}for(const[key,label]of Object.entries(columnLabels))if(!map.has(normalizeHeader(label)))map.set(normalizeHeader(label),key);if(entity==="workers")for(const alias of["legajo","nlegajo","nrolegajo","numerodelegajo","nodelegajo"])map.set(alias,"fileNumber");
+  // Stock: las columnas propias de la planilla (cantidad, depósito, empresa propietaria, costo) y los encabezados habituales de una lista de productos.
+  if(entity==="stock"){for(const[alias,key]of Object.entries(STOCK_HEADER_ALIASES))map.set(alias,key);for(const column of STOCK_IMPORT_COLUMNS){map.set(normalizeHeader(column.label),column.key);for(const alias of column.aliases)map.set(alias,column.key)}}
+  return map}
 
 /** Las columnas que se pueden importar: las del formulario, sin lo que calcula el sistema ni los archivos. */
 function importableFields(entity:Entity){return entityConfig[entity].fields.filter(field=>!field.readOnly&&field.type!=="file"&&field.type!=="hidden")}
@@ -68,7 +72,7 @@ export async function GET(_request:Request,context:RouteContext<"/api/import/[en
   try{
     const session=await requireSession();const{entity}=await context.params;
     if(!entities.includes(entity as Entity)||!canWrite(session,entity as Entity))throw new Error("FORBIDDEN");
-    const fields=importableFields(entity as Entity);const header=[...(entity==="quotes"?[{label:"Rubro de obra"}]:[]),...fields].map(field=>/[";\r\n]/.test(field.label)?`"${field.label.replaceAll('"','""')}"`:field.label).join(";");
+    const fields=importableFields(entity as Entity);const header=[...(entity==="quotes"?[{label:"Rubro de obra"}]:[]),...fields,...(entity==="stock"?STOCK_IMPORT_COLUMNS.filter(column=>column.key!=="importGrossCents"):[])].map(field=>/[";\r\n]/.test(field.label)?`"${field.label.replaceAll('"','""')}"`:field.label).join(";");
     return new Response(`﻿sep=;\r\n${header}\r\n`,{headers:{"content-type":"text/csv; charset=utf-8","content-disposition":`attachment; filename="plantilla-${entity}.csv"`}});
   }catch(error){return apiError(error)}
 }
@@ -133,6 +137,15 @@ export async function POST(request:Request,context:RouteContext<"/api/import/[en
     const categories=entity==="quotes"?new Map((await listWorkCategories()).filter(item=>item.allowed).map(item=>[normalizeHeader(item.name),String(item._id)])):new Map<string,string>();
     const indexes=new Map<Entity,Promise<Map<string,string>>>();
     const lookup=(relation:Entity)=>{if(!indexes.has(relation))indexes.set(relation,relationIndex(relation));return indexes.get(relation)!};
+    // Stock: actualiza lo que ya existe, carga la existencia por depósito y permite ver antes qué va a pasar (?preview=1). Ver src/lib/stock-import.ts.
+    if(entity==="stock"){
+      const prepared:Array<{row:Record<string,unknown>;line:number}>=[];
+      for(let index=0;index<rows.length;index++){
+        const row={...rows[index]} as Record<string,unknown>;for(const key of Object.keys(row))if(key.endsWith("Cents")){const value=typeof row[key]==="string"?String(row[key]).replace(/[$\s]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",","."):row[key];row[key]=Math.round(Number(value||0)*100)}
+        try{await resolveRow("stock",row,lookup);prepared.push({row,line:index+2})}catch(error){errors.push({row:index+2,error:error instanceof Error?error.message:"Fila inválida"})}
+      }
+      return Response.json(await importStockRows(prepared,errors,rows.length,session,new URL(request.url).searchParams.get("preview")==="1"));
+    }
     for(let index=0;index<rows.length;index++){
       const row={...rows[index]};for(const key of Object.keys(row))if(key.endsWith("Cents")){const value=typeof row[key]==="string"?String(row[key]).replace(/[$\s]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",","."):row[key];row[key]=Math.round(Number(value||0)*100)}
       if(entity!=="workers"){try{await resolveRow(entity as Entity,row,lookup)}catch(error){errors.push({row:index+2,error:error instanceof Error?error.message:"Fila inválida"});continue}}

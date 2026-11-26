@@ -318,6 +318,13 @@ Cada módulo acepta `.xlsx` o `.csv` de hasta 2.000 filas y 5 MB. El botón **Pl
 
 Las **cotizaciones** se cargan así desde Cotizaciones › Plantilla: empresa, número (vacío lo pone el sistema), cliente, título, descripción, importe para el cliente, costo estimado, estado y válida hasta. Se importan con su importe, sin el detalle de ítems; el PDF de una cotización sin costear sale con un renglón por ese importe.
 
+**Stock** (`src/lib/stock-import.ts`), pensada para cargar los productos del Salón de Ventas desde una planilla:
+- Antes de escribir muestra la **vista previa** (`?preview=1`): cuántos productos son nuevos, cuántos ya existen y se actualizan, cuántos traen cantidad y qué filas tienen error. Recién al aceptar se importa.
+- Un producto que ya existe se **actualiza en vez de duplicarse**: se lo busca por código de barras, después por código interno y, si la fila no trae códigos, por nombre. Sólo cambia lo que trae la planilla. Un producto repetido en la misma planilla se carga una vez.
+- Además de las columnas del formulario, la plantilla trae **Cantidad**, **Depósito** (Galpón o Salón de Ventas; vacío es el Galpón), **Empresa propietaria** (vacía es la del depósito: TV Pino en el Galpón, Constructora Pino en el Salón) y **Costo unitario**. La cantidad es lo contado en ese depósito: queda con un movimiento de ajuste. El costo sólo se toma si el material todavía no tiene uno.
+- Acepta los encabezados habituales de una lista de productos (Código, Producto o Descripción, Precio, Precio final o Precio con IVA, que se guarda sin IVA). Sin rubro ni unidad, queda como materiales y unidad.
+- El precio de venta queda en el historial de precios del material como "Importación".
+
 Las listas de precios de proveedores se cargan aparte, desde la ficha del proveedor: aceptan `.xlsx` de hasta 10 MB y muestran una vista previa antes de guardar. El formato de Protex sin títulos toma el precio de lista de la columna F y el precio final al consumidor, con IVA, de la K. El descuento acordado se configura en la ficha y se aplica al mostrar “Tu precio”, que sigue siendo el costo de compra. Si la planilla informa el precio final al consumidor, el buscador lo muestra en una columna aparte; el selector de IVA permite verlo con o sin impuesto.
 
 ## Seguridad y operación

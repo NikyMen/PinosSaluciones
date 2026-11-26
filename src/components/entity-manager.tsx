@@ -623,6 +623,15 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
 
   async function importFile(file?: File) {
     if (!file) return; setLoading(true); setError(""); const form = new FormData(); form.set("file", file);
+    // Stock: primero se ve qué va a pasar (altas, actualizaciones, errores) y recién después se importa.
+    if (entity === "stock") {
+      const check = await fetch("/api/import/stock?preview=1", { method: "POST", body: form }); const preview = await check.json();
+      if (!check.ok) { setError(preview.error || "No se pudo leer la planilla"); setLoading(false); if (fileRef.current) fileRef.current.value = ""; return; }
+      const problems = (preview.errors || []) as Array<{ row: number; error: string }>;
+      const summary = [`${preview.imported} ${preview.imported === 1 ? "producto nuevo" : "productos nuevos"}`, `${preview.updated} que ya existen y se actualizan`, preview.withStock ? `${preview.withStock} con cantidad (queda lo contado en su depósito)` : "", problems.length ? `${problems.length} ${problems.length === 1 ? "fila con error que no se carga" : "filas con error que no se cargan"}: ${problems.slice(0, 3).map(row => `fila ${row.row}: ${row.error}`).join(" · ")}` : ""].filter(Boolean);
+      if (!preview.imported && !preview.updated) { setError(`La planilla no tiene filas para importar. ${summary.slice(-1)[0] || ""}`); setLoading(false); if (fileRef.current) fileRef.current.value = ""; return; }
+      if (!confirm(`La planilla tiene ${preview.total} filas:\n\n· ${summary.join("\n· ")}\n\n¿Importar?`)) { setLoading(false); if (fileRef.current) fileRef.current.value = ""; return; }
+    }
     const response = await fetch(`/api/import/${entity}`, { method: "POST", body: form }); const result = await response.json();
     if (!response.ok) setError(result.error); else if (result.errors?.length) setError(`Se importaron ${result.imported} de ${result.total} filas${result.updated ? ` y se actualizaron ${result.updated}` : ""}. ${result.errors.length} tuvieron errores: ${result.errors.slice(0, 3).map((row: { row: number; error: string }) => `fila ${row.row}: ${row.error}`).join(" · ")}`);
     else setNotice(`Listo: ${result.imported} ${result.imported === 1 ? "nuevo" : "nuevos"}${result.updated ? ` y ${result.updated} ${result.updated === 1 ? "actualizado" : "actualizados"}` : ""}.`);

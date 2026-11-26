@@ -74,3 +74,27 @@
 - Una salida tiene un solo destino: cuatro productos para cuatro lugares son cuatro salidas, como antes.
 - No cambia la salida a obra desde la ficha de un material ni el carrito: siguen yendo a una obra. La salida a un bien de uso es desde la Caja.
 - Pruebas: `tests/salida-bien-de-uso.test.ts`.
+
+## 5. Importación de Stock lista para el Excel del Salón (C6)
+
+- Pedido de Cristian (10/11): cargar los productos del Salón de Ventas desde un Excel que va a mandar. **El Excel todavía no llegó**; lo que se hizo es dejar la importación de Stock lista para cargarlo sin trabajo a mano.
+- La importación genérica sólo daba de alta el catálogo: no cargaba cantidades, duplicaba lo que ya existía y no avisaba antes de escribir. Para Stock ahora (`src/lib/stock-import.ts`):
+  - **Vista previa**: al elegir el archivo muestra cuántos productos son nuevos, cuántos ya existen y se actualizan, cuántos traen cantidad y qué filas tienen error (con el motivo de las primeras). Se importa recién al aceptar.
+  - **No duplica**: busca cada producto por código de barras, después por código interno (sin distinguir mayúsculas) y, si la fila no trae códigos, por nombre. Si existe, actualiza sólo lo que trae la planilla y no le reescribe los códigos. Un producto repetido en la planilla se carga una sola vez; la segunda fila queda como error.
+  - **Cantidad por depósito**: columnas Cantidad, Depósito (Galpón o Salón de Ventas; vacío es el Galpón) y Empresa propietaria (vacía es la del depósito: TV Pino en el Galpón, Constructora Pino en el Salón). La cantidad es **lo contado** en ese depósito: se registra con un movimiento de ajuste, así que volver a subir la misma planilla no suma dos veces.
+  - **Costo unitario** (opcional): se toma sólo si el material todavía no tiene costo, para valorizar la carga inicial sin pisar el promedio de las compras.
+  - **Precio**: acepta "Precio de venta sin IVA" o un precio final con IVA ("Precio final", "Precio con IVA"), que se guarda sin IVA. Queda en el historial de precios como "Importación". Los productos de Protex siguen tomando el precio de la lista vigente cuando se carga una lista nueva.
+  - Acepta los encabezados habituales (Código, Producto, Descripción, Precio…). Sin rubro ni unidad, el producto queda como "materiales" y "unidad".
+- Cuando llegue el Excel: si sus columnas no coinciden con ninguna de las aceptadas, se suman los alias en `STOCK_HEADER_ALIASES`.
+- Pruebas: `tests/stock-import.test.ts`.
+
+## 6. Lista de rubros
+
+- No hubo nada que programar: la lista de rubros de obra ya se edita desde Perfil › Configuración › Empresas y comprobantes. Sigue pendiente que Fer confirme los seis nombres.
+
+## Lo que sigue esperando a otros
+
+- **Cristian**: el Excel de productos del Salón.
+- **Fer**: la lista definitiva de rubros, y si el saldo a favor de un cliente también se devuelve en plata (hoy sólo se descuenta de otra factura).
+- **Jorge**: las preguntas de `docs/plan-envios-y-traslados.md` (si lo que va a Rosario es para una obra, un cliente o un depósito propio; si el valor declarado es el costo o el precio de venta; si el remito muestra el precio unitario; qué otros transportes usan).
+- **Fede**: si el personal se asigna para toda la obra (como quedó) o cada persona con sus propias fechas.

@@ -28,7 +28,7 @@ La venta al público del Salón se podía hacer, pero en tres pantallas: Ventas 
 
 ## Pendiente
 
-- La importación del catálogo del Salón con sus precios (el Excel de Cristian, ver `docs/decisiones/2026-11-ventas-del-salon.md`): hasta entonces, el precio de venta se carga en la ficha de cada material.
+- La importación del catálogo del Salón con sus precios (el Excel de Cristian, ver `docs/decisiones/2026-11-ventas-del-salon.md`): hasta entonces, el precio de venta se carga en la ficha de cada material. La importación de Stock ya está lista para esa planilla (ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`).
 
 ## Ajustes del 19/11/2026 (después de usarlo)
 

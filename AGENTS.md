@@ -48,7 +48,7 @@ En V1 y V2, Gerencia accede desde el botón de perfil a Configuración › Empre
 
 - Envíos por transporte (Stock y logística): encomiendas con remito `ENV-n` y valor declarado (cantidad × precio, arranca con el último costo). Bajan stock sin confirmación en destino; después se carga la guía del transporte. Una venta se manda desde su remito (Ventas › Remitos de venta › **Enviar por transporte**): hace el `ENV-n` con el valor declarado del remito y no vuelve a bajar stock. Ver README › Envíos por transporte, `docs/plan-envios-y-traslados.md` y `docs/decisiones/2026-11-pendientes-ronda-10-11.md`.
 
-- Importación: botón Plantilla (`GET /api/import/[entity]`); las relaciones se resuelven por nombre, CUIT o código y las fechas en dd/mm/aaaa. Así se cargan las cotizaciones.
+- Importación: botón Plantilla (`GET /api/import/[entity]`); las relaciones se resuelven por nombre, CUIT o código y las fechas en dd/mm/aaaa. Así se cargan las cotizaciones. La de Stock (`src/lib/stock-import.ts`) muestra una vista previa antes de importar, actualiza los productos que ya existen (por código de barras, código interno o nombre) y carga la existencia con las columnas Cantidad, Depósito y Empresa propietaria: así se cargan los productos del Salón desde el Excel.
 
 Cómo está armado y cómo se actualiza: `README.md`, secciones "Despliegue en VPS", "Actualizar producción" y "Backups". En resumen:
 
