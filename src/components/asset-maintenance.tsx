@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CalendarClock, Check, CircleAlert, Gauge, Wrench, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { CalendarClock, Check, CircleAlert, Gauge, PackageOpen, Wrench, X } from "lucide-react";
 import { DateInput, MoneyInput } from "@/components/fields";
 import { date, money, qty, titleCase, todayIso } from "@/lib/format";
 import { addMonthsIso, meterLabels, planState, planStateText, type AssetPlan } from "@/lib/assets";
@@ -16,7 +17,9 @@ import { addMonthsIso, meterLabels, planState, planStateText, type AssetPlan } f
    ───────────────────────────────────────────────────────────────────────────── */
 
 type Plan = AssetPlan & { _id: string; createdAt?: string };
-type Maintenance = { _id: string; date: string; kind: string; description: string; costCents?: number; reading?: number; provider?: string; notes?: string; userName?: string; expenseId?: string; planId?: string };
+type Maintenance = { _id: string; date: string; kind: string; description: string; costCents?: number; reading?: number; provider?: string; notes?: string; userName?: string; expenseId?: string; planId?: string; tickets?: string[] };
+/** Una salida de la Caja a este bien: los materiales que salieron del stock para él, con su costo. */
+type MaterialTicket = { _id: string; number: string; date: string; totalCents?: number; userName?: string; lines: Array<{ name: string; unit: string; quantity: number; totalCents?: number }> };
 export type AssetRecord = {
   _id: string; name: string; identifier?: string; brand?: string; model?: string; status?: string; category?: string;
   meterUnit?: string; currentReading?: number; readingDate?: string; responsible?: string; location?: string;
@@ -81,6 +84,13 @@ export function AssetMaintenanceModal({ assetId, canEdit, onClose, onChanged }: 
   const [form, setForm] = useState<{ kind: "service"; plan?: Plan } | { kind: "plan" } | { kind: "reading" } | null>(null);
   const [serviceDate, setServiceDate] = useState(todayIso());
   const [scheduleNext, setScheduleNext] = useState(true);
+  // Los materiales que salieron del stock para este bien (Stock › Caja, destino Bien de uso). Sin permiso de Stock no se ven.
+  const [materials, setMaterials] = useState<MaterialTicket[] | null>(null);
+
+  useEffect(() => {
+    void fetch(`/api/stock/caja?kind=egreso&assetId=${assetId}&limit=500`).then(response => response.ok ? response.json() : null)
+      .then(body => { if (body) setMaterials((body.items || []) as MaterialTicket[]); }).catch(() => {});
+  }, [assetId]);
 
   useEffect(() => {
     void fetch(`/api/assets/${assetId}/maintenance`).then(async response => {
@@ -127,6 +137,7 @@ export function AssetMaintenanceModal({ assetId, canEdit, onClose, onChanged }: 
       description: String(data.get("description") || ""), costCents: Math.round(Number(data.get("costCents") || 0) * 100),
       reading: toNumber(data.get("reading")), provider: String(data.get("provider") || ""), notes: String(data.get("notes") || ""),
       createExpense: data.get("createExpense") === "on", planId: plan?._id || "", next: next && next.title ? next : undefined,
+      tickets: data.getAll("tickets").map(String),
     }, next?.title ? `Service registrado y el próximo quedó programado: ${next.title}${next.dueDate ? ` para el ${date(next.dueDate)}` : ""}.` : "Service registrado.");
   }
 
@@ -155,6 +166,19 @@ export function AssetMaintenanceModal({ assetId, canEdit, onClose, onChanged }: 
   const closed = (asset?.plans || []).filter(plan => plan.status && plan.status !== "pendiente");
   const history = (asset?.maintenance || []).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const servicePlan = form?.kind === "service" ? form.plan : undefined;
+  // Lo gastado en materiales: este mes, este año y en total. Y las salidas que todavía no se ataron a ningún service.
+  const materialTotals = useMemo(() => {
+    const now = new Date();
+    const sum = (rows: MaterialTicket[]) => rows.reduce((total, row) => total + Number(row.totalCents || 0), 0);
+    const rows = materials || [];
+    return {
+      month: sum(rows.filter(row => new Date(row.date).getUTCFullYear() === now.getFullYear() && new Date(row.date).getUTCMonth() === now.getMonth())),
+      year: sum(rows.filter(row => new Date(row.date).getUTCFullYear() === now.getFullYear())), total: sum(rows),
+    };
+  }, [materials]);
+  const linkedTickets = new Set((asset?.maintenance || []).flatMap(entry => entry.tickets || []));
+  const freeTickets = (materials || []).filter(row => !linkedTickets.has(row.number));
+  const ticketCents = (numbers: string[]) => (materials || []).filter(row => numbers.includes(row.number)).reduce((total, row) => total + Number(row.totalCents || 0), 0);
 
   return <div className="modal-layer">
     <button className="modal-backdrop" onClick={onClose} aria-label="Cerrar" />
@@ -180,6 +204,7 @@ export function AssetMaintenanceModal({ assetId, canEdit, onClose, onChanged }: 
           <button type="button" className={form?.kind === "service" && !servicePlan ? "active" : ""} onClick={() => openService()}><Wrench size={15} /> Registrar service o arreglo</button>
           <button type="button" className={form?.kind === "plan" ? "active" : ""} onClick={() => { setForm({ kind: "plan" }); setNotice(""); }}><CalendarClock size={15} /> Programar mantenimiento</button>
           {measured && <button type="button" className={form?.kind === "reading" ? "active" : ""} onClick={() => { setForm({ kind: "reading" }); setNotice(""); }}><Gauge size={15} /> Cargar {asset.meterUnit === "km" ? "kilómetros" : "horas"}</button>}
+          {materials !== null && asset.status !== "baja" && <Link href={`/app/caja?bien=${assetId}`} title="Abre la Caja con este bien como destino: repuestos, aceite, herramientas que salen del stock"><PackageOpen size={15} /> Sacar materiales</Link>}
         </div>}
 
         {notice && <div className="notice success stock-done"><Check size={17} /><span>{notice}</span></div>}
@@ -198,6 +223,10 @@ export function AssetMaintenanceModal({ assetId, canEdit, onClose, onChanged }: 
               <label className="asset-check"><input type="checkbox" name="createExpense" /> <span>Cargar el costo en Compras y gastos</span></label>
               <label className="wide"><span>Observaciones</span><textarea name="notes" rows={2} /></label>
             </div>
+            {freeTickets.length > 0 && <div className="asset-next">
+              <span className="asset-check strong"><span>Materiales del stock que se usaron en este trabajo</span></span>
+              {freeTickets.slice(0, 12).map(row => <label className="asset-check" key={row._id}><input type="checkbox" name="tickets" value={row.number} /> <span>{row.number} · {date(row.date)} · {row.lines.slice(0, 3).map(line => `${qty(line.quantity)} ${line.unit} ${line.name}`).join(", ")}{row.lines.length > 3 ? ` y ${row.lines.length - 3} más` : ""} · {money(Number(row.totalCents || 0))}</span></label>)}
+            </div>}
             <div className="asset-next">
               <label className="asset-check strong"><input type="checkbox" checked={scheduleNext} onChange={event => setScheduleNext(event.target.checked)} /> <span>Programar el próximo mantenimiento</span></label>
               {scheduleNext && <NextFields prefix="next_" meterUnit={asset.meterUnit} from={serviceDate}
@@ -246,10 +275,22 @@ export function AssetMaintenanceModal({ assetId, canEdit, onClose, onChanged }: 
               <b>{entry.description}</b>
               <span>{date(entry.date)}{entry.reading != null ? ` · ${qty(entry.reading, 0)} ${unit}` : ""}{entry.provider ? ` · ${entry.provider}` : ""}</span>
               <strong>{entry.costCents ? money(entry.costCents) : "—"}</strong>
-              <small>{entry.userName || "—"}{entry.expenseId ? " · cargado en gastos" : ""}{entry.notes ? ` · ${entry.notes}` : ""}</small>
+              <small>{entry.userName || "—"}{entry.expenseId ? " · cargado en gastos" : ""}{entry.tickets?.length ? ` · materiales ${entry.tickets.join(", ")} (${money(ticketCents(entry.tickets))})` : ""}{entry.notes ? ` · ${entry.notes}` : ""}</small>
             </div>)}</div>}
           {closed.length > 0 && <p className="asset-closed">{closed.length} {closed.length === 1 ? "mantenimiento programado ya cerrado" : "mantenimientos programados ya cerrados"} ({closed.filter(plan => plan.status === "hecho").length} hechos, {closed.filter(plan => plan.status === "cancelado").length} cancelados).</p>}
         </div>
+        {materials !== null && <div className="modal-form-body">
+          <div className="task-form-heading"><div><p className="eyebrow">MATERIALES USADOS</p><h3>Lo que salió del stock para este bien</h3></div>
+            <span>Este mes {money(materialTotals.month)} · este año {money(materialTotals.year)} · total {money(materialTotals.total)}</span></div>
+          {!materials.length ? <p className="task-history-state">Todavía no salió material del stock para este bien.{canEdit ? " Se saca desde la Caja, con destino Bien de uso." : ""}</p>
+            : <div className="detail-list">{materials.flatMap(row => row.lines.map((line, index) => <div className="detail-row asset-history" key={`${row._id}-${index}`}>
+              <span className="badge">{row.number}</span>
+              <b>{line.name}</b>
+              <span>{date(row.date)} · {qty(line.quantity)} {line.unit}</span>
+              <strong>{money(Number(line.totalCents || 0))}</strong>
+              <small>{row.userName || "—"}{linkedTickets.has(row.number) ? " · atado a un service" : ""}</small>
+            </div>))}</div>}
+        </div>}
       </>}
     </section>
   </div>;

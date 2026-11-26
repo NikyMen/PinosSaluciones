@@ -16,6 +16,7 @@ export type TicketLine = { name: string; unit: string; quantity: number; sku?: s
 export type TicketData = {
   number: string; kind: "ingreso" | "egreso"; date: string; createdAt?: string;
   warehouse?: string; supplierName?: string; destinationLabel?: string; reference?: string; note?: string;
+  /** La salida fue a un bien de uso (un vehículo, una máquina), no a una obra. */ assetId?: string;
   lines: TicketLine[]; remitos?: Array<{ number: string; warehouse: string }>; totalCents?: number; userName?: string;
 };
 

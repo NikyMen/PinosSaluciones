@@ -77,6 +77,10 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
   // En la salida, vacío es "automático": primero del Galpón y lo que falte del Salón.
   const [outFrom, setOutFrom] = useState<"" | WarehouseKey>("");
   const [workId, setWorkId] = useState("");
+  // La salida va a una obra o a un bien de uso (un vehículo, una máquina): repuestos, aceite, herramientas.
+  const [destination, setDestination] = useState<"obra" | "bien">("obra");
+  const [assets, setAssets] = useState<Option[]>([]);
+  const [assetId, setAssetId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -134,6 +138,13 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     const timer = window.setTimeout(() => {
       setPrinter(readPrinterSettings()); void loadRecent();
       const url = new URL(window.location.href);
+      // Desde la ficha de un bien de uso ("Sacar materiales"): la salida arranca con ese bien como destino.
+      const asset = url.searchParams.get("bien");
+      if (asset) {
+        url.searchParams.delete("bien");
+        window.history.replaceState(null, "", url.pathname + url.search);
+        setMode("egreso"); setDestination("bien"); setAssetId(asset);
+      }
       if (url.searchParams.has("carrito")) {
         // Fuera de la dirección: recargar la página no vuelve a sumar el carrito.
         url.searchParams.delete("carrito");
@@ -150,6 +161,10 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
       // Sólo las obras vivas: no se entrega material a una obra terminada.
       setWorks(toOptions((workRows.items || []).filter((row: Record<string, unknown>) => row.status !== "terminada" && row.status !== "cancelada")));
     }).catch(() => setError("No se pudieron cargar proveedores y obras"));
+    // Los bienes de uso que no están dados de baja. Sin permiso para verlos, la salida sigue siendo sólo a obra.
+    void fetchAllRecords<{ _id: string; name?: string; identifier?: string; status?: string }>("assets")
+      .then(rows => setAssets(rows.filter(row => row.status !== "baja").map(row => ({ value: row._id, label: String(row.name || ""), hint: row.identifier ? String(row.identifier) : undefined }))))
+      .catch(() => setAssets([]));
     // En la compu el cursor arranca en el cuadro de escaneo; en el celular no, para no abrir el teclado.
     if (window.matchMedia("(pointer: fine)").matches) scanRef.current?.focus();
     return () => window.clearTimeout(timer);
@@ -292,7 +307,8 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
   const totalCents = checked.reduce((total, row) => total + row.totalCents, 0);
   const shortRows = checked.filter(row => row.short);
   const emptyRows = checked.filter(row => row.amount <= 0);
-  const ready = lines.length > 0 && !shortRows.length && !emptyRows.length && (mode === "ingreso" || !!workId);
+  const toAsset = destination === "bien";
+  const ready = lines.length > 0 && !shortRows.length && !emptyRows.length && (mode === "ingreso" || (toAsset ? !!assetId : !!workId));
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -316,7 +332,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     const idOf = (row: (typeof checked)[number]) => ids.get(row.line.item._id) || row.line.item._id;
     const body = mode === "ingreso"
       ? { kind: mode, warehouse: ENTRY_WAREHOUSE[owner], owner, supplierId, reference: String(form.get("reference") || ""), ...common, lines: checked.map(row => ({ itemId: idOf(row), quantity: row.amount, unitCostCents: row.unitCents })) }
-      : { kind: mode, workId, warehouse: outFrom, ...common, lines: checked.map(row => ({ itemId: row.line.item._id, quantity: row.amount })) };
+      : { kind: mode, ...(toAsset ? { assetId } : { workId }), warehouse: outFrom, ...common, lines: checked.map(row => ({ itemId: row.line.item._id, quantity: row.amount })) };
     const response = await fetch("/api/stock/caja", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const result = await response.json();
     setSaving(false);
@@ -324,7 +340,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     const ticket = result as Ticket;
     setDone(ticket);
     if (ticket.kind === "egreso" && fromCart) { workCart.clear(); setFromCart(false); }
-    setLines([]); setWorkId(""); setSupplierId(""); setFormKey(key => key + 1);
+    setLines([]); setWorkId(""); setAssetId(""); setSupplierId(""); setFormKey(key => key + 1);
     void loadRecent();
     if (printer.autoPrint) void printTicket(ticket, printer.width).catch(() => setError("Se registró, pero no se pudo abrir la impresión del ticket"));
   }
@@ -351,7 +367,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
 
     <div className="counter-modes" role="tablist" aria-label="Qué se registra">
       <button type="button" role="tab" aria-selected={!entry} className={!entry ? "active out" : ""} onClick={() => { setMode("egreso"); setConfirming(false); }}>
-        <HardHat size={18} /><span><b>Salida a obra</b><small>Material que se entrega, con remito</small></span>
+        <HardHat size={18} /><span><b>Salida</b><small>A una obra o a un vehículo o equipo, con remito</small></span>
       </button>
       <button type="button" role="tab" aria-selected={entry} className={entry ? "active in" : ""} onClick={() => { setMode("ingreso"); setConfirming(false); }}>
         <ArrowDownToLine size={18} /><span><b>Entrada</b><small>Compra que llega al depósito</small></span>
@@ -362,7 +378,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
       <Check size={18} />
       <span>Listo: {done.kind === "ingreso" ? "entrada" : "salida"} registrada con el comprobante <b>{done.number}</b>{done.remitos?.length ? <> y {done.remitos.length === 1 ? "el remito" : "los remitos"} {done.remitos.map(remito => remito.number).join(" y ")}</> : null}.</span>
       <button type="button" className="secondary-btn" onClick={() => { void printTicket(done, printer.width).catch(() => setError("No se pudo abrir la impresión")); }}><Printer size={15} /> Imprimir ticket</button>
-      {done.kind === "egreso" && <button type="button" className="secondary-btn" title="Todos los materiales con su costo y el total que va a la obra" onClick={() => { void downloadSalidaPdf(done).catch(() => setError("No se pudo generar el PDF")); }}><FileDown size={15} /> PDF con costos</button>}
+      {done.kind === "egreso" && <button type="button" className="secondary-btn" title="Todos los materiales con su costo y el total que va a la obra o al bien de uso" onClick={() => { void downloadSalidaPdf(done).catch(() => setError("No se pudo generar el PDF")); }}><FileDown size={15} /> PDF con costos</button>}
       {remitosOf(done).map(remito => <button key={remito.number} type="button" className="secondary-btn" onClick={() => { void downloadRemitoPdf(remito); }}><FileText size={15} /> {remito.number}</button>)}
       <button type="button" className="icon-btn" onClick={() => setDone(null)} aria-label="Cerrar aviso"><X size={16} /></button>
     </div>}
@@ -416,7 +432,7 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
             </div>
             {entry ? <label className="counter-cost"><span>Costo unit.</span><div className="money-input"><span className="money-prefix">$</span>
               <input inputMode="decimal" value={line.unitCost} placeholder="0,00" onChange={event => updateLine(line.item._id, { unitCost: event.target.value.replace(/[^\d,.]/g, "") })} aria-label={`Costo unitario de ${line.item.name}`} /></div></label>
-              : <span className="counter-cost readonly"><span>Costo a obra</span><b>{money(lineCents)}</b></span>}
+              : <span className="counter-cost readonly"><span>{toAsset ? "Costo al bien" : "Costo a obra"}</span><b>{money(lineCents)}</b></span>}
             {entry && <strong className="counter-line-total">{money(Math.round(amount * unitCents))}</strong>}
             <div className="counter-line-actions">
               <button type="button" title={line.item.isNew ? "La etiqueta se imprime una vez dado de alta" : "Imprimir la etiqueta con el código de barras"} disabled={line.item.isNew} onClick={() => { void printLabel(line.item); }}><Tag size={16} /></button>
@@ -428,11 +444,17 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
 
       <form className="panel counter-side" onSubmit={submit} key={`${mode}-${formKey}`}>
         <div className="counter-side-body">
-          <p className="eyebrow">{entry ? "ENTRADA" : "SALIDA A OBRA"}</p>
+          <p className="eyebrow">{entry ? "ENTRADA" : toAsset ? "SALIDA A BIEN DE USO" : "SALIDA A OBRA"}</p>
           {entry ? <>
             <div className="counter-field"><span>Empresa que compró *<em className="field-hint">Entra a su nombre y a su depósito: {warehouseLabel(ENTRY_WAREHOUSE[owner])}</em></span><div className="counter-segment">{COMPANY_KEYS.map(key => <button key={key} type="button" className={owner === key ? "active" : ""} aria-pressed={owner === key} onClick={() => { setOwner(key); setConfirming(false); }}>{entryLabel(key)}</button>)}</div></div>
           </> : <>
-            <label className="counter-field"><span>Obra *</span><SearchSelect name="workId" options={works} value={workId} onChange={value => { setWorkId(value); setConfirming(false); }} placeholder="¿A qué obra se entrega?" /></label>
+            {assets.length > 0 && <div className="counter-field"><span>Destino *</span><div className="counter-segment">
+              <button type="button" className={!toAsset ? "active" : ""} aria-pressed={!toAsset} onClick={() => { setDestination("obra"); setConfirming(false); }}>Obra</button>
+              <button type="button" className={toAsset ? "active" : ""} aria-pressed={toAsset} title="Repuestos, aceite o herramientas para un vehículo o equipo" onClick={() => { setDestination("bien"); setConfirming(false); }}>Bien de uso</button>
+            </div></div>}
+            {toAsset
+              ? <label className="counter-field"><span>Bien de uso *<em className="field-hint">El costo queda en el bien, no en una obra</em></span><SearchSelect name="assetId" options={assets} value={assetId} onChange={value => { setAssetId(value); setConfirming(false); }} placeholder="¿Para qué vehículo o equipo?" /></label>
+              : <label className="counter-field"><span>Obra *</span><SearchSelect name="workId" options={works} value={workId} onChange={value => { setWorkId(value); setConfirming(false); }} placeholder="¿A qué obra se entrega?" /></label>}
             <div className="counter-field"><span>Sale de</span><div className="counter-segment">
               <button type="button" className={!outFrom ? "active" : ""} aria-pressed={!outFrom} onClick={() => { setOutFrom(""); setConfirming(false); }}>Automático</button>
               {WAREHOUSES.map(entry => <button key={entry.key} type="button" className={outFrom === entry.key ? "active" : ""} aria-pressed={outFrom === entry.key} onClick={() => { setOutFrom(entry.key); setConfirming(false); }}>{entry.short}</button>)}
@@ -449,11 +471,11 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
           <div className="counter-totals">
             <div><span>Materiales</span><b>{lines.length}</b></div>
             <div><span>Unidades</span><b>{qty(totalUnits)}</b></div>
-            <div className="wide"><span>{entry ? "Total de la compra (sin IVA)" : "Costo que va a la obra"}</span><strong>{money(totalCents)}</strong></div>
+            <div className="wide"><span>{entry ? "Total de la compra (sin IVA)" : toAsset ? "Costo que va al bien de uso" : "Costo que va a la obra"}</span><strong>{money(totalCents)}</strong></div>
           </div>
           {shortRows.length > 0 && <p className="form-error">No alcanza el stock de {shortRows.length === 1 ? shortRows[0].line.item.name : `${shortRows.length} materiales`}: bajá la cantidad o elegí otro depósito.</p>}
           {emptyRows.length > 0 && <p className="form-error">Hay materiales con cantidad cero: corregila o sacalos de la lista.</p>}
-          {!entry && lines.length > 0 && !workId && <p className="counter-note">Elegí la obra para poder confirmar.</p>}
+          {!entry && lines.length > 0 && !(toAsset ? assetId : workId) && <p className="counter-note">{toAsset ? "Elegí el bien de uso para poder confirmar." : "Elegí la obra para poder confirmar."}</p>}
         </div>
         <footer>
           {confirming && <span className="counter-confirm-text">{entry ? "Entran" : "Salen"} {qty(totalUnits)} unidades de {lines.length} {lines.length === 1 ? "material" : "materiales"}{entry ? ` al ${warehouseLabel(ENTRY_WAREHOUSE[owner])}, a nombre de ${COMPANIES[owner].short}` : ""}. Queda a tu nombre.</span>}
@@ -466,13 +488,13 @@ export function StockCounter({ canEdit }: { canEdit: boolean }) {
     </div>
 
     <section className="panel counter-recent">
-      <div className="panel-head"><div><p className="eyebrow">ÚLTIMOS COMPROBANTES</p><h2>Lo que pasó por la caja</h2><p>Para volver a imprimir un ticket o un remito</p></div><Link className="secondary-btn" href="/app/salidas"><HardHat size={16} /> Todas las salidas a obra</Link></div>
+      <div className="panel-head"><div><p className="eyebrow">ÚLTIMOS COMPROBANTES</p><h2>Lo que pasó por la caja</h2><p>Para volver a imprimir un ticket o un remito</p></div><Link className="secondary-btn" href="/app/salidas"><HardHat size={16} /> Todas las salidas</Link></div>
       {!recent.length ? <p className="task-history-state">Todavía no hay operaciones.</p>
         : <div className="table-scroll"><table><thead><tr><th>Comprobante</th><th>Fecha</th><th>Tipo</th><th>Destino / proveedor</th><th>Materiales</th><th>Importe</th><th>Hizo</th><th /></tr></thead><tbody>
           {recent.map(ticket => <tr key={ticket._id}>
             <td data-label="Comprobante"><b>{ticket.number}</b></td>
             <td data-label="Fecha">{dateTime(ticket.createdAt || ticket.date)}</td>
-            <td data-label="Tipo"><span className={`badge ${ticket.kind}`}>{ticket.kind === "ingreso" ? "Entrada" : "Salida a obra"}</span></td>
+            <td data-label="Tipo"><span className={`badge ${ticket.kind}`}>{ticket.kind === "ingreso" ? "Entrada" : ticket.assetId ? "Salida a bien de uso" : "Salida a obra"}</span></td>
             <td data-label="Destino / proveedor">{ticket.kind === "ingreso" ? `${warehouseLabel(ticket.warehouse)}${ticket.supplierName ? ` · ${ticket.supplierName}` : ""}` : ticket.destinationLabel || "—"}</td>
             <td data-label="Materiales">{ticket.lines.length}</td>
             <td data-label="Importe">{money(ticket.totalCents || 0)}</td>

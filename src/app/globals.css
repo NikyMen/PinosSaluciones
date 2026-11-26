@@ -880,6 +880,9 @@ td b { color: #273449; }
 .stock-tabs button { padding: 8px 13px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 100px; color: var(--muted); background: #fff; font-size: .72rem; font-weight: 800; }
 .stock-tabs button:hover { border-color: var(--brand-navy-light); color: var(--brand-navy); }
 .stock-tabs button.active { border-color: var(--brand-navy); color: #fff; background: var(--brand-navy); }
+/* Un enlace entre las pestañas (Sacar materiales, en la ficha de un bien de uso): se ve como ellas. */
+.stock-tabs a { padding: 8px 13px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 100px; color: var(--muted); background: #fff; font-size: .72rem; font-weight: 800; text-decoration: none; }
+.stock-tabs a:hover { border-color: var(--brand-navy-light); color: var(--brand-navy); }
 
 .stock-help { margin: 0; padding: 11px 13px; border-left: 3px solid var(--brand-navy); border-radius: 0 9px 9px 0; color: var(--muted); background: var(--surface-muted); font-size: .72rem; line-height: 1.5; }
 .stock-preview { padding: 13px 16px; display: flex; flex-wrap: wrap; gap: 26px; border: 1px solid #cfe3d9; border-radius: 12px; background: #f1f9f5; }

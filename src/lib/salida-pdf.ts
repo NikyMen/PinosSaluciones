@@ -34,9 +34,12 @@ export function buildSalidaPdf(doc: jsPDF, data: SalidaPdfData, meta: { author: 
   }
 
   const remitos = data.remitos || [];
+  // La salida va a una obra o a un bien de uso (un vehículo, una máquina).
+  const toAsset = Boolean(data.assetId);
+  const title = toAsset ? "Salida a bien de uso" : "Salida a obra";
   function header() {
     y = drawLetterhead(doc, {
-      title: "Salida a obra", number: `N° ${data.number}`, logo: meta.logo,
+      title, number: `N° ${data.number}`, logo: meta.logo,
       lines: [`Fecha: ${dateTime(data.createdAt || data.date)} hs`, remitos.length ? `Remito${remitos.length === 1 ? "" : "s"}: ${remitos.map(remito => remito.number).join(", ")}` : "Documento interno"],
     });
   }
@@ -57,7 +60,7 @@ export function buildSalidaPdf(doc: jsPDF, data: SalidaPdfData, meta: { author: 
 
   function ensure(space: number, withTableHead = false) {
     if (y + space <= BOTTOM) return;
-    drawFooter(doc, { page, author: meta.author, note: "Salida a obra, documento interno" });
+    drawFooter(doc, { page, author: meta.author, note: `${title}, documento interno` });
     doc.addPage();
     page += 1;
     header();
@@ -84,7 +87,7 @@ export function buildSalidaPdf(doc: jsPDF, data: SalidaPdfData, meta: { author: 
   const used = remitos.length ? remitos : [...new Set(data.lines.flatMap(line => (line.parts || []).map(part => part.warehouse)))].map(warehouse => ({ warehouse, number: "" }));
   block(MARGIN + 5, "SALE DE", used.map(entry => warehouseLabel(entry.warehouse)).join(" y ") || "Depósito",
     used.map(entry => entry.number ? `${warehouseLabel(entry.warehouse)}: remito ${entry.number}` : "").filter(Boolean).slice(0, 2));
-  block(WIDTH / 2 + 6, "SE ENTREGA EN", data.destinationLabel || "Obra", [`Cotización: ${data.quoteNumber || "-"}`, `Preparó: ${data.userName || meta.author}`]);
+  block(WIDTH / 2 + 6, "SE ENTREGA EN", data.destinationLabel || "Obra", [toAsset ? "El costo queda en el bien de uso" : `Cotización: ${data.quoteNumber || "-"}`, `Preparó: ${data.userName || meta.author}`]);
   y = boxTop + boxHeight + 10;
 
   setColor(RED); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
@@ -134,14 +137,14 @@ export function buildSalidaPdf(doc: jsPDF, data: SalidaPdfData, meta: { author: 
   setFill([248, 250, 252]);
   doc.roundedRect(totalX, y - 6, totalWidth, 17, 2, 2, "F");
   setColor(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-  doc.text("COSTO TOTAL A LA OBRA", totalX + 5, y + 3.5);
+  doc.text(toAsset ? "COSTO TOTAL AL BIEN DE USO" : "COSTO TOTAL A LA OBRA", totalX + 5, y + 3.5);
   doc.setFontSize(11.5);
   doc.text(plain(money(Number(data.totalCents || 0))), WIDTH - MARGIN - 5, y + 3.5, { align: "right" });
 
   // A la izquierda: de dónde sale el costo y las observaciones.
   const noteWidth = totalX - MARGIN - 8;
   const notes = [
-    "Costo al promedio ponderado de cada material al momento de la salida, sin IVA. No es una venta: se carga como costo de la obra.",
+    `Costo al promedio ponderado de cada material al momento de la salida, sin IVA. No es una venta: ${toAsset ? "queda como costo del bien de uso, no de una obra" : "se carga como costo de la obra"}.`,
     ...(data.note?.trim() ? [`Observaciones: ${data.note.trim()}`] : []),
   ];
   setColor(MUTED); doc.setFont("helvetica", "normal"); doc.setFontSize(7.4);
@@ -158,10 +161,10 @@ export function buildSalidaPdf(doc: jsPDF, data: SalidaPdfData, meta: { author: 
   doc.line(WIDTH - MARGIN - 70, signY, WIDTH - MARGIN, signY);
   setColor(MUTED); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
   doc.text("Entregó (firma y aclaración)", MARGIN + 35, signY + 4.5, { align: "center" });
-  doc.text("Recibió en obra (firma, aclaración y DNI)", WIDTH - MARGIN - 35, signY + 4.5, { align: "center" });
+  doc.text(toAsset ? "Recibió (firma, aclaración y DNI)" : "Recibió en obra (firma, aclaración y DNI)", WIDTH - MARGIN - 35, signY + 4.5, { align: "center" });
 
-  drawFooter(doc, { page, author: meta.author, note: "Salida a obra, documento interno" });
-  return `salida-a-obra-${data.number}.pdf`;
+  drawFooter(doc, { page, author: meta.author, note: `${title}, documento interno` });
+  return `salida-a-${toAsset ? "bien-de-uso" : "obra"}-${data.number}.pdf`;
 }
 
 export async function downloadSalidaPdf(data: SalidaPdfData) {

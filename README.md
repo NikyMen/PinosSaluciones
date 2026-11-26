@@ -269,6 +269,12 @@ Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisio
 - **Carrito para obra** (`src/lib/work-cart.ts`): en Stock y logística › Stock, cada material tiene el botón "Carrito" con su cantidad. La barra de abajo muestra lo que se lleva y el costo aproximado. "Hacer salida a obra" abre la Caja con el carrito cargado: se elige la obra y se confirma todo junto, con un comprobante `CJ-n` y un remito por depósito. Al confirmar, el carrito se vacía. El carrito vive en el navegador de quien lo arma.
 - **Registro** (Stock y logística › Salidas a obra, `/app/salidas`): todas las salidas de la Caja, filtradas por obra y fechas, con el costo total cargado a la obra y exportación a Excel. Desde la obra, el botón "Material entregado" abre el listado filtrado.
 - **PDF con costos** (`src/lib/salida-pdf.ts`): el detalle de la salida con el costo unitario (promedio ponderado) y el subtotal de cada material, el total cargado a la obra, los remitos y las firmas. Es un papel interno: el remito que acompaña al material no lleva precios.
+- **Salida a un bien de uso**: en la Caja, la salida elige el **Destino**: Obra o Bien de uso (un vehículo o equipo que no esté dado de baja). Sirve para repuestos, aceite o herramientas de un utilitario.
+  - Baja el stock y deja el comprobante `CJ-n` y el remito con "Bien de uso: nombre (patente)". El costo queda en el movimiento y en la ficha del bien (`StockTicket.assetId`); no se carga a ninguna obra ni genera un gasto.
+  - Bienes de uso › Mantenimiento muestra **Materiales usados** (lo que salió del stock para ese bien, con el total del mes, del año y general) y el botón **Sacar materiales**, que abre la Caja con ese bien como destino (`/app/caja?bien=`).
+  - Al registrar un service se pueden tildar las salidas que se usaron en ese trabajo (`maintenance.tickets`).
+  - El registro de Salidas filtra por destino: Todos, Obras o Bienes de uso (`/api/stock/caja?destino=`).
+  - Una salida tiene un solo destino: cuatro productos para cuatro lugares son cuatro salidas. Ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`.
 
 ## Envíos por transporte
 
@@ -284,7 +290,6 @@ Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisio
   - El remito muestra "Enviado · ENV-n" y la guía. Un remito tiene un solo envío vigente, y con un envío vigente no se anula.
   - Anular el envío de una venta no devuelve stock. Lo despacha quien puede escribir en Stock o en Facturas de venta.
   - Ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`.
-- Pendiente (ver `docs/plan-envios-y-traslados.md`): la salida a un utilitario.
 
 ## Backups
 

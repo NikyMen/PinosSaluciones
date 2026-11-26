@@ -23,7 +23,7 @@ type AssetDoc = {
 
 export type NextPlanInput = { title: string; dueDate?: Date; dueReading?: number; intervalMonths?: number; intervalReading?: number; notes?: string };
 export type AssetAction =
-  | { action: "service"; date: Date; kind: "service" | "preventivo" | "reparacion" | "inspeccion" | "otro"; description: string; costCents: number; reading?: number; provider?: string; notes?: string; createExpense?: boolean; planId?: string; next?: NextPlanInput }
+  | { action: "service"; date: Date; kind: "service" | "preventivo" | "reparacion" | "inspeccion" | "otro"; description: string; costCents: number; reading?: number; provider?: string; notes?: string; createExpense?: boolean; planId?: string; next?: NextPlanInput; /** Los comprobantes de la Caja (CJ-n) con los materiales de este trabajo. */ tickets?: string[] }
   | ({ action: "plan" } & NextPlanInput)
   | { action: "cancel_plan"; planId: string }
   | { action: "reading"; reading: number; date?: Date };
@@ -101,6 +101,7 @@ export async function applyAssetAction(assetId: string, input: AssetAction, sess
     asset.maintenance.push({
       date: input.date, kind: input.kind, description: input.description, costCents: input.costCents, reading: input.reading,
       provider: input.provider, notes: input.notes, expenseId, planId: plan?._id, userId: session.userId, userName: session.name,
+      tickets: input.tickets?.length ? [...new Set(input.tickets)] : undefined,
     });
     setReading(asset, input.reading, input.date);
     if (plan) {

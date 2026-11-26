@@ -1,6 +1,6 @@
 import type { Types } from "mongoose";
-import { Counter, Purchase, Quote, StockItem, StockTicket, Supplier, Work } from "./models";
-import { applyStockMovement, nextRemitoNumber, StockError } from "./stock-service";
+import { Asset, Counter, Purchase, Quote, StockItem, StockTicket, Supplier, Work } from "./models";
+import { applyStockMovement, assetDestinationLabel, nextRemitoNumber, StockError } from "./stock-service";
 import { levelsOf, splitDelivery } from "./stock-levels";
 import { internalBarcode } from "./barcode";
 import { warehouseLabel, WAREHOUSES, type WarehouseKey } from "./warehouses";
@@ -14,7 +14,7 @@ import type { CompanyKey } from "./companies";
  *
  * - un número de comprobante (CJ-1, CJ-2…) para el ticket;
  * - en una entrada, una sola orden de compra recibida con todos los renglones;
- * - en una salida a obra, un solo remito por depósito con todos los materiales.
+ * - en una salida (a una obra o a un bien de uso), un solo remito por depósito con todos los materiales.
  *
  * Antes de tocar nada se revisa que alcance todo: si falta un material no se
  * mueve ninguno.
@@ -24,7 +24,8 @@ export type CounterLine = { itemId: string; quantity: number; unitCostCents?: nu
 export type CounterInput =
   // Una entrada es una compra, a nombre de la empresa que compró y en su depósito (ENTRY_WAREHOUSE).
   | { kind: "ingreso"; warehouse: WarehouseKey; owner?: CompanyKey; supplierId?: string; reference?: string; note?: string; date?: Date; lines: CounterLine[] }
-  | { kind: "egreso"; workId: string; warehouse?: WarehouseKey; note?: string; date?: Date; lines: CounterLine[] };
+  // Una salida va a una obra o a un bien de uso (un vehículo, una máquina): uno de los dos.
+  | { kind: "egreso"; workId?: string; assetId?: string; warehouse?: WarehouseKey; note?: string; date?: Date; lines: CounterLine[] };
 
 type ItemDoc = Parameters<typeof applyStockMovement>[0] & { barcode?: string };
 type Part = { warehouse: WarehouseKey; quantity: number };
@@ -60,11 +61,18 @@ export async function registerCounterOperation(input: CounterInput, session: Ses
   const plan = new Map<string, Part[]>();
   type WorkRow = { _id: Types.ObjectId; code?: string; name?: string; quoteId?: Types.ObjectId };
   let work: WorkRow | null = null;
+  type AssetRow = { _id: Types.ObjectId; name?: string; identifier?: string; status?: string };
+  let asset = null as AssetRow | null;
   let quoteNumber: string | undefined;
   if (input.kind === "egreso") {
-    work = await Work.findById(input.workId).select("code name quoteId").lean() as WorkRow | null;
-    if (!work) throw new StockError("Elegí a qué obra se entrega el material");
-    if (work.quoteId) quoteNumber = (await Quote.findById(work.quoteId).select("number").lean() as { number?: string } | null)?.number;
+    if (input.assetId) {
+      asset = await Asset.findById(input.assetId).select("name identifier status").lean() as AssetRow | null;
+      if (!asset || asset.status === "baja") throw new StockError("Elegí un bien de uso que no esté dado de baja");
+    } else {
+      work = input.workId ? await Work.findById(input.workId).select("code name quoteId").lean() as WorkRow | null : null;
+      if (!work) throw new StockError("Elegí a qué obra se entrega el material");
+    }
+    if (work?.quoteId) quoteNumber = (await Quote.findById(work.quoteId).select("number").lean() as { number?: string } | null)?.number;
     const short: string[] = [];
     for (const line of lines) {
       const item = byId.get(line.itemId)!;
@@ -128,7 +136,7 @@ export async function registerCounterOperation(input: CounterInput, session: Ses
       const item = byId.get(line.itemId)!;
       const before = item.toObject();
       const parts = plan.get(line.itemId)!;
-      const result = await applyStockMovement(item, { kind: "egreso", workId: input.workId, parts, note: input.note, date, ticket: number, remitos: numbers }, session);
+      const result = await applyStockMovement(item, { kind: "egreso", ...(asset ? { assetId: String(asset._id) } : { workId: input.workId }), parts, note: input.note, date, ticket: number, remitos: numbers }, session);
       const totalCents = result.movements.reduce((total, movement) => total + Number(movement.totalCents || 0), 0);
       changed.push({ item, before, after: result.item });
       ticketLines.push({ stockItemId: item._id, name: item.name, sku: item.sku, barcode: item.barcode, unit: item.unit, quantity: line.quantity, unitCostCents: item.avgCostCents, totalCents, parts: parts.map(part => ({ ...part, remito: numbers[part.warehouse] })) });
@@ -139,7 +147,7 @@ export async function registerCounterOperation(input: CounterInput, session: Ses
     number, kind: input.kind, date,
     warehouse: input.warehouse,
     supplierId: input.kind === "ingreso" ? input.supplierId : undefined, supplierName,
-    workId: work?._id, destinationLabel: work ? `Obra ${work.code || ""} · ${work.name || ""}`.trim() : undefined, quoteNumber,
+    workId: work?._id, assetId: asset?._id, destinationLabel: asset ? assetDestinationLabel(asset) : work ? `Obra ${work.code || ""} · ${work.name || ""}`.trim() : undefined, quoteNumber,
     purchaseId, reference: input.kind === "ingreso" ? input.reference : undefined, note: input.note,
     lines: ticketLines, remitos, totalCents: ticketLines.reduce((total, line) => total + Number(line.totalCents || 0), 0),
     userId: session.userId, userName: session.name,

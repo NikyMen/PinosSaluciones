@@ -20,6 +20,7 @@ import { fetchAllRecords } from "@/lib/fetch-all-records";
  */
 
 type Delivery = SalidaPdfData & { _id: string; workId?: string };
+type Destination = "" | "obra" | "bien";
 
 function remitosOf(ticket: Delivery): RemitoData[] {
   return (ticket.remitos || []).map(remito => ({
@@ -41,6 +42,8 @@ export function WorkDeliveriesView({ initialWorkId = "" }: { initialWorkId?: str
   const [works, setWorks] = useState<Option[]>([]);
   // La obra puede venir en la dirección (?obra=…), desde la pantalla de la obra.
   const [workId, setWorkId] = useState(initialWorkId);
+  // A dónde fue: una obra o un bien de uso (un vehículo, una máquina).
+  const [destination, setDestination] = useState<Destination>("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [rows, setRows] = useState<Delivery[] | null>(null);
@@ -54,7 +57,7 @@ export function WorkDeliveriesView({ initialWorkId = "" }: { initialWorkId?: str
 
   useEffect(() => {
     const controller = new AbortController();
-    const query = new URLSearchParams({ kind: "egreso", limit: "500", ...(workId && { workId }), ...(from && { from }), ...(to && { to }) });
+    const query = new URLSearchParams({ kind: "egreso", limit: "500", ...(workId && { workId }), ...(destination && !workId && { destino: destination }), ...(from && { from }), ...(to && { to }) });
     fetch(`/api/stock/caja?${query}`, { signal: controller.signal })
       .then(async response => {
         const body = await response.json();
@@ -63,7 +66,7 @@ export function WorkDeliveriesView({ initialWorkId = "" }: { initialWorkId?: str
       })
       .catch(problem => { if (!controller.signal.aborted) { setRows([]); setError(problem instanceof Error ? problem.message : "No se pudieron leer las salidas"); } });
     return () => controller.abort();
-  }, [workId, from, to]);
+  }, [workId, destination, from, to]);
 
   const totalCents = useMemo(() => (rows || []).reduce((total, row) => total + Number(row.totalCents || 0), 0), [rows]);
   const workLabel = works.find(work => work.value === workId)?.label;
@@ -74,16 +77,19 @@ export function WorkDeliveriesView({ initialWorkId = "" }: { initialWorkId?: str
       line.barcode || line.sku || "", line.name, line.unit, String(line.quantity).replace(".", ","), csvAmount(Number(line.unitCostCents || 0)), csvAmount(Number(line.totalCents || 0)), row.userName || "",
     ]));
     downloadCsv(`salidas-a-obra${workId ? `-${works.find(work => work.value === workId)?.hint || "obra"}` : ""}.csv`,
-      ["Comprobante", "Fecha", "Obra", "Remitos", "Código", "Material", "Unidad", "Cantidad", "Costo unitario", "Subtotal", "Hizo"], lines);
+      ["Comprobante", "Fecha", "Destino", "Remitos", "Código", "Material", "Unidad", "Cantidad", "Costo unitario", "Subtotal", "Hizo"], lines);
   }
 
   return <>
     <div className="page-heading"><div>
       <p className="eyebrow">STOCK Y LOGÍSTICA</p>
       <h1>Salidas a obra</h1>
-      <p>Todo el material que salió a obra por la Caja: qué se llevó, de qué depósito, con qué remito y cuánto se le cargó a la obra.</p>
+      <p>Todo el material que salió por la Caja a una obra o a un bien de uso (vehículo o equipo): qué se llevó, de qué depósito, con qué remito y cuánto se le cargó.</p>
     </div><Link className="primary-btn" href="/app/caja"><ScanBarcode size={18} /> Nueva salida</Link></div>
     <div className="toolbar deliveries-toolbar">
+      <div className="tracking-filter" role="group" aria-label="Destino">
+        {([["", "Todos"], ["obra", "Obras"], ["bien", "Bienes de uso"]] as Array<[Destination, string]>).map(([value, label]) => <button key={value} type="button" className={destination === value && !workId ? "active" : ""} onClick={() => { setDestination(value); if (value !== "obra") setWorkId(""); }}>{label}</button>)}
+      </div>
       <label className="deliveries-work"><span>Obra</span><SearchSelect name="workId" options={[{ value: "", label: "Todas las obras" }, ...works]} value={workId} onChange={setWorkId} placeholder="Todas las obras" /></label>
       <label><span>Desde</span><input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label>
       <label><span>Hasta</span><input type="date" value={to} onChange={event => setTo(event.target.value)} /></label>
@@ -92,15 +98,15 @@ export function WorkDeliveriesView({ initialWorkId = "" }: { initialWorkId?: str
     {error && <div className="notice error">{error}</div>}
     {rows !== null && rows.length > 0 && <div className="deliveries-total">
       <span>{rows.length} {rows.length === 1 ? "salida" : "salidas"}{workLabel ? ` a ${workLabel}` : ""}{rows.length === 500 ? " (las últimas 500: acotá las fechas para ver el resto)" : ""}</span>
-      <b>Costo cargado a obra: {money(totalCents)}</b>
+      <b>{destination === "bien" && !workId ? "Costo cargado a bienes de uso" : destination === "obra" || workId ? "Costo cargado a obra" : "Costo cargado"}: {money(totalCents)}</b>
     </div>}
     <section className="table-panel">
-      {rows === null ? <div className="loading-state">Cargando…</div> : !rows.length ? <div className="empty-state"><p>No hay salidas a obra{workId || from || to ? " con estos filtros" : " todavía"}.</p></div>
-        : <div className="table-scroll"><table><thead><tr><th>Comprobante</th><th>Fecha</th><th>Obra</th><th>Materiales</th><th>Remitos</th><th>Costo</th><th>Hizo</th><th /></tr></thead><tbody>
+      {rows === null ? <div className="loading-state">Cargando…</div> : !rows.length ? <div className="empty-state"><p>No hay salidas{workId || destination || from || to ? " con estos filtros" : " todavía"}.</p></div>
+        : <div className="table-scroll"><table><thead><tr><th>Comprobante</th><th>Fecha</th><th>Destino</th><th>Materiales</th><th>Remitos</th><th>Costo</th><th>Hizo</th><th /></tr></thead><tbody>
           {rows.map(row => <tr key={row._id}>
             <td data-label="Comprobante"><b>{row.number}</b></td>
             <td data-label="Fecha">{date(row.date)}{row.createdAt && date(row.createdAt) !== date(row.date) && <small className="tracking-sub">Cargada el {dateTime(row.createdAt)}</small>}</td>
-            <td data-label="Obra">{row.workId ? <Link href={`/app/works/${row.workId}`}>{row.destinationLabel || "Obra"}</Link> : row.destinationLabel || "—"}{row.quoteNumber && <small className="tracking-sub">Cotización {row.quoteNumber}</small>}</td>
+            <td data-label="Destino">{row.workId ? <Link href={`/app/works/${row.workId}`}>{row.destinationLabel || "Obra"}</Link> : row.assetId ? <Link href="/app/assets">{row.destinationLabel || "Bien de uso"}</Link> : row.destinationLabel || "—"}{row.quoteNumber && <small className="tracking-sub">Cotización {row.quoteNumber}</small>}</td>
             <td data-label="Materiales"><div className="cell-clamp">{summary(row)}</div>{row.note && <small className="tracking-sub">{row.note}</small>}</td>
             <td data-label="Remitos">{(row.remitos || []).map(remito => remito.number).join(", ") || "—"}</td>
             <td data-label="Costo"><b>{money(Number(row.totalCents || 0))}</b></td>

@@ -11,7 +11,7 @@ import { registerCounterOperation, type CounterInput } from "@/lib/stock-counter
 import { ENTRY_WAREHOUSE, WAREHOUSE_KEYS } from "@/lib/warehouses";
 
 /**
- * La caja del depósito: entradas y salidas de varios materiales de una vez,
+ * La caja del depósito: entradas y salidas (a una obra o a un bien de uso) de varios materiales de una vez,
  * escaneados con el lector o la cámara. GET trae los últimos comprobantes
  * (para reimprimir el ticket); POST confirma una operación. Las cuentas están
  * en src/lib/stock-counter.ts.
@@ -22,8 +22,9 @@ const line = z.object({ itemId: objectId, quantity: z.coerce.number().positive("
 const common = { note: z.string().trim().max(1000).optional().default(""), date: z.coerce.date().optional(), lines: z.array(line).min(1, "Escaneá al menos un material").max(200) };
 const schema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("ingreso"), warehouse: z.union([warehouse, z.literal("")]).optional().transform(value => value || undefined), owner: z.enum(["tvp", "constructora"]).default("tvp"), supplierId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), reference: z.string().trim().max(120).optional().default(""), ...common }),
-  z.object({ kind: z.literal("egreso"), workId: objectId, warehouse: z.union([warehouse, z.literal("")]).optional().transform(value => value || undefined), ...common }),
-]);
+  // La salida va a una obra o a un bien de uso (un vehículo, una máquina): uno de los dos.
+  z.object({ kind: z.literal("egreso"), workId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), assetId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined), warehouse: z.union([warehouse, z.literal("")]).optional().transform(value => value || undefined), ...common }),
+]).refine(data => data.kind !== "egreso" || Boolean(data.workId) !== Boolean(data.assetId), "Elegí a dónde va el material: una obra o un bien de uso");
 
 export async function GET(request: Request) {
   try {
@@ -38,6 +39,12 @@ export async function GET(request: Request) {
     if (kind === "ingreso" || kind === "egreso") filter.kind = kind;
     const workId = params.get("workId");
     if (workId && isValidObjectId(workId)) filter.workId = workId;
+    // Las salidas a un bien de uso (?assetId=) o por destino (?destino=obra | bien).
+    const assetId = params.get("assetId");
+    if (assetId && isValidObjectId(assetId)) filter.assetId = assetId;
+    const destination = params.get("destino");
+    if (destination === "bien") filter.assetId = filter.assetId || { $exists: true, $ne: null };
+    if (destination === "obra") filter.assetId = null;
     // La fecha del comprobante es el día elegido en la Caja, guardado a las 0 h UTC (como en src/lib/period.ts).
     const day = (value: string | null) => value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00.000Z`) : null;
     const from = day(params.get("from")), to = day(params.get("to"));

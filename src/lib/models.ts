@@ -461,6 +461,8 @@ const StockMovementSchema = new Schema({
   totalCents: { type: Number, min: 0, default: 0 },
   supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" },
   workId: { type: Schema.Types.ObjectId, ref: "Work" },
+  // La salida a un bien de uso (un vehículo, una máquina) en lugar de a una obra: el costo queda en el bien.
+  assetId: { type: Schema.Types.ObjectId, ref: "Asset" },
   reference: String, note: String,
   date: { type: Date, default: Date.now },
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
@@ -656,6 +658,8 @@ const StockTicketSchema = new Schema({
   warehouse: { type: String, enum: WAREHOUSE_KEYS },
   supplierId: { type: Schema.Types.ObjectId, ref: "Supplier" }, supplierName: String,
   workId: { type: Schema.Types.ObjectId, ref: "Work" }, destinationLabel: String, quoteNumber: String,
+  // Una salida va a una obra o a un bien de uso (repuestos, aceite, herramientas de un vehículo o equipo).
+  assetId: { type: Schema.Types.ObjectId, ref: "Asset" },
   purchaseId: { type: Schema.Types.ObjectId, ref: "Purchase" },
   reference: String, note: String,
   lines: [{
@@ -670,6 +674,7 @@ const StockTicketSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: "User" }, userName: String,
 }, options);
 StockTicketSchema.index({ createdAt: -1 });
+StockTicketSchema.index({ assetId: 1, date: -1 }, { sparse: true });
 
 /*
  * Una venta por mostrador (Ventas › Mostrador): lo que se le vendió al público
@@ -732,6 +737,8 @@ const AssetMaintenanceSchema = new Schema({
   // Kilómetros u horas de uso el día del trabajo.
   reading: Number,
   provider: String, notes: String,
+  // Los comprobantes de la Caja (CJ-n) con los materiales que salieron del stock para este trabajo.
+  tickets: { type: [String], default: undefined },
   // Si el costo se cargó en Compras y gastos, y de qué mantenimiento programado salió.
   expenseId: { type: Schema.Types.ObjectId, ref: "Expense" },
   planId: Schema.Types.ObjectId,

@@ -59,3 +59,18 @@
 - **Volver a planificar**: el mismo botón cambia fechas, responsable y gente. Quien ya tiene horas cargadas en la obra no se saca (el panel lo muestra y el aviso de guardado lo dice).
 - Se asigna el personal para toda la obra; las horas de cada día siguen en el parte diario. No se planifica una obra terminada, cerrada o cancelada.
 - Pruebas: `tests/planificar-obra.test.ts`.
+
+## 4. Salida de materiales a un bien de uso (J2)
+
+- Pedido de Jorge (10/11): lo comprado entra al depósito y de ahí sale a una obra **o a un utilitario**. El ejemplo fue el crique de la camioneta. La salida de la Caja exigía una obra, así que los repuestos, el aceite o las herramientas de un vehículo no tenían cómo salir del stock.
+- En **Stock y logística › Caja**, la salida tiene **Destino**: Obra (como siempre) o **Bien de uso**. Con Bien de uso se elige un vehículo o equipo del maestro que no esté dado de baja. Si la persona no puede ver Bienes de uso, la salida sigue siendo sólo a obra.
+- **Confirmar salida** baja el stock del depósito elegido (o automático, primero el Galpón), con el comprobante `CJ-n` y un remito por depósito. El ticket, el remito y el PDF con costos dicen "Bien de uso: nombre (patente o serie)".
+- **El costo queda en el bien**, no en una obra: el movimiento y el comprobante guardan `assetId`, y no se crea el gasto de materiales que sí crea la salida a obra. Por eso no suma en la rentabilidad de ninguna obra ni consume reservas de cotizaciones.
+- **Ficha del bien** (Bienes de uso › Mantenimiento):
+  - **Materiales usados**: cada material que salió para ese bien, con fecha, cantidad, costo y comprobante, y el total del mes, del año y general.
+  - **Sacar materiales**: abre la Caja con ese bien ya elegido como destino.
+  - Al **registrar un service o arreglo** se pueden tildar las salidas que se usaron en ese trabajo. Quedan en el historial del service con su importe.
+- **Stock y logística › Salidas a obra** suma el filtro **Destino** (Todos, Obras, Bienes de uso) y la columna Destino.
+- Una salida tiene un solo destino: cuatro productos para cuatro lugares son cuatro salidas, como antes.
+- No cambia la salida a obra desde la ficha de un material ni el carrito: siguen yendo a una obra. La salida a un bien de uso es desde la Caja.
+- Pruebas: `tests/salida-bien-de-uso.test.ts`.

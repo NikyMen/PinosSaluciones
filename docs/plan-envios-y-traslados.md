@@ -1,6 +1,6 @@
 # Plan: envíos por transporte y salidas a utilitarios
 
-- Fecha: 2026-11-16. Estado: **punto 1 hecho el 16/11** (envío por transporte, ver README › Envíos por transporte) y **punto 2 hecho el 26/11** (envío de una venta, ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`). Falta el punto 3.
+- Fecha: 2026-11-16. Estado: **punto 1 hecho el 16/11** (envío por transporte, ver README › Envíos por transporte) y **puntos 2 y 3 hechos el 26/11** (envío de una venta y salida a un bien de uso, ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`). Siguen abiertas las preguntas para Jorge del final.
 - Pedido de Jorge (Compras), por WhatsApp:
   - 13/11: una encomienda a Rosario, de 97 tachos de 20 l en 2 pallets, por Expreso Demonte, que pide remito con valor declarado.
   - 14/11: el remito de venta no sirve, porque pide cliente y factura.

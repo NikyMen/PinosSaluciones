@@ -30,6 +30,8 @@ const schema = z.discriminatedUnion("action", [
     costCents: z.coerce.number().int().min(0).default(0), reading: optionalNumber,
     provider: shortText, notes: shortText, createExpense: z.boolean().optional().default(false),
     planId: z.union([objectId, z.literal("")]).optional().transform(value => value || undefined),
+    // Las salidas de la Caja (CJ-n) con los materiales que se usaron en este trabajo.
+    tickets: z.array(z.string().trim().regex(/^CJ-\d+$/)).max(50).optional(),
     next: next.optional(),
   }),
   next.extend({ action: z.literal("plan") }),

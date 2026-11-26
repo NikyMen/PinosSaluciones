@@ -1,5 +1,5 @@
 import type { Types } from "mongoose";
-import { Counter, Expense, Purchase, Quote, StockItem, StockReservation, Work } from "./models";
+import { Asset, Counter, Expense, Purchase, Quote, StockItem, StockReservation, Work } from "./models";
 import { notify } from "./notifications";
 import { money } from "./format";
 import { levelsOf, lowWarehouses, qtyField, totalOf, type Levels } from "./stock-levels";
@@ -18,7 +18,8 @@ import type { Session } from "./auth";
  *   salir del mismo depósito y se saca del costo promedio.
  * - salida a obra: resta de uno o de los dos depósitos (primero del Galpón),
  *   carga el costo a la obra, consume lo reservado para esa obra y deja un
- *   remito por depósito. No es una venta: no hay factura.
+ *   remito por depósito. No es una venta: no hay factura. La salida también puede ir a
+ *   un bien de uso (un vehículo, una máquina): el costo queda en el bien, no en una obra.
  * - transferencia: sale del depósito de origen y queda en tránsito; con la
  *   recepción entra al de destino. No mueve plata ni cambia el costo.
  * - venta: el remito al cliente, desde el Salón de Ventas (el Mostrador también vende
@@ -43,7 +44,7 @@ type Common = { note?: string; date?: Date };
 export type MovementInput =
   | Common & { kind: "ingreso"; warehouse?: WarehouseKey; quantity: number; unitCostCents: number; owner?: CompanyKey; supplierId?: string; reference?: string; purchaseId?: string; ticket?: string }
   // Desde la caja, varios materiales comparten el remito de cada depósito: llega ya numerado en `remitos`.
-  | Common & { kind: "egreso"; workId: string; parts: Array<{ warehouse: WarehouseKey; quantity: number }>; reference?: string; ticket?: string; remitos?: Partial<Record<WarehouseKey, string>>; salesRemitoId?: string }
+  | Common & { kind: "egreso"; workId?: string; assetId?: string; parts: Array<{ warehouse: WarehouseKey; quantity: number }>; reference?: string; ticket?: string; remitos?: Partial<Record<WarehouseKey, string>>; salesRemitoId?: string }
   | Common & { kind: "transferencia"; from: WarehouseKey; to: WarehouseKey; quantity: number; remito?: string; transferId?: string; owner?: OwnerKey }
   | Common & { kind: "recepcion"; from: WarehouseKey; to: WarehouseKey; sentQty: number; receivedQty: number; damagedQty?: number; ownerParts?: OwnerPart[]; remito?: string; transferId?: string }
   // La venta sale del Salón de Ventas; desde el Mostrador también puede salir del Galpón (`warehouse`).
@@ -56,6 +57,11 @@ export type MovementInput =
   | Common & { kind: "ingreso_anulado"; warehouse: WarehouseKey; quantity: number; unitCostCents: number; owner?: CompanyKey; purchaseId: string; reference?: string };
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
+
+/** Cómo se nombra un bien de uso como destino de una salida: "Bien de uso: Camioneta Hilux (AB123CD)". */
+export function assetDestinationLabel(asset: { name?: string; identifier?: string }) {
+  return `Bien de uso: ${asset.name || ""}${asset.identifier ? ` (${asset.identifier})` : ""}`.trim();
+}
 
 /** Número correlativo de remito: R-1, R-2… Lo comparten las salidas a obra, los pases y los remitos de venta. */
 export async function nextRemitoNumber() {
@@ -118,10 +124,13 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
     const parts = input.parts.filter(part => part.quantity > 0);
     if (!parts.length) throw new StockError("Poné cuánto sale de cada depósito");
     for (const part of parts) ensureAvailable(item, levels, part.warehouse, part.quantity);
-    const work = await Work.findById(input.workId).select("code name quoteId").lean() as { _id: Types.ObjectId; code?: string; name?: string; quoteId?: Types.ObjectId } | null;
-    if (!work) throw new StockError("Elegí a qué obra se entrega el material");
-    const quote = work.quoteId ? await Quote.findById(work.quoteId).select("number company").lean() as { number?: string; company?: CompanyKey } | null : null;
-    const destinationLabel = `Obra ${work.code || ""} · ${work.name || ""}`.trim();
+    // A una obra o a un bien de uso (pedido de Compras, 10/11/2026): el crique de la camioneta no es de ninguna obra.
+    const asset = input.assetId ? await Asset.findById(input.assetId).select("name identifier status").lean() as { _id: Types.ObjectId; name?: string; identifier?: string; status?: string } | null : null;
+    if (input.assetId && (!asset || asset.status === "baja")) throw new StockError("Elegí un bien de uso que no esté dado de baja");
+    const work = asset || !input.workId ? null : await Work.findById(input.workId).select("code name quoteId").lean() as { _id: Types.ObjectId; code?: string; name?: string; quoteId?: Types.ObjectId } | null;
+    if (!asset && !work) throw new StockError("Elegí a qué obra se entrega el material");
+    const quote = work?.quoteId ? await Quote.findById(work.quoteId).select("number company").lean() as { number?: string; company?: CompanyKey } | null : null;
+    const destinationLabel = asset ? assetDestinationLabel(asset) : `Obra ${work!.code || ""} · ${work!.name || ""}`.trim();
     // Un remito por depósito: cada uno sale con su papel, aunque vayan a la misma obra.
     for (const part of parts) {
       const remito = input.remitos?.[part.warehouse] || await nextRemitoNumber();
@@ -129,17 +138,18 @@ export async function applyStockMovement(item: Doc, input: MovementInput, sessio
       levels[part.warehouse] = round(levels[part.warehouse] - part.quantity);
       // Sale primero lo de la empresa de la obra; el material puede ser de la otra (CUIT consumidor ≠ propietario).
       const ownerParts = takeOwners(owners, part.warehouse, part.quantity, quote?.company);
-      const expense = await Expense.create({
+      // El costo se carga a la obra. Lo que va a un bien de uso no es de ninguna obra: queda en el movimiento y en la ficha del bien.
+      const expense = work ? await Expense.create({
         workId: work._id, number: remito,
         description: `${part.quantity} ${item.unit} de ${item.name} entregados en obra (${warehouseLabel(part.warehouse)}, remito ${remito})`,
         category: "materiales", amountCents: totalCents, issueDate: date, status: "pendiente",
-      });
+      }) : null;
       created.push({
-        kind: "egreso", quantity: part.quantity, warehouse: part.warehouse, workId: work._id, remito, destinationLabel, quoteNumber: quote?.number, ownerParts,
-        unitCostCents: item.avgCostCents, totalCents, expenseId: expense._id, salesRemitoId: input.salesRemitoId, reference: input.reference || remito, note: input.note || destinationLabel, ticket: input.ticket, ...who,
+        kind: "egreso", quantity: part.quantity, warehouse: part.warehouse, workId: work?._id, assetId: asset?._id, remito, destinationLabel, quoteNumber: quote?.number, ownerParts,
+        unitCostCents: item.avgCostCents, totalCents, expenseId: expense?._id, salesRemitoId: input.salesRemitoId, reference: input.reference || remito, note: input.note || destinationLabel, ticket: input.ticket, ...who,
       });
     }
-    consumed = { workId: work._id, quoteId: work.quoteId, quantity: round(parts.reduce((total, part) => total + part.quantity, 0)) };
+    if (work) consumed = { workId: work._id, quoteId: work.quoteId, quantity: round(parts.reduce((total, part) => total + part.quantity, 0)) };
   }
 
   if (input.kind === "transferencia") {
