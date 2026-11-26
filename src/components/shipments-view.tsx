@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Paperclip, Plus, Trash2, Truck, X } from "lucide-react";
 import { dateTime, money, qty } from "@/lib/format";
 import { WAREHOUSES, warehouseLabel, type WarehouseKey } from "@/lib/warehouses";
@@ -12,13 +12,13 @@ import { StockPicker, type PickedItem } from "@/components/stock-picker";
 type Line = { stockItemId: string; name: string; code?: string; unit: string; quantity: number; declaredUnitCents: number; declaredCents: number };
 type Shipment = {
   _id: string; number: string; company?: CompanyKey; from: WarehouseKey; destination: string; receiver?: string; carrier: string; packages?: number; pallets?: number;
-  workId?: string; note?: string; lines: Line[]; declaredCents: number; status: "despachado" | "con_guia" | "anulado"; sentAt: string; sentByName?: string;
+  workId?: string; salesRemitoId?: string; salesRemitoNumber?: string; note?: string; lines: Line[]; declaredCents: number; status: "despachado" | "con_guia" | "anulado"; sentAt: string; sentByName?: string;
   trackingNumber?: string; trackingFiles?: Array<{ path: string; name?: string }>; trackingAt?: string; trackingByName?: string; cancelReason?: string;
 };
 
 const statusLabels: Record<Shipment["status"], string> = { despachado: "Despachado, falta la guía", con_guia: "Con guía", anulado: "Anulado" };
 const statusClass: Record<Shipment["status"], string> = { despachado: "transfer-en_transito", con_guia: "transfer-recibida", anulado: "" };
-const DEFAULT_CARRIERS = ["Expreso Demonte", "Correo Argentino", "Mercado Libre (Mercado Envíos)"];
+export const DEFAULT_CARRIERS = ["Expreso Demonte", "Correo Argentino", "Mercado Libre (Mercado Envíos)"];
 
 function pdfData(shipment: Shipment, workLabel?: string): ShipmentPdfData {
   return { ...shipment, workLabel, lines: shipment.lines };
@@ -45,6 +45,12 @@ export function ShipmentsView({ canEdit }: { canEdit: boolean }) {
   const [notice, setNotice] = useState("");
   const [creating, setCreating] = useState(false);
   const [tracking, setTracking] = useState<Shipment | null>(null);
+  // El historial y el remito de venta llegan con ?buscar=<número>: se muestra ese envío.
+  const [only, setOnly] = useState("");
+  useEffect(() => {
+    const initial = new URLSearchParams(window.location.search).get("buscar");
+    if (initial) { const timer = window.setTimeout(() => setOnly(initial), 0); return () => window.clearTimeout(timer); }
+  }, []);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/shipments");
@@ -55,32 +61,36 @@ export function ShipmentsView({ canEdit }: { canEdit: boolean }) {
   useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, [load]);
 
   async function cancel(shipment: Shipment) {
-    const reason = prompt(`¿Por qué se anula el envío ${shipment.number}? El material vuelve al ${warehouseLabel(shipment.from)}.`);
+    // El envío de una venta no movió stock: el material lo devuelve el remito de venta.
+    const sale = Boolean(shipment.salesRemitoId);
+    const reason = prompt(sale ? `¿Por qué se anula el envío ${shipment.number}? El remito de venta ${shipment.salesRemitoNumber || ""} sigue como está.` : `¿Por qué se anula el envío ${shipment.number}? El material vuelve al ${warehouseLabel(shipment.from)}.`);
     if (!reason) return;
     const response = await fetch(`/api/shipments/${shipment._id}/cancel`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }) });
     const body = await response.json();
     if (!response.ok) return setError(body.error || "No se pudo anular");
-    setNotice(`Envío ${shipment.number} anulado: el material volvió al ${warehouseLabel(shipment.from)}.`);
+    setNotice(sale ? `Envío ${shipment.number} anulado. El remito de venta ${shipment.salesRemitoNumber || ""} no cambió.` : `Envío ${shipment.number} anulado: el material volvió al ${warehouseLabel(shipment.from)}.`);
     void load();
   }
 
   const missing = (rows || []).filter(row => row.status === "despachado");
+  const visible = useMemo(() => (rows || []).filter(row => !only || row.number === only), [rows, only]);
 
   return <>
     <div className="page-heading"><div>
       <p className="eyebrow">STOCK Y LOGÍSTICA</p>
       <h1>Envíos por transporte</h1>
-      <p>Encomiendas que salen por un transporte (Expreso Demonte, Correo Argentino, Mercado Libre). Sale con remito y valor declarado, nadie confirma la llegada y después se carga la guía.</p>
+      <p>Encomiendas que salen por un transporte (Expreso Demonte, Correo Argentino, Mercado Libre). Sale con remito y valor declarado, nadie confirma la llegada y después se carga la guía. Una venta se manda desde su remito, en Ventas › Remitos de venta.</p>
     </div>{canEdit && <button className="primary-btn" onClick={() => setCreating(true)}><Plus size={18} /> Nuevo envío</button>}</div>
     {error && <div className="notice error">{error}</div>}
     {notice && <div className="notice success" role="status">{notice}</div>}
+    {only && <div className="notice">Se muestra el envío {only}. <button type="button" className="link-btn" onClick={() => setOnly("")}>Ver todos</button></div>}
     {missing.length > 0 && <div className="notice warning">{missing.length} {missing.length === 1 ? "envío no tiene" : "envíos no tienen"} cargada la guía del transporte.</div>}
     <section className="table-panel">
-      {rows === null ? <div className="loading-state">Cargando…</div> : !rows.length ? <div className="empty-state"><p>Todavía no hay envíos.</p></div>
+      {rows === null ? <div className="loading-state">Cargando…</div> : !visible.length ? <div className="empty-state"><p>{only ? "No se encontró ese envío." : "Todavía no hay envíos."}</p></div>
         : <div className="table-scroll"><table><thead><tr><th>Remito</th><th>Salió</th><th>Destino</th><th>Transporte</th><th>Materiales</th><th>Valor declarado</th><th>Estado</th><th /></tr></thead><tbody>
-          {rows.map(row => <tr key={row._id}>
-            <td data-label="Remito"><b>{row.number}</b></td>
-            <td data-label="Salió">{dateTime(row.sentAt)}<small className="tracking-sub">{row.sentByName} · {warehouseLabel(row.from)}</small></td>
+          {visible.map(row => <tr key={row._id}>
+            <td data-label="Remito"><b>{row.number}</b>{row.salesRemitoNumber && <small className="tracking-sub">Venta · <a href={`/app/remitos?buscar=${encodeURIComponent(row.salesRemitoNumber)}`}>remito {row.salesRemitoNumber}</a></small>}</td>
+            <td data-label="Salió">{dateTime(row.sentAt)}<small className="tracking-sub">{row.sentByName} · {row.salesRemitoId ? "ya salió con el remito de venta" : warehouseLabel(row.from)}</small></td>
             <td data-label="Destino">{row.destination}{(row.receiver || (row.workId && workLabels[row.workId])) && <small className="tracking-sub">{[row.receiver, row.workId && workLabels[row.workId] ? `Obra ${workLabels[row.workId]}` : ""].filter(Boolean).join(" · ")}</small>}</td>
             <td data-label="Transporte">{row.carrier}<small className="tracking-sub">{[row.packages ? `${row.packages} bultos` : "", row.pallets ? `${row.pallets} pallets` : ""].filter(Boolean).join(" · ")}</small></td>
             <td data-label="Materiales"><ul className="transfer-lines">{row.lines.map(line => <li key={line.stockItemId}>{qty(line.quantity)} {line.unit} · {line.name}</li>)}</ul></td>
@@ -91,7 +101,7 @@ export function ShipmentsView({ canEdit }: { canEdit: boolean }) {
             <td className="row-actions">
               <button className="row-action-wide" title="Remito de envío en PDF" onClick={() => { void downloadShipmentPdf(pdfData(row, row.workId ? workLabels[row.workId] : undefined)); }}><FileText size={15} /> Remito</button>
               {canEdit && row.status !== "anulado" && <button className={`row-action-wide${row.status === "despachado" ? " approve" : ""}`} onClick={() => setTracking(row)}><Paperclip size={15} /> {row.status === "despachado" ? "Cargar guía" : "Cambiar guía"}</button>}
-              {canEdit && row.status === "despachado" && <button title="Anular: el material vuelve al depósito" onClick={() => { void cancel(row); }}><Trash2 size={16} /></button>}
+              {canEdit && row.status === "despachado" && <button title={row.salesRemitoId ? "Anular el envío: el remito de venta no cambia" : "Anular: el material vuelve al depósito"} onClick={() => { void cancel(row); }}><Trash2 size={16} /></button>}
             </td>
           </tr>)}
         </tbody></table></div>}

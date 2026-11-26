@@ -261,7 +261,12 @@ Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisio
   - Con obra, el costo se le carga como en la salida a obra.
 - **Nadie confirma la llegada**: el envío queda "Despachado, falta la guía". Con **Cargar guía** se carga el N° de guía o el remito del transporte, con una foto o PDF opcional, y pasa a "Con guía".
 - **Anular** devuelve el material al depósito (movimiento `envio_anulado`) y saca el costo de la obra. Sólo se puede mientras no tenga guía.
-- Pendiente (ver `docs/plan-envios-y-traslados.md`): el envío desde un remito de venta y la salida a un utilitario.
+- **Envío de una venta**: en Ventas › Remitos de venta, el botón **Enviar por transporte** hace el `ENV-n` con los materiales del remito y el valor declarado, que arranca con el precio del remito (`sendSaleShipment`, `POST /api/remitos/[id]/shipment`).
+  - No mueve stock: el remito de venta ya lo bajó. Sirve para Correo Argentino y Mercado Libre, y para las ventas del Mostrador.
+  - El remito muestra "Enviado · ENV-n" y la guía. Un remito tiene un solo envío vigente, y con un envío vigente no se anula.
+  - Anular el envío de una venta no devuelve stock. Lo despacha quien puede escribir en Stock o en Facturas de venta.
+  - Ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`.
+- Pendiente (ver `docs/plan-envios-y-traslados.md`): la salida a un utilitario.
 
 ## Backups
 

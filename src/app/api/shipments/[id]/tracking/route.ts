@@ -18,13 +18,14 @@ const schema = z.object({
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    if (!canWrite(session, "stock")) throw new Error("FORBIDDEN");
     const { id } = await context.params;
     if (!isValidObjectId(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message || "Datos inválidos" }, { status: 400 });
     await connectDB();
-    const before = await Shipment.findById(id).lean();
+    const before = await Shipment.findById(id).lean<{ salesRemitoId?: unknown }>();
+    // El envío de una venta también lo maneja quien vende.
+    if (!canWrite(session, "stock") && !(before?.salesRemitoId && canWrite(session, "invoices"))) throw new Error("FORBIDDEN");
     const after = await setShipmentTracking(id, parsed.data, session);
     await audit(session, "update", "shipments", id, before, after, request.headers.get("x-forwarded-for") || undefined);
     return Response.json(after);

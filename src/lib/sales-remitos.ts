@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { z } from "zod";
-import { Client, Expense, Invoice, SalesRemito, StockItem, Work } from "./models";
+import { Client, Expense, Invoice, SalesRemito, Shipment, StockItem, Work } from "./models";
 import { applyStockMovement, nextRemitoNumber, StockError } from "./stock-service";
 import { levelsOf } from "./stock-levels";
 import { HttpError } from "./api";
@@ -172,6 +172,8 @@ export async function cancelSalesRemito(remitoId: string, reason: string, sessio
   if (!remito || remito.kind !== "salida") throw new HttpError("Remito no encontrado");
   if (!["pendiente", "entregado"].includes(remito.status)) throw new HttpError(remito.status === "facturado" || remito.status === "parcial" ? "El remito ya está facturado: primero hay que anular la factura" : "El remito ya está anulado");
   if (await SalesRemito.exists({ returnsId: remito._id, status: { $ne: "anulado" } })) throw new HttpError("El remito tiene devoluciones cargadas: no se anula");
+  const shipment = await Shipment.findOne({ salesRemitoId: remito._id, status: { $ne: "anulado" } }).select("number").lean<{ number: string }>();
+  if (shipment) throw new HttpError(`El remito salió por transporte con el envío ${shipment.number}: primero anulá ese envío en Stock y logística › Envíos`);
   const claimed = await SalesRemito.updateOne({ _id: remito._id, status: remito.status }, { $set: { status: "anulado", note: [remito.note, `Anulado por ${session.name}: ${reason}`].filter(Boolean).join(" · ") } });
   if (!claimed.modifiedCount) throw new HttpError("El remito ya cambió de estado");
   for (const line of remito.lines as Array<{ stockItemId: Types.ObjectId; quantity: number; warehouse?: WarehouseKey; ownerParts?: OwnerPart[] }>) {
@@ -331,11 +333,14 @@ export async function listSalesRemitos(filter: { status?: string; clientId?: str
   if (filter.clientId) query.clientId = filter.clientId;
   if (filter.kind && filter.status !== "por_facturar") query.kind = filter.kind;
   const remitos = await SalesRemito.find(query).sort({ createdAt: -1 }).limit(300).lean<Lean[]>();
-  const [clients, invoices, works] = await Promise.all([
+  const [clients, invoices, works, shipments] = await Promise.all([
     Client.find({ _id: { $in: remitos.map(remito => remito.clientId) } }).select("name cuit address").lean<Lean[]>(),
     Invoice.find({ _id: { $in: remitos.flatMap(remito => (remito.invoiceIds as unknown[]) || []) } }).select("number voucherType status").lean<Lean[]>(),
     Work.find({ _id: { $in: remitos.map(remito => remito.workId).filter(Boolean) } }).select("code name").lean<Lean[]>(),
+    // El envío por transporte vigente de cada remito, si salió por Correo, Mercado Libre o un expreso.
+    Shipment.find({ salesRemitoId: { $in: remitos.map(remito => remito._id) }, status: { $ne: "anulado" } }).select("number status carrier trackingNumber salesRemitoId").lean<Lean[]>(),
   ]);
+  const shipmentByRemito = new Map(shipments.map(shipment => [String(shipment.salesRemitoId), shipment]));
   const clientById = new Map(clients.map(client => [String(client._id), client]));
   const invoiceById = new Map(invoices.map(invoice => [String(invoice._id), invoice]));
   const workById = new Map(works.map(work => [String(work._id), work]));
@@ -343,6 +348,7 @@ export async function listSalesRemitos(filter: { status?: string; clientId?: str
     ...remito,
     client: clientById.get(String(remito.clientId)) || null,
     work: workById.get(String(remito.workId)) || null,
+    shipment: shipmentByRemito.get(String(remito._id)) || null,
     invoices: ((remito.invoiceIds as unknown[]) || []).map(invoiceId => invoiceById.get(String(invoiceId))).filter(Boolean),
   }));
 }

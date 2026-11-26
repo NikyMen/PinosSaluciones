@@ -1,0 +1,400 @@
+<title>Plan de pendientes de Pino Gestión</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: banda azul de encabezado, índice de pendientes y una ficha por pendiente con su columna de datos a la izquierda */
+:root {
+  --bg: #f3f6fa;
+  --paper: #ffffff;
+  --ink: #172235;
+  --muted: #5f6b7e;
+  --line: #dfe5ec;
+  --navy: #00305b;
+  --navy-soft: #e6eef6;
+  --red: #c8000f;
+  --red-soft: #fff0f1;
+  --ok: #16815d;
+  --ok-soft: #e3f4ed;
+  --warn: #9a6400;
+  --warn-soft: #fff4dc;
+  --band: #00305b;
+  --band-ink: #ffffff;
+  --band-muted: #b9cbe0;
+  --btn-ghost: #ffffff;
+  --font-display: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1722; --paper: #17212f; --ink: #e5ebf3; --muted: #9aa7b9; --line: #2a3747;
+    --navy: #8fb8e6; --navy-soft: #1d2d42; --red: #ff6b74; --red-soft: #3a1c22;
+    --ok: #5fd0a5; --ok-soft: #173329; --warn: #f0c15a; --warn-soft: #3a2f16;
+    --band: #0a2440; --band-ink: #f2f6fb; --band-muted: #9fb6d1; --btn-ghost: #1d2a3b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1722; --paper: #17212f; --ink: #e5ebf3; --muted: #9aa7b9; --line: #2a3747;
+  --navy: #8fb8e6; --navy-soft: #1d2d42; --red: #ff6b74; --red-soft: #3a1c22;
+  --ok: #5fd0a5; --ok-soft: #173329; --warn: #f0c15a; --warn-soft: #3a2f16;
+  --band: #0a2440; --band-ink: #f2f6fb; --band-muted: #9fb6d1; --btn-ghost: #1d2a3b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.15; margin: 0; }
+p { margin: 0; }
+a { color: var(--navy); }
+code, .mono { font-family: var(--font-mono); font-size: .86em; }
+
+.band { background: var(--band); color: var(--band-ink); margin-top: calc(-1 * env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); }
+.band .wrap { padding-block: 2.6rem 2.2rem; display: grid; gap: .9rem; }
+.eyebrow { font-family: var(--font-mono); font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--band-muted); }
+.band h1 { font-size: clamp(1.8rem, 4.5vw, 2.7rem); font-weight: 800; }
+.band h1 span { color: #ff5a63; }
+.band p.lead { max-width: 62ch; color: var(--band-muted); font-size: 1.05rem; }
+
+main.wrap { padding-block: 2rem 4rem; display: grid; gap: 2.4rem; }
+.section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-bottom: 2px solid var(--ink); padding-bottom: .5rem; }
+.section-title h2 { font-size: 1.35rem; }
+.section-title small { color: var(--muted); }
+
+/* Resumen */
+.table-scroll { overflow-x: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: .92rem; min-width: 720px; }
+th, td { text-align: left; padding: .7rem .85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td.n { font-family: var(--font-mono); color: var(--muted); width: 2.5rem; }
+td a { font-weight: 600; text-decoration: none; }
+td a:hover { text-decoration: underline; }
+
+.pill { display: inline-block; font-size: .72rem; font-weight: 600; padding: .12rem .55rem; border-radius: 99px; white-space: nowrap; }
+.pill.s { background: var(--ok-soft); color: var(--ok); }
+.pill.m { background: var(--navy-soft); color: var(--navy); }
+.pill.l { background: var(--red-soft); color: var(--red); }
+.pill.w { background: var(--warn-soft); color: var(--warn); }
+
+/* Ficha de cada pendiente */
+.item { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; display: grid; grid-template-columns: 240px 1fr; overflow: hidden; scroll-margin-top: 1rem; }
+.item aside { background: var(--navy-soft); padding: 1.4rem 1.2rem; display: grid; align-content: start; gap: 1rem; }
+.item aside .code { font-family: var(--font-mono); font-size: 2rem; color: var(--navy); line-height: 1; }
+.meta { display: grid; gap: .1rem; }
+.meta dt { font-size: .7rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+.meta dd { margin: 0; font-weight: 500; }
+.item .body { padding: 1.4rem 1.5rem 1.6rem; display: grid; gap: 1.15rem; min-width: 0; }
+.item h2 { font-size: 1.4rem; }
+.label { font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 600; margin-bottom: .35rem; }
+.today { border-left: 3px solid var(--line); padding-left: .9rem; color: var(--muted); }
+ul.plain { margin: 0; padding-left: 1.1rem; display: grid; gap: .35rem; }
+
+.path { font-family: var(--font-mono); font-size: .78rem; color: var(--muted); }
+.buttons { display: grid; gap: .7rem; }
+.b { display: grid; grid-template-columns: minmax(0, 230px) 1fr; gap: .4rem 1rem; align-items: start; padding: .75rem .8rem; border: 1px solid var(--line); border-radius: 10px; }
+.b .where { grid-column: 1 / -1; }
+.btn { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; font-size: .86rem; padding: .45rem .8rem; border-radius: 8px; border: 1px solid var(--navy); white-space: nowrap; justify-self: start; }
+.btn.primary { background: var(--navy); color: var(--paper); }
+.btn.ghost { background: var(--btn-ghost); color: var(--navy); }
+.btn.chip { border-radius: 99px; font-size: .78rem; padding: .25rem .7rem; border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+.btn.field { border-style: dashed; background: transparent; color: var(--ink); border-color: var(--muted); font-weight: 500; }
+.b p { color: var(--ink); }
+.rules { background: var(--bg); border-radius: 10px; padding: .9rem 1rem; }
+.note { font-size: .9rem; color: var(--muted); }
+
+.qgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1rem; }
+.q { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.2rem; display: grid; gap: .7rem; align-content: start; }
+.q h3 { font-size: 1.05rem; }
+.q ol { margin: 0; padding-left: 1.2rem; display: grid; gap: .6rem; }
+.q li span { display: block; color: var(--muted); font-size: .88rem; }
+
+.steps { display: grid; gap: .5rem; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.3rem; }
+.steps li { padding-left: .2rem; }
+footer { color: var(--muted); font-size: .85rem; }
+
+@media (max-width: 760px) {
+  .item { grid-template-columns: 1fr; }
+  .item aside { grid-template-columns: auto 1fr 1fr; align-items: center; }
+  .b { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .item aside { grid-template-columns: 1fr 1fr; }
+  .item aside .code { grid-column: 1 / -1; }
+  .item .body { padding: 1.1rem 1rem 1.3rem; }
+}
+</style>
+
+<header class="band">
+  <div class="wrap">
+    <div class="eyebrow">Pino Gestión · Plan de trabajo · 26/11/2026</div>
+    <h1>Lo que quedó pendiente <span>y cómo lo voy a hacer</span></h1>
+    <p class="lead">Lo que sigue abierto de la ronda del 10/11 con Cristian, Jorge, Fede y Fer, y de los pedidos por WhatsApp. Hay cuatro cosas para programar, una que espera el Excel de Cristian y una que sólo necesita una confirmación. Para cada una va dónde aparece, qué botón nuevo se suma y qué hace.</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <div class="section-title"><h2>Resumen y orden de trabajo</h2><small>En el orden en que los haría</small></div>
+    <div class="table-scroll" style="margin-top:1rem">
+      <table>
+        <thead><tr><th>#</th><th>Pendiente</th><th>Lo pidió</th><th>Dónde aparece</th><th>Tamaño</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr><td class="n">1</td><td><a href="#envio-venta">Envío por transporte de un remito de venta</a></td><td>Jorge y Ventas (J6)</td><td>Ventas › Remitos de venta</td><td><span class="pill s">Chico</span></td><td>Listo para hacer</td></tr>
+          <tr><td class="n">2</td><td><a href="#notas-venta">Notas de crédito y débito sin referencia y saldo a favor del cliente</a></td><td>Fer (V2)</td><td>Ventas › Facturas de venta y Cobranzas</td><td><span class="pill l">Grande</span></td><td>Listo para hacer</td></tr>
+          <tr><td class="n">3</td><td><a href="#planificar-obra">Planificar la obra al aprobar la cotización</a></td><td>Fede (F8)</td><td>Cotizaciones y Obras</td><td><span class="pill m">Mediano</span></td><td>Listo para hacer</td></tr>
+          <tr><td class="n">4</td><td><a href="#bien-de-uso">Salida de materiales a un utilitario o equipo</a></td><td>Jorge (J2)</td><td>Stock › Caja y Bienes de uso</td><td><span class="pill m">Mediano</span></td><td>Listo para hacer</td></tr>
+          <tr><td class="n">5</td><td><a href="#excel-salon">Productos del Salón desde el Excel</a></td><td>Cristian (C6)</td><td>Stock › Importar</td><td><span class="pill s">Chico</span></td><td><span class="pill w">Espera el Excel</span></td></tr>
+          <tr><td class="n">6</td><td><a href="#rubros">Lista definitiva de rubros</a></td><td>Fer</td><td>Perfil › Configuración</td><td><span class="pill s">Sin programar</span></td><td><span class="pill w">Espera a Fer</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:.7rem">Primero va el envío de una venta porque es chico y Ventas lo usa todos los días para Correo Argentino y Mercado Libre. Después, las notas de crédito, que tocan importes y ARCA y llevan más pruebas.</p>
+  </section>
+
+  <!-- 1 -->
+  <article class="item" id="envio-venta">
+    <aside>
+      <div class="code">J6</div>
+      <dl class="meta"><dt>Lo pidió</dt><dd>Jorge y Ventas</dd></dl>
+      <dl class="meta"><dt>Tamaño</dt><dd><span class="pill s">Chico</span></dd></dl>
+      <dl class="meta"><dt>Permiso</dt><dd>Ventas</dd></dl>
+    </aside>
+    <div class="body">
+      <h2>1. Envío por transporte de un remito de venta</h2>
+      <div class="today"><div class="label">Cómo está hoy</div>
+        <p>Stock › Envíos ya hace el remito de envío <code>ENV-n</code>, pero siempre sale de un depósito y baja el stock. Una venta ya bajó el stock con su remito, así que hoy no hay forma de mandarla por Correo Argentino o Mercado Libre sin descontar el material dos veces.</p></div>
+      <div>
+        <div class="label">Botones y pantallas nuevas</div>
+        <div class="buttons">
+          <div class="b"><span class="path where">Ventas › Remitos de venta › cada fila, al lado de PDF y Devolución</span>
+            <span class="btn primary">Enviar por transporte</span>
+            <p>Abre el formulario de envío ya completo con el cliente como destino (y su domicilio), quién recibe, los materiales y cantidades del remito (no se cambian) y el valor declarado, que arranca con el total del remito y se puede editar por renglón. Falta elegir el transporte (Correo Argentino, Mercado Libre, Expreso Demonte o escribir otro), los bultos y una nota.</p></div>
+          <div class="b"><span class="path where">En ese formulario</span>
+            <span class="btn primary">Despachar</span>
+            <p>Crea el <code>ENV-n</code> atado al remito, <strong>sin mover stock</strong>, y baja el PDF del remito de envío con el valor declarado y la firma de quien entrega.</p></div>
+          <div class="b"><span class="path where">Ventas › Remitos de venta › en la fila, después de despachar</span>
+            <span class="btn chip">Enviado · ENV-12</span>
+            <p>Muestra que el remito ya salió y abre el envío. Cuando se carga la guía, cambia a <span class="mono">Guía 123456</span>.</p></div>
+          <div class="b"><span class="path where">Stock › Envíos</span>
+            <span class="btn ghost">Cargar guía · PDF · Anular</span>
+            <p>Siguen igual. La fila muestra como origen "Venta · remito R-…". Anular un envío de una venta anula sólo el envío: el material no vuelve al depósito, porque eso lo hace la devolución o la anulación del remito.</p></div>
+        </div>
+      </div>
+      <div class="rules"><div class="label">Reglas</div>
+        <ul class="plain">
+          <li>Un remito tiene un solo envío vigente. Si se anula, se puede hacer otro.</li>
+          <li>Para anular un remito de venta que tiene un envío, primero hay que anular el envío.</li>
+          <li>Sirve también para las ventas del Mostrador: su remito aparece en Remitos de venta con el mismo botón.</li>
+          <li>El envío aparece en el Historial del hilo de documentos, después del remito.</li>
+        </ul></div>
+    </div>
+  </article>
+
+  <!-- 2 -->
+  <article class="item" id="notas-venta">
+    <aside>
+      <div class="code">V2</div>
+      <dl class="meta"><dt>Lo pidió</dt><dd>Fer</dd></dl>
+      <dl class="meta"><dt>Tamaño</dt><dd><span class="pill l">Grande</span></dd></dl>
+      <dl class="meta"><dt>Permiso</dt><dd>Ventas y Tesorería</dd></dl>
+    </aside>
+    <div class="body">
+      <h2>2. Notas de crédito y débito sin referencia, y saldo a favor del cliente</h2>
+      <div class="today"><div class="label">Cómo está hoy</div>
+        <p>En Facturas de venta ya se hacen notas de crédito y débito A y B, en ARCA o cargadas de Tango, pero siempre atadas a una factura del mismo cliente y la misma letra. La nota de crédito no puede ser por más de lo que se debe de esa factura, porque el saldo a favor del cliente todavía no existe. En Compras sí está la opción "sin referencia".</p></div>
+      <div>
+        <div class="label">Botones y pantallas nuevas</div>
+        <div class="buttons">
+          <div class="b"><span class="path where">Ventas › Facturas de venta › Nueva, eligiendo Nota de crédito o Nota de débito</span>
+            <span class="btn field">Factura que corrige: Con referencia · Sin referencia</span>
+            <p>Lo mismo que en Compras. <strong>Con referencia</strong> se elige la factura, como hoy. <strong>Sin referencia</strong> no pide factura: la nota de crédito queda a favor del cliente y la de débito queda como una deuda más, pendiente de cobro.</p></div>
+          <div class="b"><span class="path where">En la nota sin referencia que se emite en ARCA</span>
+            <span class="btn field">Período que corrige: desde · hasta</span>
+            <p>ARCA pide una factura asociada o el período que la nota corrige. Sin factura, se informa el período, que arranca con el mes de la fecha y se puede cambiar.</p></div>
+          <div class="b"><span class="path where">Ventas › Facturas de venta, arriba, junto a Emitidas y Pendientes</span>
+            <span class="btn chip">A favor de clientes · $ 85.000,00</span>
+            <p>Un recuadro nuevo con el total a favor de los clientes. Al tocarlo, la lista de notas con saldo y de qué cliente es cada una.</p></div>
+          <div class="b"><span class="path where">En la fila de cada nota de crédito con saldo</span>
+            <span class="btn ghost">Aplicar a una factura</span>
+            <p>Para compensar sin que entre plata: se elige una factura pendiente del mismo cliente y la misma empresa, y el importe (todo o una parte). Baja lo que se debe de la factura y el saldo de la nota, y queda en el historial de las dos.</p></div>
+          <div class="b"><span class="path where">Ventas › Cobranzas y recibos › Nuevo recibo, al elegir el cliente</span>
+            <span class="btn ghost">Saldo a favor $ 85.000,00 · Usar</span>
+            <p>Si el cliente paga una parte y el resto lo cubre la nota, la nota entra al recibo como un medio más ("Nota de crédito A 0003-…"). El recibo y su PDF muestran lo cobrado y lo que se compensó.</p></div>
+          <div class="b"><span class="path where">Ventas › Remitos de venta › después de registrar una devolución (opcional)</span>
+            <span class="btn ghost">Hacer nota de crédito</span>
+            <p>Abre la nota de crédito con los materiales devueltos y la factura de ese remito ya elegidos, para no cargarlos dos veces.</p></div>
+        </div>
+      </div>
+      <div class="rules"><div class="label">Reglas</div>
+        <ul class="plain">
+          <li>Una nota de crédito con referencia por más de lo que se debe de la factura ya no se rechaza: lo que sobra queda a favor del cliente y el sistema lo avisa antes de guardar.</li>
+          <li>El saldo a favor es por cliente y por empresa: una nota de Constructora no paga una factura de TV Pino.</li>
+          <li>Una nota con CAE no se edita (como hoy). Para borrar una nota sin CAE que ya se aplicó, primero se deshace la aplicación.</li>
+          <li>El libro IVA y la cuenta del cliente las restan igual que hoy.</li>
+        </ul></div>
+    </div>
+  </article>
+
+  <!-- 3 -->
+  <article class="item" id="planificar-obra">
+    <aside>
+      <div class="code">F8</div>
+      <dl class="meta"><dt>Lo pidió</dt><dd>Fede</dd></dl>
+      <dl class="meta"><dt>Tamaño</dt><dd><span class="pill m">Mediano</span></dd></dl>
+      <dl class="meta"><dt>Permiso</dt><dd>Obras</dd></dl>
+    </aside>
+    <div class="body">
+      <h2>3. Planificar la obra al aprobar la cotización</h2>
+      <div class="today"><div class="label">Cómo está hoy</div>
+        <p>Al aprobar la cotización, Fede recibe "Planificar la obra: asigná las fechas y el personal", pero el aviso lo lleva a la cotización. La obra se crea con "Pasar a obra", que pide permiso de Cotizaciones y sólo carga código, nombre e inicio. La duración, el responsable y el personal se cargan después, cada uno en otra parte de la obra.</p></div>
+      <div>
+        <div class="label">Botones y pantallas nuevas</div>
+        <div class="buttons">
+          <div class="b"><span class="path where">Cotizaciones › cotización aprobada (al lado de Pasar a obra) y Obras › obra Pendiente de inicio</span>
+            <span class="btn primary">Planificar obra</span>
+            <p>Abre un solo panel con todo lo que necesita la obra para arrancar. El aviso de Fede lleva directo acá.</p></div>
+          <div class="b"><span class="path where">En el panel</span>
+            <span class="btn field">Inicio previsto · Duración en días hábiles · Fin previsto</span>
+            <p>Se elige el inicio en el calendario y la duración. El fin se calcula solo, de lunes a viernes y sin feriados. También al revés: se elige el fin y se calcula la duración.</p></div>
+          <div class="b"><span class="path where">En el panel</span>
+            <span class="btn field">Responsable de la obra</span>
+            <p>Un usuario del sistema, el que la sigue.</p></div>
+          <div class="b"><span class="path where">En el panel</span>
+            <span class="btn field">Personal + Agregar</span>
+            <p>Se eligen personas de los legajos, con su jornal o valor hora (se puede cambiar para esta obra, como hoy). Si alguien ya está en otra obra en esas fechas, avisa pero deja guardar.</p></div>
+          <div class="b"><span class="path where">Al pie del panel</span>
+            <span class="btn primary">Guardar planificación</span>
+            <p>Si la cotización todavía no tiene obra, la crea con su código, como Pasar a obra. Le pone las fechas, el responsable y el personal, la deja Pendiente de inicio, da por resuelto el aviso de Fede y les avisa a Compras y Administración la fecha de inicio para que preparen materiales y anticipo.</p></div>
+          <div class="b"><span class="path where">Obras › listado</span>
+            <span class="btn chip">Sin planificar</span>
+            <p>Una marca en las obras que no tienen inicio o personal, y un filtro con el mismo nombre arriba de la lista.</p></div>
+        </div>
+      </div>
+      <div class="rules"><div class="label">Reglas</div>
+        <ul class="plain">
+          <li>Alcanza con permiso de Obras: Fede no necesita permiso de Cotizaciones para crear la obra desde la planificación.</li>
+          <li>La planificación se puede cambiar después con el mismo botón. Cada cambio queda en la bitácora.</li>
+          <li>Pasar a obra sigue estando para quien la quiera crear sin planificar.</li>
+        </ul></div>
+    </div>
+  </article>
+
+  <!-- 4 -->
+  <article class="item" id="bien-de-uso">
+    <aside>
+      <div class="code">J2</div>
+      <dl class="meta"><dt>Lo pidió</dt><dd>Jorge</dd></dl>
+      <dl class="meta"><dt>Tamaño</dt><dd><span class="pill m">Mediano</span></dd></dl>
+      <dl class="meta"><dt>Permiso</dt><dd>Stock</dd></dl>
+    </aside>
+    <div class="body">
+      <h2>4. Salida de materiales a un utilitario o equipo</h2>
+      <div class="today"><div class="label">Cómo está hoy</div>
+        <p>Lo comprado entra al Galpón o al Salón y sale a una obra desde Stock › Caja. La salida exige una obra, así que no hay forma de sacar repuestos, aceite o herramientas para una camioneta o una máquina. La ficha de cada bien de uso tiene sus mantenimientos, pero no ve materiales.</p></div>
+      <div>
+        <div class="label">Botones y pantallas nuevas</div>
+        <div class="buttons">
+          <div class="b"><span class="path where">Stock › Caja › Salida</span>
+            <span class="btn field">Destino: Obra · Bien de uso</span>
+            <p>Con <strong>Obra</strong> todo sigue como hoy. Con <strong>Bien de uso</strong> se elige el vehículo o equipo de la lista (sólo los que no están dados de baja), con su nombre y patente o número de serie.</p></div>
+          <div class="b"><span class="path where">Stock › Caja</span>
+            <span class="btn primary">Confirmar salida</span>
+            <p>Baja el stock del depósito elegido y saca el ticket <code>CJ-n</code> y el remito con "Bien de uso: Camioneta AB123CD". El costo queda cargado al bien y no a una obra.</p></div>
+          <div class="b"><span class="path where">Bienes de uso › ficha del bien</span>
+            <span class="btn ghost">Sacar materiales</span>
+            <p>Abre la Caja con ese bien ya elegido como destino.</p></div>
+          <div class="b"><span class="path where">Bienes de uso › ficha del bien, sección nueva</span>
+            <span class="btn field">Materiales usados</span>
+            <p>Fecha, material, cantidad, costo y comprobante <code>CJ-n</code> de cada salida, con el total del mes y del año. Al cargar un mantenimiento se pueden elegir las salidas que fueron para ese service.</p></div>
+          <div class="b"><span class="path where">Stock › Salidas</span>
+            <span class="btn field">Destino: Todos · Obras · Bienes de uso</span>
+            <p>Un filtro y una columna Destino en el registro de salidas.</p></div>
+        </div>
+      </div>
+      <div class="rules"><div class="label">Reglas</div>
+        <ul class="plain">
+          <li>Una salida tiene un solo destino. Cuatro productos que van a cuatro lugares son cuatro salidas, como hoy.</li>
+          <li>Lo que va a un bien de uso no suma en la rentabilidad de ninguna obra.</li>
+        </ul></div>
+    </div>
+  </article>
+
+  <!-- 5 -->
+  <article class="item" id="excel-salon">
+    <aside>
+      <div class="code">C6</div>
+      <dl class="meta"><dt>Lo pidió</dt><dd>Cristian</dd></dl>
+      <dl class="meta"><dt>Tamaño</dt><dd><span class="pill s">Chico</span></dd></dl>
+      <dl class="meta"><dt>Espera</dt><dd>El Excel de Cristian</dd></dl>
+    </aside>
+    <div class="body">
+      <h2>5. Productos del Salón de Ventas desde el Excel</h2>
+      <div class="today"><div class="label">Cómo está hoy</div>
+        <p>Stock ya tiene Importar con el botón Plantilla (nombre, código, código de barras, categoría, unidad, proveedor, precio de venta y cantidad). Los productos de Protex toman el precio de la lista vigente. Falta que Cristian mande su Excel. Mientras tanto, el precio se carga en la ficha o desde el Mostrador.</p></div>
+      <div>
+        <div class="label">Qué hago cuando llegue el Excel</div>
+        <div class="buttons">
+          <div class="b"><span class="path where">Stock › Importar</span>
+            <span class="btn field">Depósito · Empresa propietaria</span>
+            <p>Dos columnas más en la plantilla, para que la cantidad entre al Salón de Ventas y a nombre de Constructora (o de quien corresponda).</p></div>
+          <div class="b"><span class="path where">Stock › Importar, antes de confirmar</span>
+            <span class="btn primary">Revisar e importar</span>
+            <p>Muestra cuántos productos son nuevos, cuántos se actualizan y qué filas tienen error. Un producto que ya existe (mismo código o código de barras) se actualiza en vez de duplicarse. El precio queda en el historial de precios como "Importación".</p></div>
+        </div>
+      </div>
+      <p class="note">Si las columnas del Excel no coinciden con la plantilla, armo la correspondencia una vez y lo cargo yo, como se hizo con las cotizaciones de la planilla.</p>
+    </div>
+  </article>
+
+  <!-- 6 -->
+  <article class="item" id="rubros">
+    <aside>
+      <div class="code">R5</div>
+      <dl class="meta"><dt>Lo confirma</dt><dd>Fer</dd></dl>
+      <dl class="meta"><dt>Tamaño</dt><dd><span class="pill s">Sin programar</span></dd></dl>
+    </aside>
+    <div class="body">
+      <h2>6. Lista definitiva de rubros</h2>
+      <p>Hoy hay seis rubros: Trabajo en altura, Albañilería, Pintura interior, Pintura exterior, Impermeabilización y Poliuretano/Poliurea. La lista ya se edita desde Perfil › Configuración › Empresas y comprobantes, así que no hace falta programar nada. Sólo falta que Fer confirme los nombres y Gerencia los ajusta ahí.</p>
+    </div>
+  </article>
+
+  <section>
+    <div class="section-title"><h2>Preguntas antes de cerrar</h2><small>Mientras tanto, se programa con lo que dice "Hoy"</small></div>
+    <div class="qgrid" style="margin-top:1rem">
+      <div class="q"><h3>Para Jorge · envíos</h3>
+        <ol>
+          <li>¿Lo que va a Rosario es para una obra, para un cliente o queda en un depósito nuestro?<span>Hoy: sale del stock, con una obra opcional para cargarle el costo. Si queda como stock allá, hace falta un tercer depósito.</span></li>
+          <li>¿El valor declarado va con el costo o con el precio de venta?<span>Hoy: el último costo, editable. En el envío de una venta, el total del remito.</span></li>
+          <li>¿El remito de envío muestra el precio de cada renglón o sólo el total?<span>Hoy: los dos.</span></li>
+          <li>¿Qué otros transportes usan?<span>Hoy: Demonte, Correo Argentino y Mercado Libre, y se puede escribir otro.</span></li>
+        </ol></div>
+      <div class="q"><h3>Para Fer · notas de crédito</h3>
+        <ol>
+          <li>¿El saldo a favor sólo se descuenta de otra factura o también se le devuelve la plata al cliente?<span>El plan cubre descontarlo. Devolver la plata necesita un comprobante de reintegro y quedaría para después.</span></li>
+          <li>¿La nota de crédito de una devolución del Salón la hacen siempre ustedes o también el Mostrador?<span>El plan la deja en Facturas de venta, con el botón desde la devolución.</span></li>
+        </ol></div>
+      <div class="q"><h3>Para Fede · planificación</h3>
+        <ol>
+          <li>¿El personal se asigna para toda la obra o cada persona con sus propias fechas?<span>El plan lo asigna para toda la obra. Las horas de cada día siguen en el parte diario.</span></li>
+          <li>¿Quién más tiene que poder planificar, además de Fede y Gerencia?<span>El plan pide permiso de Obras.</span></li>
+        </ol></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title"><h2>Cómo lo entrego</h2></div>
+    <ol class="steps" style="margin-top:1rem">
+      <li>Un commit por punto, en la rama <code>feat/tesoreria-reunion-10-11</code>, en el orden del resumen.</li>
+      <li>Cada punto con pruebas de servidor, revisión de tipos y lint sin errores nuevos, y probado en la app local con datos de ejemplo.</li>
+      <li>Documentación al día: README, AGENTS, una decisión en <code>docs/decisiones/</code> y el estado en el acta del 10/11 (de ◐ a ✅ con la fecha).</li>
+      <li>Sin subir a producción hasta que lo pidas. Antes del deploy, el backup manual del README.</li>
+    </ol>
+  </section>
+
+  <footer>Armado a partir del acta del 10/11 (<code>docs/reuniones/2026-11-10-ronda-cristian-jorge-fede-fer.md</code>), el plan de etapas 3 a 6 y el plan de envíos y traslados, cruzados con el código al 26/11/2026.</footer>
+</main>

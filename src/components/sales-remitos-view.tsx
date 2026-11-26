@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileCheck2, FileText, PackageOpen, Plus, Trash2, Undo2, X } from "lucide-react";
+import { FileCheck2, FileText, PackageOpen, Plus, Trash2, Truck, Undo2, X } from "lucide-react";
 import { date, money, qty, todayIso } from "@/lib/format";
 import { COMPANIES, COMPANY_KEYS, companyOf, type CompanyKey } from "@/lib/companies";
 import { downloadRemitoPdf } from "@/lib/remito-pdf";
+import { downloadShipmentPdf } from "@/lib/shipment-pdf";
+import { DEFAULT_CARRIERS } from "@/components/shipments-view";
 import { invoiceLabel } from "@/lib/invoice-labels";
 import { invoicedQtyOf, remitoPendingCents } from "@/lib/remito-billing";
 import { DateInput, MoneyInput, SearchSelect, type Option } from "@/components/fields";
@@ -18,7 +20,9 @@ type Remito = {
   _id: string; number: string; kind: "salida" | "devolucion"; company: CompanyKey; clientId: string; date: string; status: "pendiente" | "parcial" | "facturado" | "entregado" | "anulado";
   lines: Line[]; totalCents: number; note?: string; userName?: string; returnsId?: string;
   work?: { _id: string; code: string; name: string } | null; receiverName?: string;
-  client: { name?: string; cuit?: string } | null; invoices: Array<{ _id: string; number?: string; voucherType?: string; status?: string }>;
+  client: { name?: string; cuit?: string; address?: string } | null; invoices: Array<{ _id: string; number?: string; voucherType?: string; status?: string }>;
+  // El envío por transporte vigente, si el remito salió por Correo, Mercado Libre o un expreso.
+  shipment?: { _id: string; number: string; status: "despachado" | "con_guia"; carrier?: string; trackingNumber?: string } | null;
 };
 
 const filters = [
@@ -51,6 +55,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
   const [notice, setNotice] = useState("");
   const [creating, setCreating] = useState(false);
   const [returning, setReturning] = useState<Remito | null>(null);
+  const [shipping, setShipping] = useState<Remito | null>(null);
   // El historial y otros links llegan con ?buscar=<número>: se muestra ese remito.
   const [only, setOnly] = useState("");
   useEffect(() => {
@@ -111,10 +116,12 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
             <td data-label="Factura"><span className={`company-badge ${row.company}`}>{companyOf(row.company).short}</span>{row.invoices.map(invoice => <small key={invoice._id} className="tracking-sub">{invoiceLabel(invoice)}</small>)}</td>
             <td data-label="Materiales"><ul className="transfer-lines">{row.lines.map(line => <li key={line.stockItemId}>{qty(line.quantity)} {line.unit} · {line.name}{row.status === "parcial" && invoicedQtyOf(line, row.status) > 0 ? ` (facturado ${qty(invoicedQtyOf(line, row.status))})` : ""}</li>)}</ul></td>
             <td data-label="Total">{money(row.totalCents)}{row.status === "parcial" && <small className="tracking-sub">Falta {money(remitoPendingCents(row))}</small>}</td>
-            <td data-label="Estado">{row.kind === "devolucion" ? <span className="badge devolucion">Devolución</span> : <span className={`badge remito-${row.status}`}>{statusLabels[row.status]}</span>}</td>
+            <td data-label="Estado">{row.kind === "devolucion" ? <span className="badge devolucion">Devolución</span> : <span className={`badge remito-${row.status}`}>{statusLabels[row.status]}</span>}
+              {row.shipment && <small className="tracking-sub"><a href={`/app/envios?buscar=${encodeURIComponent(row.shipment.number)}`} title="Ver el envío por transporte">Enviado · {row.shipment.number}</a>{row.shipment.trackingNumber ? ` · guía ${row.shipment.trackingNumber}` : " · falta la guía"}</small>}</td>
             <td className="row-actions">
               <button className="row-action-wide" onClick={() => { void downloadRemitoPdf(pdfData(row)); }}><FileText size={15} /> PDF</button>
               <ThreadButton kind="sales_remito" id={row._id} />
+              {(canEdit || canInvoice) && row.kind === "salida" && row.status !== "anulado" && !row.shipment && <button className="row-action-wide" title="Mandarlo por Correo Argentino, Mercado Libre o un expreso: hace el remito de envío con el valor declarado, sin volver a bajar el stock" onClick={() => setShipping(row)}><Truck size={15} /> Enviar por transporte</button>}
               {canEdit && row.kind === "salida" && row.status !== "anulado" && !row.work && <button className="row-action-wide" title="El cliente devuelve material: vuelve al Salón" onClick={() => setReturning(row)}><Undo2 size={15} /> Devolución</button>}
               {canEdit && row.kind === "salida" && ["pendiente", "entregado"].includes(row.status) && <button title="Anular: el material vuelve al Salón" onClick={() => { void cancel(row); }}><Trash2 size={16} /></button>}
             </td>
@@ -122,6 +129,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
         </tbody></table></div>}
     </section>
     {creating && <NewRemitoModal onClose={() => setCreating(false)} onDone={remito => { setCreating(false); if (remito.work) setFilter("entregado"); setNotice(`Remito ${remito.number} emitido.`); void downloadRemitoPdf(pdfData(remito)).catch(() => {}); void load(); }} />}
+    {shipping && <ShipSaleModal remito={shipping} onClose={() => setShipping(null)} onDone={shipment => { setShipping(null); setNotice(`Envío ${shipment.number} despachado con el remito ${shipping.number}. Cuando el transporte te dé la guía, cargala en Stock y logística › Envíos.`); void downloadShipmentPdf(shipment).catch(() => {}); void load(); }} />}
     {returning && <ReturnModal remito={returning} onClose={() => setReturning(null)} onDone={number => { setReturning(null); setNotice(`Devolución ${number} registrada: el material volvió al Salón. Si corresponde, falta la nota de crédito.`); void load(); }} />}
   </>;
 }
@@ -223,6 +231,93 @@ function NewRemitoModal({ onClose, onDone }: { onClose: () => void; onDone: (rem
       </div>
       {error && <p className="form-error modal-error">{error}</p>}
       <footer>{!toWork && <span>Total del remito <b>{money(total)}</b></span>}<button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button type="button" className="primary-btn" disabled={busy || !lines.length} onClick={() => { void submit(); }}>{busy ? "Emitiendo…" : "Emitir remito y bajar el PDF"}</button></footer></form>
+    </section>
+  </div>;
+}
+
+type SaleShipment = Parameters<typeof downloadShipmentPdf>[0];
+
+/**
+ * Mandar una venta por transporte: el remito de envío (ENV-n) con el valor
+ * declarado, que arranca con el precio de cada renglón. No baja stock: el
+ * remito de venta ya lo descontó.
+ */
+function ShipSaleModal({ remito, onClose, onDone }: { remito: Remito; onClose: () => void; onDone: (shipment: SaleShipment) => void }) {
+  useEscape(onClose);
+  // Un material que salió de los dos depósitos está en dos renglones: acá va junto.
+  const merged = useMemo(() => {
+    const byItem = new Map<string, { itemId: string; name: string; unit: string; quantity: number; totalCents: number }>();
+    for (const line of remito.lines) {
+      const entry = byItem.get(line.stockItemId);
+      if (entry) { entry.quantity += line.quantity; entry.totalCents += Number(line.totalCents || 0); }
+      else byItem.set(line.stockItemId, { itemId: line.stockItemId, name: line.name, unit: line.unit, quantity: line.quantity, totalCents: Number(line.totalCents || 0) });
+    }
+    return [...byItem.values()];
+  }, [remito.lines]);
+  const [destination, setDestination] = useState(() => remito.work ? `${remito.work.code} · ${remito.work.name}` : [remito.client?.address, remito.client?.name].filter(Boolean).join(" – "));
+  const [receiver, setReceiver] = useState(remito.receiverName || remito.client?.name || "");
+  const [carrier, setCarrier] = useState("");
+  const [carriers, setCarriers] = useState<string[]>(DEFAULT_CARRIERS);
+  const [packages, setPackages] = useState("");
+  const [pallets, setPallets] = useState("");
+  const [note, setNote] = useState("");
+  const [unitCents, setUnitCents] = useState<Record<string, number>>(() => Object.fromEntries(merged.map(line => [line.itemId, line.quantity > 0 ? Math.round(line.totalCents / line.quantity) : 0])));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  // Los transportes ya usados, para sugerirlos.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/shipments").then(response => response.ok ? response.json() : null).then(body => { if (active && body?.carriers) setCarriers([...new Set([...DEFAULT_CARRIERS, ...body.carriers as string[]])]); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const declared = merged.reduce((total, line) => total + Math.round(line.quantity * (unitCents[line.itemId] || 0)), 0);
+
+  async function submit() {
+    if (!destination.trim()) return setError("Poné a dónde va (la dirección del cliente o la sucursal del transporte)");
+    if (!carrier.trim()) return setError("Poné el transporte");
+    setBusy(true); setError("");
+    const response = await fetch(`/api/remitos/${remito._id}/shipment`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+      destination, receiver, carrier, packages: packages ? Number(packages) : undefined, pallets: pallets ? Number(pallets) : undefined, note,
+      lines: merged.map(line => ({ itemId: line.itemId, declaredUnitCents: unitCents[line.itemId] || 0 })),
+    }) });
+    const result = await response.json();
+    setBusy(false);
+    if (!response.ok) return setError(result.error || "No se pudo despachar el envío");
+    onDone(result as SaleShipment);
+  }
+
+  return <div className="modal-layer">
+    <button className="modal-backdrop" onClick={onClose} aria-label="Cerrar" />
+    <section className="modal entity-modal" role="dialog" aria-modal="true" aria-labelledby="ship-sale-title">
+      <header><div className="modal-title-wrap"><span className="modal-heading-icon"><Truck /></span><div>
+        <p className="eyebrow">REMITO {remito.number}</p><h2 id="ship-sale-title">Enviar por transporte</h2>
+        <small>Hace el remito de envío con el valor declarado. No baja stock: el remito de venta ya lo descontó. Después cargás la guía en Envíos.</small>
+      </div></div><button className="icon-btn" onClick={onClose} aria-label="Cerrar"><X /></button></header>
+      <form onSubmit={event => event.preventDefault()}><div className="modal-form-body">
+        <div className="form-grid">
+          <label><span>Va a *<em className="field-hint">Dirección del cliente o sucursal donde lo deja el transporte</em></span><input value={destination} onChange={event => setDestination(event.target.value)} placeholder="Av. Siempre Viva 123 – Rosario" /></label>
+          <label><span>Quién lo recibe o retira</span><input value={receiver} onChange={event => setReceiver(event.target.value)} /></label>
+          <label><span>Transporte *</span><input list="ship-sale-carriers" autoFocus value={carrier} onChange={event => setCarrier(event.target.value)} placeholder="Correo Argentino" />
+            <datalist id="ship-sale-carriers">{carriers.map(option => <option key={option} value={option} />)}</datalist></label>
+          <label><span>Bultos y pallets<em className="field-hint">Opcional</em></span><div className="number-lock">
+            <input inputMode="numeric" aria-label="Bultos" placeholder="Bultos" value={packages} onChange={event => setPackages(event.target.value.replace(/\D/g, ""))} />
+            <input inputMode="numeric" aria-label="Pallets" placeholder="Pallets" value={pallets} onChange={event => setPallets(event.target.value.replace(/\D/g, ""))} />
+          </div></label>
+          <label className="wide"><span>Observaciones</span><input value={note} onChange={event => setNote(event.target.value)} placeholder="Salen en el remito de envío" /></label>
+        </div>
+        <table className="picked-lines"><thead><tr><th>Material</th><th>Cantidad</th><th>Precio unitario (valor declarado)</th><th>Subtotal</th></tr></thead><tbody>
+          {merged.map((line, index) => <tr key={line.itemId}>
+            <td>{line.name}</td><td>{qty(line.quantity)} {line.unit}</td>
+            <td><MoneyInput name={`ship-declared-${index}`} defaultValue={(unitCents[line.itemId] || 0) / 100} onValueChange={value => setUnitCents(current => ({ ...current, [line.itemId]: Math.round(value * 100) }))} /></td>
+            <td>{money(Math.round(line.quantity * (unitCents[line.itemId] || 0)))}</td>
+          </tr>)}
+        </tbody></table>
+        <p className="invoice-note">Las cantidades son las del remito y no se cambian. El valor declarado arranca con el precio del remito.</p>
+      </div>
+      {error && <p className="form-error modal-error">{error}</p>}
+      <footer><span>Valor declarado: <b>{money(declared)}</b></span><button type="button" className="secondary-btn" onClick={onClose}>Cancelar</button><button type="button" className="primary-btn" disabled={busy} onClick={() => { void submit(); }}>{busy ? "Despachando…" : "Despachar y bajar el remito de envío"}</button></footer></form>
     </section>
   </div>;
 }

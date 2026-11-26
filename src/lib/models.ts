@@ -565,6 +565,9 @@ const ShipmentSchema = new Schema({
   carrier: { type: String, required: true, trim: true },
   packages: Number, pallets: Number,
   workId: { type: Schema.Types.ObjectId, ref: "Work" },
+  // El envío de una venta: lleva lo del remito de venta, que ya bajó el stock. Este envío no lo mueve.
+  salesRemitoId: { type: Schema.Types.ObjectId, ref: "SalesRemito" }, salesRemitoNumber: String,
+  clientId: { type: Schema.Types.ObjectId, ref: "Client" },
   lines: [{
     _id: false,
     stockItemId: { type: Schema.Types.ObjectId, ref: "StockItem", required: true },
@@ -582,6 +585,7 @@ const ShipmentSchema = new Schema({
   cancelReason: String, cancelledAt: Date, cancelledByName: String,
 }, options);
 ShipmentSchema.index({ createdAt: -1 });
+ShipmentSchema.index({ salesRemitoId: 1 }, { sparse: true });
 
 /*
  * Remito de venta: la salida al cliente, siempre desde el Salón de Ventas. Es

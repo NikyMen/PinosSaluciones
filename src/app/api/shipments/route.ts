@@ -32,7 +32,8 @@ const schema = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    if (!canRead(session, "stock")) throw new Error("FORBIDDEN");
+    // Quien vende los ve para mandar una venta por transporte y seguir su guía.
+    if (!canRead(session, "stock") && !canRead(session, "invoices")) throw new Error("FORBIDDEN");
     await connectDB();
     const items = await Shipment.find().sort({ createdAt: -1 }).limit(300).lean<Array<{ workId?: unknown }>>();
     const workIds = [...new Set(items.map(item => String(item.workId || "")).filter(Boolean))];

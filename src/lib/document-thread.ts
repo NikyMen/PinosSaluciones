@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { HttpError } from "./api";
-import { AuditLog, Collection, CounterSale, Expense, Invoice, Payment, Purchase, PurchaseReceipt, Quote, SalesRemito, Work } from "./models";
+import { AuditLog, Collection, CounterSale, Expense, Invoice, Payment, Purchase, PurchaseReceipt, Quote, SalesRemito, Shipment, Work } from "./models";
 import { canRead } from "./permissions";
 import { invoiceLabel, isCreditNote } from "./invoice-labels";
 import { purchaseStatusText } from "./purchase-flow-labels";
@@ -16,7 +16,7 @@ import type { Session } from "./auth";
  * Lo que se asoció después sale de la bitácora. Ver docs/plan-historial-de-documentos.md.
  */
 
-export const THREAD_KINDS = ["quote", "work", "purchase", "purchase_receipt", "expense", "sales_remito", "invoice", "counter_sale", "payment", "collection"] as const;
+export const THREAD_KINDS = ["quote", "work", "purchase", "purchase_receipt", "expense", "sales_remito", "shipment", "invoice", "counter_sale", "payment", "collection"] as const;
 export type ThreadKind = (typeof THREAD_KINDS)[number];
 export type ThreadGroup = "cotizacion" | "compras" | "ventas" | "tesoreria";
 
@@ -41,18 +41,18 @@ export const THREAD_LIMIT = 200;
 
 const models = {
   quote: Quote, work: Work, purchase: Purchase, purchase_receipt: PurchaseReceipt, expense: Expense,
-  sales_remito: SalesRemito, invoice: Invoice, counter_sale: CounterSale, payment: Payment, collection: Collection,
+  sales_remito: SalesRemito, shipment: Shipment, invoice: Invoice, counter_sale: CounterSale, payment: Payment, collection: Collection,
 } as const;
 
 const groups: Record<ThreadKind, ThreadGroup> = {
   quote: "cotizacion", work: "cotizacion", purchase: "compras", purchase_receipt: "compras", expense: "compras",
-  sales_remito: "ventas", invoice: "ventas", counter_sale: "ventas", payment: "tesoreria", collection: "tesoreria",
+  sales_remito: "ventas", shipment: "ventas", invoice: "ventas", counter_sale: "ventas", payment: "tesoreria", collection: "tesoreria",
 };
 
 /** Con qué nombre quedan en la bitácora (`AuditLog.entity`). */
 const auditEntities: Record<ThreadKind, string> = {
   quote: "quotes", work: "works", purchase: "purchases", purchase_receipt: "purchase_receipts", expense: "expenses",
-  sales_remito: "sales_remitos", invoice: "invoices", counter_sale: "counter_sales", payment: "payments", collection: "collections",
+  sales_remito: "sales_remitos", shipment: "shipments", invoice: "invoices", counter_sale: "counter_sales", payment: "payments", collection: "collections",
 };
 
 /** Quién puede ver cada uno: los mismos permisos de sus pantallas. */
@@ -62,7 +62,7 @@ function readable(session: Session, kind: ThreadKind) {
     case "work": return canRead(session, "works");
     case "purchase": case "purchase_receipt": return canRead(session, "purchases");
     case "expense": return canRead(session, "expenses");
-    case "sales_remito": return canRead(session, "stock") || canRead(session, "invoices");
+    case "sales_remito": case "shipment": return canRead(session, "stock") || canRead(session, "invoices");
     case "invoice": case "counter_sale": return canRead(session, "invoices");
     case "payment": return canRead(session, "payments");
     case "collection": return canRead(session, "collections");
@@ -86,6 +86,7 @@ function ownLinks(kind: ThreadKind, doc: Record<string, unknown>): Ref[] {
     case "purchase_receipt": return [...refs("purchase", doc.purchaseId), ...refs("quote", doc.quoteId), ...refs("work", doc.workId)];
     case "expense": return [...refs("purchase", doc.purchaseId), ...refs("purchase_receipt", [...ids(doc.purchaseReceiptIds), ...ids(doc.billedPurchaseReceipts)]), ...refs("expense", doc.associatedExpenseId), ...refs("quote", doc.quoteId), ...refs("work", doc.workId)];
     case "sales_remito": return [...refs("invoice", doc.invoiceIds), ...refs("sales_remito", doc.returnsId), ...refs("quote", doc.quoteId), ...refs("work", doc.workId)];
+    case "shipment": return [...refs("sales_remito", doc.salesRemitoId), ...refs("work", doc.workId)];
     case "invoice": return [...refs("sales_remito", [...ids(doc.remitoIds), ...(Array.isArray(doc.remitoLines) ? (doc.remitoLines as Array<Record<string, unknown>>).map(line => line.remitoId) : [])]), ...refs("invoice", [doc.replacesId, doc.replacedById, doc.associatedInvoiceId]), ...refs("quote", doc.quoteId), ...refs("work", doc.workId)];
     case "counter_sale": return [...refs("sales_remito", doc.remitoId), ...refs("invoice", doc.invoiceId), ...refs("collection", doc.collectionId)];
     case "payment": return [...refs("expense", [doc.expenseId, ...allocations("expenseId")]), ...refs("purchase", [doc.purchaseId, doc.requestId]), ...refs("work", doc.workId)];
@@ -99,14 +100,15 @@ async function incomingLinks(kind: ThreadKind, doc: Doc): Promise<Ref[]> {
   const many = async (pairs: Array<[ThreadKind, Record<string, unknown>]>) => (await Promise.all(pairs.map(async ([target, filter]) => refsOf(target, await find(target, filter))))).flat();
   switch (kind) {
     case "quote": return many([["work", { quoteId: id }], ["purchase", { quoteId: id }], ["purchase_receipt", { quoteId: id }], ["expense", { quoteId: id }], ["sales_remito", { quoteId: id }], ["invoice", { quoteId: id }]]);
-    case "work": return many([["quote", { workId: id }], ["purchase", { workId: id }], ["purchase_receipt", { workId: id }], ["expense", { workId: id }], ["sales_remito", { workId: id }], ["invoice", { workId: id }]]);
+    case "work": return many([["quote", { workId: id }], ["purchase", { workId: id }], ["purchase_receipt", { workId: id }], ["expense", { workId: id }], ["sales_remito", { workId: id }], ["shipment", { workId: id }], ["invoice", { workId: id }]]);
     case "purchase": {
       const found = await many([["purchase", { $or: [{ requestId: id }, { orderId: id }, { correctsId: id }] }], ["purchase_receipt", { purchaseId: id }], ["expense", { purchaseId: id }], ["payment", { $or: [{ purchaseId: id }, { requestId: id }] }]]);
       return [...found, ...await legacyCorrections(doc)];
     }
     case "purchase_receipt": return many([["expense", { $or: [{ purchaseReceiptIds: id }, { billedPurchaseReceipts: id }] }]]);
     case "expense": return many([["expense", { associatedExpenseId: id }], ["payment", { $or: [{ expenseId: id }, { "allocations.expenseId": id }] }]]);
-    case "sales_remito": return many([["invoice", { $or: [{ remitoIds: id }, { "remitoLines.remitoId": id }] }], ["sales_remito", { returnsId: id }], ["counter_sale", { remitoId: id }]]);
+    case "sales_remito": return many([["invoice", { $or: [{ remitoIds: id }, { "remitoLines.remitoId": id }] }], ["sales_remito", { returnsId: id }], ["counter_sale", { remitoId: id }], ["shipment", { salesRemitoId: id }]]);
+    case "shipment": return [];
     case "invoice": return many([["sales_remito", { invoiceIds: id }], ["invoice", { $or: [{ associatedInvoiceId: id }, { replacesId: id }, { replacedById: id }] }], ["collection", { $or: [{ invoiceId: id }, { "allocations.invoiceId": id }] }], ["counter_sale", { invoiceId: id }]]);
     case "counter_sale": return [];
     case "payment": return [];
@@ -150,6 +152,7 @@ function describe(kind: ThreadKind, doc: Doc): Omit<ThreadNode, "kind" | "id" | 
     case "purchase_receipt": return { ...base, type: "Remito de compra", number: str(doc.number), title: str(doc.supplierRemito) ? `Remito del proveedor ${str(doc.supplierRemito)}` : undefined, date: iso(doc.date) || created, status: doc.cancellation ? "Anulado" : doc.status === "observada" ? "Observado" : "Conforme", voided: Boolean(doc.cancellation), href: search("remitos-compra", str(doc.number)) };
     case "expense": return { ...base, type: str(doc.voucherType) ? "Factura de compra" : "Gasto", number: invoiceLabel(doc) || str(doc.number), title: str(doc.description), date: iso(doc.issueDate) || created, amountCents: (isCreditNote(doc.voucherType) ? -1 : 1) * Number(doc.amountCents || 0), status: str(doc.status), voided: doc.status === "anulado", href: search("expenses", str(doc.number)) };
     case "sales_remito": return { ...base, type: doc.kind === "devolucion" ? "Devolución" : "Remito de venta", number: str(doc.number), title: str(doc.receiverName) ? `Recibió ${str(doc.receiverName)}` : undefined, date: iso(doc.date) || created, amountCents: Number(doc.totalCents || 0) || undefined, status: str(doc.status), voided: doc.status === "anulado", href: search("remitos", str(doc.number)) };
+    case "shipment": return { ...base, userName: str(doc.sentByName) || undefined, type: "Envío por transporte", number: str(doc.number), title: [str(doc.carrier), str(doc.destination)].filter(Boolean).join(" → ") + (str(doc.trackingNumber) ? ` · guía ${str(doc.trackingNumber)}` : ""), date: iso(doc.sentAt) || created, status: doc.status === "con_guia" ? "Con guía" : doc.status === "anulado" ? "Anulado" : "Despachado", voided: doc.status === "anulado", href: search("envios", str(doc.number)) };
     case "invoice": return { ...base, type: "Factura de venta", number: invoiceLabel(doc), title: str(doc.description) || undefined, date: iso(doc.issueDate) || created, amountCents: (isCreditNote(doc.voucherType) ? -1 : 1) * Number(doc.amountCents || 0), status: str(doc.status), voided: ["anulada", "sustituida"].includes(str(doc.status)), href: search("invoices", str(doc.number).replace(/^X-/, "")) };
     case "counter_sale": return { ...base, type: "Venta de mostrador", number: str(doc.number), title: str(doc.clientName) || str(doc.buyerName) || undefined, date: iso(doc.date) || created, amountCents: Number(doc.amountCents || 0), status: doc.status === "sin_cobro" ? "Sin cobrar" : "Cobrada", voided: false, href: "/app/mostrador" };
     case "payment": return { ...base, type: "Orden de pago", number: str(doc.number), date: iso(doc.date) || created, amountCents: Number(doc.amountCents || 0) + Number(doc.onAccountCents || 0), status: str(doc.status), voided: doc.status === "anulada", href: search("payments", str(doc.number)) };

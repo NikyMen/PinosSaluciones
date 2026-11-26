@@ -12,7 +12,7 @@ import { warehouseLabel } from "./warehouses";
 
 export type ShipmentPdfData = {
   number: string; sentAt: string; company?: string; from: string; destination: string; receiver?: string;
-  carrier: string; packages?: number; pallets?: number; workLabel?: string; note?: string; sentByName?: string;
+  carrier: string; packages?: number; pallets?: number; workLabel?: string; salesRemitoNumber?: string; note?: string; sentByName?: string;
   trackingNumber?: string; declaredCents: number;
   lines: Array<{ code?: string; name: string; unit: string; quantity: number; declaredUnitCents: number; declaredCents: number }>;
 };
@@ -47,7 +47,7 @@ export function buildShipmentPdf(doc: jsPDF, data: ShipmentPdfData, meta: { auth
     setColor(MUTED); doc.setFont("helvetica", "normal"); doc.setFontSize(7.8);
     details.filter(Boolean).slice(0, 2).forEach((detail, index) => doc.text((doc.splitTextToSize(plain(detail), INNER / 2 - 10) as string[])[0], x, boxTop + 20 + index * 4.6));
   };
-  block(MARGIN + 5, "SALE DE", warehouseLabel(data.from), [company.legalName, data.workLabel ? `Obra: ${data.workLabel}` : ""]);
+  block(MARGIN + 5, "SALE DE", warehouseLabel(data.from), [company.legalName, data.workLabel ? `Obra: ${data.workLabel}` : data.salesRemitoNumber ? `Remito de venta ${data.salesRemitoNumber}` : ""]);
   block(WIDTH / 2 + 6, "VA A", data.destination, [data.receiver ? `Recibe o retira: ${data.receiver}` : "", data.note || ""]);
   y = boxTop + 38;
 
