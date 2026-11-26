@@ -628,7 +628,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
       const check = await fetch("/api/import/stock?preview=1", { method: "POST", body: form }); const preview = await check.json();
       if (!check.ok) { setError(preview.error || "No se pudo leer la planilla"); setLoading(false); if (fileRef.current) fileRef.current.value = ""; return; }
       const problems = (preview.errors || []) as Array<{ row: number; error: string }>;
-      const summary = [`${preview.imported} ${preview.imported === 1 ? "producto nuevo" : "productos nuevos"}`, `${preview.updated} que ya existen y se actualizan`, preview.withStock ? `${preview.withStock} con cantidad (queda lo contado en su depósito)` : "", problems.length ? `${problems.length} ${problems.length === 1 ? "fila con error que no se carga" : "filas con error que no se cargan"}: ${problems.slice(0, 3).map(row => `fila ${row.row}: ${row.error}`).join(" · ")}` : ""].filter(Boolean);
+      const summary = [`${preview.imported} ${preview.imported === 1 ? "producto nuevo" : "productos nuevos"}`, preview.updated === 1 ? "1 que ya existe y se actualiza" : `${preview.updated} que ya existen y se actualizan`, preview.withStock ? `${preview.withStock} con cantidad (queda lo contado en su depósito)` : "", problems.length ? `${problems.length} ${problems.length === 1 ? "fila con error que no se carga" : "filas con error que no se cargan"}: ${problems.slice(0, 3).map(row => `fila ${row.row}: ${row.error}`).join(" · ")}` : ""].filter(Boolean);
       if (!preview.imported && !preview.updated) { setError(`La planilla no tiene filas para importar. ${summary.slice(-1)[0] || ""}`); setLoading(false); if (fileRef.current) fileRef.current.value = ""; return; }
       if (!confirm(`La planilla tiene ${preview.total} filas:\n\n· ${summary.join("\n· ")}\n\n¿Importar?`)) { setLoading(false); if (fileRef.current) fileRef.current.value = ""; return; }
     }
@@ -690,7 +690,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
       </div></div>}
     {entity === "works" && canPlanWorks && Boolean(planning?.quotes.length) && <div className="notice warning">
       {planning!.quotes.length === 1 ? "Una cotización aprobada espera" : `${planning!.quotes.length} cotizaciones aprobadas esperan`} su obra:
-      {planning!.quotes.slice(0, 6).map(quote => <span key={quote._id}> <button type="button" className="link-btn" title={`Planificar la obra de ${quote.clientName || "la cotización"}`} onClick={() => setPlanFor({ quoteId: quote._id })}>Planificar {quote.number}{quote.title ? ` — ${quote.title}` : ""}</button></span>)}
+      {planning!.quotes.slice(0, 6).map((quote, index) => <span key={quote._id}>{index ? " · " : " "}<button type="button" className="link-btn" title={`Planificar la obra de ${quote.clientName || "la cotización"}`} onClick={() => setPlanFor({ quoteId: quote._id })}>Planificar {quote.number}{quote.title ? ` — ${quote.title}` : ""}</button></span>)}
     </div>}
     {invoiceSummary && (entity === "expenses" || entity === "invoices") && <div className="price-kpis tracking-kpis">
       <button className="stock-kpi invoice-kpi" aria-pressed={!pendingInvoicesOnly && !creditOnly} onClick={() => { setPendingInvoicesOnly(false); setCreditOnly(false); }}>
