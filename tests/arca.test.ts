@@ -62,6 +62,18 @@ describe("emisión con CAE", () => {
     expect(() => buildCaeRequest({ ...factura, clientCuit: "123" })).toThrow(/CUIT/);
   });
 
+  it("la nota sin referencia va con el período que corrige, después del IVA", () => {
+    const period = { from: new Date("2026-10-01"), to: new Date("2026-10-06") };
+    const xml = buildCaeRequest({ ...factura, voucherType: "nota_credito_a", associatedPeriod: period });
+    expect(xml).not.toContain("CbtesAsoc");
+    const asoc = xmlTag(xml, "PeriodoAsoc");
+    expect([xmlTag(asoc, "FchDesde"), xmlTag(asoc, "FchHasta")]).toEqual(["20261001", "20261006"]);
+    expect(xml.indexOf("</ar:Iva>")).toBeLessThan(xml.indexOf("PeriodoAsoc"));
+    // El período no puede pasar de la fecha de la nota; con factura asociada, el período no va.
+    expect(() => buildCaeRequest({ ...factura, voucherType: "nota_credito_a", associatedPeriod: { from: period.from, to: new Date("2026-10-20") } })).toThrow(/período/);
+    expect(buildCaeRequest({ ...factura, voucherType: "nota_credito_a", associatedPeriod: period, associated: { voucherCode: 1, pointOfSale: 2, number: 317, cuit: "30-71758997-8", date: new Date("2026-10-01") } })).not.toContain("PeriodoAsoc");
+  });
+
   it("la nota de crédito va con su factura asociada, después de la condición de IVA y antes del IVA", () => {
     expect(() => buildCaeRequest({ ...factura, voucherType: "nota_credito_a" })).toThrow(/asociada/);
     const xml = buildCaeRequest({ ...factura, voucherType: "nota_credito_a", associated: { voucherCode: 1, pointOfSale: 2, number: 317, cuit: "30-71758997-8", date: new Date("2026-10-01") } });

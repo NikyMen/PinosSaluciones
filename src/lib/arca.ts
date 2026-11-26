@@ -239,6 +239,8 @@ export type CaeRequest = {
   voucherType: ArcaVoucherType; pointOfSale: number; number: number;
   /** Una nota de débito o de crédito: la factura a la que corresponde (ARCA la pide). */
   associated?: { voucherCode: number; pointOfSale: number; number: number; cuit: string; date: Date };
+  /** Una nota sin factura asociada ("sin referencia"): el período que corrige, que ARCA acepta en su lugar. */
+  associatedPeriod?: { from: Date; to: Date };
   /** 1 productos (se factura un remito), 2 servicios (obra, certificado). */
   concept: 1 | 2 | 3;
   clientCuit: string; vatCondition: VatCondition;
@@ -280,7 +282,9 @@ export function buildCaeRequest(request: CaeRequest) {
   const { voucherType, vatCondition } = request;
   const document = checkReceiver(request);
   const isNote = voucherType.startsWith("nota_");
-  if (isNote && !request.associated) throw new HttpError(`La ${voucherLabels[voucherType]} va asociada a una factura`);
+  if (isNote && !request.associated && !request.associatedPeriod) throw new HttpError(`La ${voucherLabels[voucherType]} va asociada a una factura o al período que corrige`);
+  const period = isNote && !request.associated ? request.associatedPeriod : undefined;
+  if (period && (period.from > period.to || period.to > request.issueDate)) throw new HttpError("El período que corrige la nota va de una fecha a otra posterior, y no puede pasar de la fecha de la nota");
   if (request.netCents <= 0) throw new HttpError("Para emitir en ARCA cargá el neto gravado de la factura");
   const rateId = VAT_RATE_IDS[String(request.vatPct)];
   if (rateId === undefined) throw new HttpError(`ARCA no tiene la alícuota de IVA ${request.vatPct} %`);
@@ -302,6 +306,8 @@ export function buildCaeRequest(request: CaeRequest) {
     + `${service}<ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz><ar:CondicionIVAReceptorId>${VAT_CONDITIONS[vatCondition].id}</ar:CondicionIVAReceptorId>`
     + (isNote && request.associated ? `<ar:CbtesAsoc><ar:CbteAsoc><ar:Tipo>${request.associated.voucherCode}</ar:Tipo><ar:PtoVta>${request.associated.pointOfSale}</ar:PtoVta><ar:Nro>${request.associated.number}</ar:Nro><ar:Cuit>${request.associated.cuit.replace(/\D/g, "")}</ar:Cuit><ar:CbteFch>${arcaDate(request.associated.date)}</ar:CbteFch></ar:CbteAsoc></ar:CbtesAsoc>` : "")
     + `<ar:Iva><ar:AlicIva><ar:Id>${rateId}</ar:Id><ar:BaseImp>${pesos(request.netCents)}</ar:BaseImp><ar:Importe>${pesos(request.vatCents)}</ar:Importe></ar:AlicIva></ar:Iva>`
+    // Sin comprobante asociado, el período: va después del IVA (el orden del esquema de FECAEDetRequest).
+    + (period ? `<ar:PeriodoAsoc><ar:FchDesde>${arcaDate(period.from)}</ar:FchDesde><ar:FchHasta>${arcaDate(period.to)}</ar:FchHasta></ar:PeriodoAsoc>` : "")
     + `</ar:FECAEDetRequest></ar:FeDetReq></ar:FeCAEReq>`;
 }
 

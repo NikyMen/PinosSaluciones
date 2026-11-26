@@ -8,6 +8,7 @@ import { date, money, todayIso } from "@/lib/format";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
 import { RETENTION_TYPES, retentionLabels } from "@/lib/cash-methods";
 import type { PendingInvoice, ReceiptPdfData } from "@/lib/receipt-service";
+import type { ClientCredit } from "@/lib/credit-notes";
 import { COMPANIES, COMPANY_KEYS, companyOf } from "@/lib/companies";
 import { DEFAULT_ACCOUNTS } from "@/lib/account-catalog";
 import { useLedgerAccounts } from "@/components/ledger-account";
@@ -37,6 +38,11 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
 }) {
   const [clientId, setClientId] = useState(String(receipt?.clientId || initialClientId));
   const [rows, setRows] = useState<PendingInvoice[] | null>(null);
+  // Lo que el cliente tiene a favor por notas de crédito sin aplicar, y la que se está por usar.
+  const [credits, setCredits] = useState<ClientCredit[]>([]);
+  const [creditUse, setCreditUse] = useState<{ noteId: string; invoiceId: string; pesos: number } | null>(null);
+  const [creditBusy, setCreditBusy] = useState(false);
+  const [creditNotice, setCreditNotice] = useState("");
   // Lo aplicado a cada factura, en pesos. `version` remonta los importes cuando se tocan con "Todo".
   const [applied, setApplied] = useState<Record<string, number>>({});
   const [version, setVersion] = useState(0);
@@ -61,7 +67,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
     const controller = new AbortController();
     const query = new URLSearchParams({ clientId, ...(receipt ? { receipt: receipt._id } : {}) });
     fetch(`/api/receipts?${query.toString()}`, { signal: controller.signal })
-      .then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "No se pudieron traer las facturas"); return body.items as PendingInvoice[]; })
+      .then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "No se pudieron traer las facturas"); setCredits((body.credits || []) as ClientCredit[]); return body.items as PendingInvoice[]; })
       .then(items => {
         setRows(items);
         // Al editar vuelve lo que el recibo ya había aplicado; desde una factura, se propone cobrarla entera.
@@ -114,6 +120,38 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
     } else setApplied(previous => ({ ...previous, [row._id]: row.balanceCents / 100 }));
     setVersion(value => value + 1);
   }
+  /**
+   * Usar saldo a favor: aplica la nota de crédito a una factura en el momento (no entra plata, no es parte
+   * de lo cobrado). La factura queda debiendo menos y el recibo cobra el resto.
+   */
+  async function applyCredit() {
+    if (!creditUse) return;
+    const note = credits.find(credit => credit._id === creditUse.noteId);
+    const invoice = rows?.find(row => row._id === creditUse.invoiceId);
+    const amountCents = Math.round(creditUse.pesos * 100);
+    if (!note || !invoice) return setError("Elegí a qué factura se aplica el saldo a favor");
+    if (amountCents <= 0) return setError("Poné cuánto del saldo a favor se aplica");
+    if (amountCents > note.creditCents) return setError(`A la ${note.label} le quedan ${money(note.creditCents)} a favor`);
+    if (amountCents > invoice.balanceCents) return setError(`A la ${invoice.label} le quedan ${money(invoice.balanceCents)} por cobrar`);
+    setCreditBusy(true); setError(""); setCreditNotice("");
+    const response = await fetch(`/api/invoices/${note._id}/credit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ invoiceId: invoice._id, amountCents }) });
+    const body = await response.json();
+    if (!response.ok) { setCreditBusy(false); return setError(body.error || "No se pudo aplicar el saldo a favor"); }
+    // Se vuelven a traer las facturas con su saldo nuevo; lo que ya se había cargado para cobrar queda, sin pasar del saldo.
+    const query = new URLSearchParams({ clientId, ...(receipt ? { receipt: receipt._id } : {}) });
+    const fresh = await fetch(`/api/receipts?${query.toString()}`).then(result => result.ok ? result.json() : null).catch(() => null);
+    if (fresh) {
+      const items = fresh.items as PendingInvoice[];
+      setRows(items); setCredits((fresh.credits || []) as ClientCredit[]);
+      setApplied(current => Object.fromEntries(Object.entries(current).flatMap(([invoiceId, pesos]) => {
+        const row = items.find(item => item._id === invoiceId);
+        return row ? [[invoiceId, Math.min(pesos, row.balanceCents / 100)]] : [];
+      })));
+      setVersion(current => current + 1);
+    }
+    setCreditBusy(false); setCreditUse(null);
+    setCreditNotice(`Se aplicaron ${money(amountCents)} de la ${note.label} a la ${invoice.label}. Ya quedó aplicado, aunque no guardes este recibo; se deshace desde la nota, en Facturas de venta.`);
+  }
   const updateRetention = (key: number, patch: Partial<Retention>) => setRetentions(current => current.map(row => row.key === key ? { ...row, ...patch } : row));
 
   function setAll(pay: boolean) {
@@ -161,7 +199,7 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
       <form onSubmit={event => { void save(event); }}>
         <div className="modal-form-body">
           <div className="form-grid">
-            <label><span>Cliente *</span><SearchSelect name="clientId" options={clients} value={clientId} onChange={value => { setClientId(value); setRows(null); setApplied({}); }} required placeholder="Elegí el cliente…" /></label>
+            <label><span>Cliente *</span><SearchSelect name="clientId" options={clients} value={clientId} onChange={value => { setClientId(value); setRows(null); setApplied({}); setCredits([]); setCreditUse(null); setCreditNotice(""); }} required placeholder="Elegí el cliente…" /></label>
             <label><span>Fecha *</span><DateInput name="date" defaultValue={receiptDate} required recent onValueChange={setReceiptDate} /></label>
             <label><span>Cuenta del plan *<em className="field-hint">Ingresos: solo cuentas CI</em></span><SearchSelect name="accountId" options={accounts} value={chosenAccount} onChange={setAccountId} required placeholder="Elegí la cuenta…" /></label>
             {accountChanged && <label className="wide"><span>Motivo del cambio de cuenta *<em className="field-hint">Queda en el historial de la imputación</em></span><input name="accountChangeReason" required /></label>}
@@ -189,6 +227,36 @@ export function ReceiptModal({ receipt, clients, initialClientId = "", initialIn
                     </tr>)}
                   </tbody></table></div>
                 </>}
+
+          {clientId && rows !== null && credits.length > 0 && <>
+            <div className="receipt-table-head"><b>Saldo a favor del cliente: {money(credits.reduce((total, credit) => total + credit.creditCents, 0))}</b></div>
+            <p className="invoice-note">Notas de crédito sin aplicar. Usarlas baja lo que se debe de una factura sin que entre plata: el recibo cobra el resto.</p>
+            <div className="table-scroll"><table className="receipt-table"><thead><tr><th>Nota de crédito</th><th>Fecha</th><th>A favor</th><th /></tr></thead><tbody>
+              {credits.map(credit => {
+                const usable = (rows || []).filter(row => row.company === credit.company && row.balanceCents > 0);
+                return <tr key={credit._id}>
+                  <td data-label="Nota de crédito"><b>{credit.label}</b><span className={`company-badge ${credit.company}`}>{companyOf(credit.company).short}</span></td>
+                  <td data-label="Fecha">{credit.issueDate ? date(credit.issueDate) : "—"}</td>
+                  <td data-label="A favor">{money(credit.creditCents)}</td>
+                  <td>{usable.length ? <button type="button" className="link-btn" onClick={() => { const first = usable[0]; setCreditUse({ noteId: credit._id, invoiceId: first._id, pesos: Math.min(credit.creditCents, first.balanceCents) / 100 }); setCreditNotice(""); }}>Usar</button> : <small className="tracking-sub">Sin facturas de {companyOf(credit.company).short} por cobrar</small>}</td>
+                </tr>;
+              })}
+            </tbody></table></div>
+            {creditUse && (() => {
+              const note = credits.find(credit => credit._id === creditUse.noteId);
+              const usable = (rows || []).filter(row => row.company === note?.company && row.balanceCents > 0);
+              if (!note) return null;
+              return <div className="cash-line">
+                <label><span>Aplicar la {note.label} a</span><select value={creditUse.invoiceId} onChange={event => { const invoice = usable.find(row => row._id === event.target.value); setCreditUse({ noteId: note._id, invoiceId: event.target.value, pesos: invoice ? Math.min(note.creditCents, invoice.balanceCents) / 100 : 0 }); }}>
+                  {usable.map(row => <option key={row._id} value={row._id}>{row.label} · debe {money(row.balanceCents)}</option>)}
+                </select></label>
+                <label><span>Importe</span><MoneyInput key={`credit-${creditUse.noteId}-${creditUse.invoiceId}`} name="creditUse" defaultValue={creditUse.pesos} onValueChange={value => setCreditUse(current => current ? { ...current, pesos: value } : current)} /></label>
+                <button type="button" className="secondary-btn" disabled={creditBusy} onClick={() => { void applyCredit(); }}>{creditBusy ? "Aplicando…" : "Aplicar ahora"}</button>
+                <button type="button" className="icon-btn cash-line-remove" onClick={() => setCreditUse(null)} aria-label="No usar el saldo a favor"><X size={16} /></button>
+              </div>;
+            })()}
+            {creditNotice && <div className="notice success" role="status">{creditNotice}</div>}
+          </>}
 
           {clientId && rows !== null && <>
             <div className="receipt-table-head"><b>A cuenta, sin factura</b></div>

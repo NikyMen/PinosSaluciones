@@ -11,6 +11,7 @@ import { VOID_INVOICE_STATUSES } from "./invoice-labels";
 import { resolveCashAccount, type CashAccountDoc } from "./cash-accounts";
 import { accountTypesFor, cashMethodLabels, COLLECTION_METHODS, OWN_CHECK_METHODS, RETENTION_TYPES, retentionLabels } from "./cash-methods";
 import { HttpError } from "./api";
+import { creditNotesByInvoice } from "./credit-notes";
 import type { Session } from "./auth";
 
 /*
@@ -255,6 +256,8 @@ export type ReceiptPdfData = {
   totalCents: number;
   /** Lo cobrado que no se aplicó a ninguna factura: queda a cuenta del cliente. */
   onAccountCents?: number;
+  /** Las notas de crédito que descontaron de estas facturas: se compensó, no es plata recibida. */
+  creditNotes?: Array<{ label: string; invoiceLabel: string; amountCents: number }>;
 };
 
 /** Lo que lleva el PDF de un recibo: el cliente, las facturas que cancela y cuánto a cada una. */
@@ -272,9 +275,13 @@ export async function receiptPdfData(receiptId: string): Promise<ReceiptPdfData 
   const company = companyOf(receipt.company || invoices[0]?.company).key;
   const appliedCents = allocations.reduce((total, allocation) => total + allocation.amountCents, 0);
   const onAccountCents = Number(receipt.onAccountCents ?? Math.max(0, Number(receipt.amountCents || 0) - appliedCents));
-  const [media, signature] = await Promise.all([receiptMedia(receipt), companySignature(company)]);
+  const [media, signature, credits] = await Promise.all([receiptMedia(receipt), companySignature(company), creditNotesByInvoice(allocations.map(allocation => allocation.invoiceId))]);
+  const creditNotes = allocations.flatMap(allocation => {
+    const invoice = byId.get(String(allocation.invoiceId));
+    return (credits.get(String(allocation.invoiceId)) || []).map(note => ({ label: note.label, invoiceLabel: invoice ? invoiceLabel(invoice) : "Factura", amountCents: note.amountCents }));
+  });
   return {
-    company, signature, onAccountCents,
+    company, signature, onAccountCents, creditNotes,
     number: String(receipt.number || String(receipt._id).slice(-6).toUpperCase()),
     date: new Date(receipt.date as Date).toISOString(),
     method: String(receipt.method || ""), account: String(receipt.account || ""), reference: String(receipt.reference || ""),

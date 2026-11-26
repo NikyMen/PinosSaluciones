@@ -2,12 +2,12 @@ import { isValidObjectId } from "mongoose";
 import { requireSession } from "@/lib/auth";
 import { canWrite } from "@/lib/permissions";
 import { connectDB } from "@/lib/db";
-import { Quote, SalesRemito, Work } from "@/lib/models";
+import { Invoice, Quote, SalesRemito, Work } from "@/lib/models";
 import { apiError } from "@/lib/api";
 import { todayIso } from "@/lib/format";
 import { COMPANY_KEYS, type CompanyKey } from "@/lib/companies";
 import { peekInternalNumber, suggestFiscalNumber, voucherBooks } from "@/lib/voucher-books";
-import { baseInvoiceType, isNote, SALES_VOUCHER_TYPES, type VoucherType } from "@/lib/invoice-labels";
+import { baseInvoiceType, isNote, SALES_VOUCHER_TYPES, VOID_INVOICE_STATUSES, type VoucherType } from "@/lib/invoice-labels";
 import { arcaCredentials } from "@/lib/arca";
 import { invoicedQtyOf, pendingQtyOf, remitoPendingCents, type RemitoLike } from "@/lib/remito-billing";
 
@@ -29,6 +29,8 @@ export async function GET(request: Request) {
     const certificateRef = url.searchParams.get("certificado") || "";
     // Facturar remitos de venta (?remitos=id1,id2): del mismo cliente y la misma empresa.
     const remitoIds = (url.searchParams.get("remitos") || "").split(",").filter(isValidObjectId);
+    // La nota de crédito de una devolución (?devolucion=<id del remito de devolución>).
+    const returnId = url.searchParams.get("devolucion") || "";
 
     const books = (await voucherBooks({ scope: "venta", active: true }));
     // Con la Factura A habilitada van también sus notas de débito y crédito (lo mismo con la B), en el orden de siempre.
@@ -86,6 +88,23 @@ export async function GET(request: Request) {
           remitoLines: remitoDetail.flatMap(remito => remito.lines.map(line => ({ remitoId: remito.remitoId, line: line.line, quantity: line.pendingQty }))),
           issueDate: todayIso(),
           description: `Remito${same.length > 1 ? "s" : ""} ${same.map(remito => remito.number).join(", ")}`,
+        });
+      }
+    }
+    if (isValidObjectId(returnId)) {
+      const back = await SalesRemito.findOne({ _id: returnId, kind: "devolucion", status: { $ne: "anulado" } }).lean<{ number: string; company: CompanyKey; clientId: unknown; returnsId?: unknown; totalCents?: number; lines?: Array<{ name?: string; unit?: string; quantity?: number; totalCents?: number }> }>();
+      const original = back?.returnsId ? await SalesRemito.findById(back.returnsId).select("number invoiceIds quoteId").lean<{ number: string; invoiceIds?: unknown[]; quoteId?: unknown }>() : null;
+      // La factura fiscal (A o B) del remito que se devolvió: a esa corresponde la nota. Una X no lleva nota de crédito.
+      const invoice = original?.invoiceIds?.length ? await Invoice.findOne({ _id: { $in: original.invoiceIds }, voucherType: { $in: ["factura_a", "factura_b"] }, status: { $nin: VOID_INVOICE_STATUSES } }).sort({ issueDate: -1 }).select("voucherType").lean<{ _id: unknown; voucherType: string }>() : null;
+      if (back && original && invoice) {
+        const type = invoice.voucherType.replace("factura_", "nota_credito_") as VoucherType;
+        Object.assign(draft, {
+          company: back.company, voucherType: type, number: numbers[back.company]?.[type] || "", clientId: String(back.clientId),
+          quoteId: original.quoteId ? String(original.quoteId) : "", associatedInvoiceId: String(invoice._id), withRemito: false,
+          // Lo devuelto, como conceptos: el stock ya volvió con la devolución.
+          lines: (back.lines || []).filter(line => Number(line.quantity) > 0).map(line => ({ description: line.name || "", quantity: Number(line.quantity), unit: line.unit || "", unitCents: Math.round(Number(line.totalCents || 0) / Number(line.quantity)) })),
+          netCents: Number(back.totalCents || 0), issueDate: todayIso(),
+          description: `Devolución ${back.number} del remito ${original.number}`,
         });
       }
     }

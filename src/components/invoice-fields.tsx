@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Lock, LockOpen } from "lucide-react";
 import type { Field } from "@/lib/entity-config";
-import { money } from "@/lib/format";
-import { MoneyInput, SearchSelect } from "@/components/fields";
+import { date, money, todayIso } from "@/lib/format";
+import { DateInput, MoneyInput, SearchSelect } from "@/components/fields";
 import { COMPANIES, COMPANY_KEYS, companyOf, type CompanyKey } from "@/lib/companies";
 import { FormField, type FieldProps } from "@/components/record-form";
 import { isCreditNote, isNote, voucherLabels } from "@/lib/invoice-labels";
@@ -72,6 +72,10 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
   const clientId = (clientField ? fieldProps(clientField).relationValue : "") || String(source.clientId || "");
   const [associatedId, setAssociatedId] = useState(() => String(source.associatedInvoiceId || ""));
   const [associable, setAssociable] = useState<Array<{ _id: string; label: string; pendingCents: number }> | null>(null);
+  // Como en Compras: la nota va "con referencia" (se elige la factura) o "sin referencia" (lleva el período que corrige;
+  // la de crédito queda a favor del cliente y la de débito, como una deuda más).
+  const [reference, setReference] = useState<"con" | "sin">(() => source.withoutReference === true || (editing && isNote(editing.voucherType) && !editing.associatedInvoiceId) ? "sin" : "con");
+  const savedPeriod = (editing?.associatedPeriod || {}) as { from?: string; to?: string };
   // Facturar remitos en parte: cuánto de cada renglón. Arranca con todo lo pendiente.
   const remitoDetail = !editing && Array.isArray(draft.remitoDetail) ? draft.remitoDetail as RemitoDetail[] : [];
   const [remitoQty, setRemitoQty] = useState<Record<string, string>>(() => Object.fromEntries(remitoDetail.flatMap(remito => remito.lines.map(line => [`${remito.remitoId}:${line.line}`, String(line.pendingQty)]))));
@@ -193,13 +197,27 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
     if (key === "number") return <div key={key} className="invoice-arca-choice">{numberInput(editing ? "Punto de venta y número" : `El que sigue en ${companyOf(company).short}`)}</div>;
     if (key === "associatedInvoiceId") {
       if (!note) return null;
-      if (editing?.cae || (editing && isCreditNote(voucherType))) return <label key={key} className="readonly-field"><span>Factura asociada<em className="field-hint">No se cambia</em></span>
-        <output>{associable?.find(option => option._id === associatedId)?.label || "—"}</output><input type="hidden" name="associatedInvoiceId" value={associatedId} /></label>;
-      return <label key={key}><span>Factura asociada *<em className="field-hint">{!clientId ? "Elegí primero el cliente" : isCreditNote(voucherType) ? "La nota descuenta de lo que se debe de esta factura" : "A la que corresponde la nota"}</em></span>
-        <select name="associatedInvoiceId" required value={associatedId} onChange={event => setAssociatedId(event.target.value)} disabled={!clientId}>
-          <option value="">{associable === null ? "—" : associable.length ? "Elegí la factura" : `El cliente no tiene ${isCreditNote(voucherType) ? "facturas con saldo" : "facturas"} de esta letra`}</option>
-          {(associable || []).map(option => <option key={option._id} value={option._id}>{option.label}{isCreditNote(voucherType) ? ` · debe ${money(option.pendingCents)}` : ""}</option>)}
-        </select></label>;
+      // La referencia se define al crear la nota: después no se cambia.
+      if (editing && (editing.cae || isCreditNote(voucherType) || reference === "sin")) return <label key={key} className="readonly-field"><span>Factura que corrige<em className="field-hint">No se cambia</em></span>
+        <output>{reference === "sin" ? `Sin referencia${savedPeriod.from && savedPeriod.to ? ` · período ${date(savedPeriod.from)} a ${date(savedPeriod.to)}` : ""}` : associable?.find(option => option._id === associatedId)?.label || "—"}</output>{reference === "con" && <input type="hidden" name="associatedInvoiceId" value={associatedId} />}</label>;
+      return <div key={key} className="invoice-arca-choice">
+        {!editing && <label><span>Factura que corrige *<em className="field-hint">Con la factura a la que corresponde, o sin ella</em></span>
+          <select value={reference} onChange={event => { setReference(event.target.value as "con" | "sin"); setAssociatedId(""); }}>
+            <option value="con">Con referencia: elijo la factura</option>
+            <option value="sin">Sin referencia: {isCreditNote(voucherType) ? "queda a favor del cliente" : "queda como deuda del cliente"}</option>
+          </select></label>}
+        {reference === "con" ? <label><span>Factura asociada *<em className="field-hint">{!clientId ? "Elegí primero el cliente" : isCreditNote(voucherType) ? "Descuenta de lo que se debe de esta factura; lo que sobre queda a favor del cliente" : "A la que corresponde la nota"}</em></span>
+          <select name="associatedInvoiceId" required value={associatedId} onChange={event => setAssociatedId(event.target.value)} disabled={!clientId}>
+            <option value="">{associable === null ? "—" : associable.length ? "Elegí la factura" : `El cliente no tiene ${isCreditNote(voucherType) ? "facturas con saldo" : "facturas"} de esta letra`}</option>
+            {(associable || []).map(option => <option key={option._id} value={option._id}>{option.label}{isCreditNote(voucherType) ? ` · debe ${money(option.pendingCents)}` : ""}</option>)}
+          </select></label>
+          : <label><span>Período que corrige *<em className="field-hint">Desde y hasta. ARCA lo pide cuando no hay factura asociada; no puede pasar de la fecha de la nota</em></span>
+            <div className="number-lock">
+              <DateInput name="associatedFrom" defaultValue={`${todayIso().slice(0, 8)}01`} required hideToday />
+              <DateInput name="associatedTo" defaultValue={todayIso()} required />
+            </div>
+            <input type="hidden" name="withoutReference" value="true" /><input type="hidden" name="associatedInvoiceId" value="" /></label>}
+      </div>;
     }
     if (key === "clientId" && !editing) {
       const clientProps = props(target);
@@ -247,7 +265,10 @@ export function InvoiceFields({ fields, fieldProps, editing, draft, quotes, work
       <input type="hidden" name="remitoLines" value={JSON.stringify(remitoLines)} />
     </fieldset>}
     {emitting && <p className="invoice-note">Al guardar se emite en ARCA: ARCA le da el número y el CAE, y el comprobante queda autorizado. Después no se puede borrar ni cambiar el cliente, la fecha o los importes; para anular una factura hace falta una nota de crédito.</p>}
-    {note && isCreditNote(voucherType) && <p className="invoice-note">La nota de crédito resta: baja lo que el cliente debe de la factura asociada, y resta en ventas, libro IVA y reportes.</p>}
+    {note && isCreditNote(voucherType) && <p className="invoice-note">{reference === "sin"
+      ? "La nota de crédito sin referencia queda a favor del cliente: después se aplica a una factura con el botón \"Aplicar a una factura\" de la lista, o desde el recibo. Resta en ventas, libro IVA y reportes."
+      : "La nota de crédito resta: baja lo que el cliente debe de la factura asociada, y resta en ventas, libro IVA y reportes. Si es por más de lo que se debe, lo que sobra queda a favor del cliente."}</p>}
+    {note && !isCreditNote(voucherType) && reference === "sin" && <p className="invoice-note">La nota de débito sin referencia queda como una deuda más del cliente, pendiente de cobro.</p>}
     {Boolean(editing?.cae) && <p className="invoice-note">Emitida en ARCA ({editing?.arcaEnvironment === "homologacion" ? "homologación, de prueba" : "producción"}) · CAE {String(editing?.cae)}. Solo se puede cambiar lo que no es fiscal: obra, cotización, descripción y vencimiento.</p>}
     {Boolean(source.replacesId) && <p className="invoice-note">Sustituye a una Factura X: al guardar, la X queda como sustituida y lo que ya se cobró de ella pasa a esta factura.</p>}
 

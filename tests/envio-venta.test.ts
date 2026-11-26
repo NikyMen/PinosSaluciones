@@ -99,3 +99,25 @@ describe("envío por transporte de un remito de venta", () => {
     expect(sent.body.error).toContain("anulado");
   });
 });
+
+describe("nota de crédito de una devolución", () => {
+  it("el borrador trae la factura del remito, el cliente y lo devuelto ya cargado", async () => {
+    const recordsRoute = await import("../src/app/api/records/[entity]/route");
+    const remitoReturn = await import("../src/app/api/remitos/[id]/return/route");
+    const draftRoute = await import("../src/app/api/invoices/draft/route");
+    const latex = await inSalon("Látex interior 20 l", 8);
+    const client = await Client.create({ name: "Estudio Litoral", cuit: "30-66666666-6" });
+    const remito = await call(await remitosRoute.POST(json("POST", { company: "tvp", clientId: String(client._id), date: "2026-11-18", lines: [{ itemId: latex, quantity: 4, unitPriceCents: 50_000 }] })));
+    const invoice = await call(await recordsRoute.POST(json("POST", { company: "tvp", voucherType: "factura_a", number: "0004-00000700", clientId: String(client._id), issueDate: "2026-11-18", netCents: 200_000, vatPct: 21, status: "pendiente", remitoIds: remito.body._id }), params({ entity: "invoices" })));
+    expect(invoice.status).toBe(201);
+    const back = await call(await remitoReturn.POST(json("POST", { lines: [{ itemId: latex, quantity: 1 }], note: "tacho abollado", date: "2026-11-19" }), params({ id: remito.body._id })));
+    expect(back.status).toBe(201);
+
+    const draft = (await call(await draftRoute.GET(new Request(`http://test/api/invoices/draft?devolucion=${back.body._id}`)))).body;
+    expect(draft).toMatchObject({
+      company: "tvp", voucherType: "nota_credito_a", clientId: String(client._id), associatedInvoiceId: invoice.body._id, withRemito: false, netCents: 50_000,
+      lines: [{ description: "Látex interior 20 l", quantity: 1, unitCents: 50_000 }],
+    });
+    expect(draft.description).toContain(back.body.number);
+  });
+});

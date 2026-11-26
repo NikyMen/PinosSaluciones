@@ -14,7 +14,7 @@ import { beforeUpdate, checkExpenseDelete } from "@/lib/document-rules";
 import { releaseRemitos } from "@/lib/sales-remitos";
 import { releaseForQuote, reserveForQuote } from "@/lib/reservations";
 import { invoiceLabel, VOID_INVOICE_STATUSES } from "@/lib/invoice-labels";
-import { applyCreditNote, checkFiscalChanges, prepareInvoice } from "@/lib/invoice-service";
+import { applyCreditNote, checkCreditNoteFree, checkFiscalChanges, prepareInvoice } from "@/lib/invoice-service";
 import { prepareWorkerChanges } from "@/lib/worker-files";
 import { isTrashEntity } from "@/lib/trash";
 import { refreshAssetSchedule } from "@/lib/asset-service";
@@ -59,6 +59,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/record
     const changes = Object.fromEntries(Object.entries(parsed.data as Record<string, unknown>).filter(([key]) => sent.has(key)));
     if (entity === "tasks") await resolveTaskAssignee(session, changes, false);
     delete changes.arcaEmit;
+    // La referencia de una nota (con o sin factura) se define al crearla.
+    if (entity === "invoices") { delete changes.withoutReference; delete changes.associatedFrom; delete changes.associatedTo; }
     if (entity === "invoices") checkFiscalChanges(before as Record<string, unknown>, changes);
     if (entity === "invoices") await prepareInvoice(changes, before as Record<string, unknown>);
     if (entity === "workers") await prepareWorkerChanges(changes, id);
@@ -131,6 +133,10 @@ export async function DELETE(request: Request, context: RouteContext<"/api/recor
       const { Invoice } = await import("@/lib/models");
       const note = await Invoice.findOne({ associatedInvoiceId: id, status: { $nin: VOID_INVOICE_STATUSES } }).select("voucherType number").lean<Record<string, unknown>>();
       if (note) throw new HttpError(`La factura tiene asociada la ${invoiceLabel(note)}: primero hay que borrar o anular la nota.`);
+      // Tampoco se borra si una nota de crédito le aplicó saldo a favor, ni una nota que lo tiene aplicado.
+      const credit = await Invoice.findOne({ "creditApplications.invoiceId": id, status: { $nin: VOID_INVOICE_STATUSES } }).select("voucherType number").lean<Record<string, unknown>>();
+      if (credit) throw new HttpError(`La factura tiene aplicado saldo a favor de la ${invoiceLabel(credit)}: primero deshacé esa aplicación.`);
+      checkCreditNoteFree(before as Record<string, unknown>, "borrar");
     }
     // Un material, una obra o un cliente no se pierden: van a la papelera con quién los borró y a qué hora.
     if (isTrashEntity(entity)) {

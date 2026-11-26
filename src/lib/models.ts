@@ -978,6 +978,12 @@ const InvoiceSchema = new Schema({
   // Una nota de débito o de crédito, la factura a la que corresponde (ARCA la pide). La de crédito
   // descuenta su importe de lo que se debe de esa factura y queda "aplicada".
   associatedInvoiceId: { type: Schema.Types.ObjectId, ref: "Invoice" },
+  // Una nota "sin referencia" no lleva factura asociada: lleva el período que corrige, que es lo que ARCA pide en su lugar.
+  associatedPeriod: { from: Date, to: Date },
+  // Nota de crédito: lo que queda a favor del cliente, sin aplicar a ninguna factura (la nota sin referencia entera,
+  // o lo que sobra de una con referencia), y a qué facturas se fue aplicando después. Ver src/lib/credit-notes.ts.
+  creditCents: { type: Number, min: 0 },
+  creditApplications: { type: [{ invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", required: true }, amountCents: { type: Number, min: 1, required: true }, at: { type: Date, default: Date.now }, userName: String }], default: undefined },
   // Emitida desde el sistema en ARCA: el CAE y su vencimiento. Con CAE, lo fiscal ya no se cambia
   // (para anularla hace falta una nota de crédito) y la factura no se borra.
   cae: String, caeDueDate: Date, arcaEnvironment: { type: String, enum: ["produccion", "homologacion"] },
@@ -990,6 +996,7 @@ const InvoiceSchema = new Schema({
 // El mismo número puede existir en las dos empresas, o en una A y una X: lo único es empresa + tipo + número (+ cliente, como antes).
 // El índice viejo (solo número y cliente) lo saca src/lib/db.ts al conectar.
 InvoiceSchema.index({ company: 1, voucherType: 1, number: 1, clientId: 1 }, { unique: true });
+InvoiceSchema.index({ creditCents: 1 }, { sparse: true });
 // Todo proveedor y cliente nuevo recibe su código, venga de donde venga.
 SupplierSchema.pre("save", async function () { if (this.isNew && this.get("code") == null) this.set("code", await nextPartyCode("suppliers")); });
 ClientSchema.pre("save", async function () { if (this.isNew && this.get("code") == null) this.set("code", await nextPartyCode("clients")); });

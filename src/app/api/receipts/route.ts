@@ -5,8 +5,9 @@ import { connectDB } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { apiError } from "@/lib/api";
 import { pendingInvoices, receiptPdfData, ReceiptError, receiptSchema, saveReceipt } from "@/lib/receipt-service";
+import { clientCredits } from "@/lib/credit-notes";
 
-/** Las facturas del cliente con saldo, para armar el recibo (?clientId=, y ?receipt= al editar uno). */
+/** Las facturas del cliente con saldo y su saldo a favor, para armar el recibo (?clientId=, y ?receipt= al editar uno). */
 export async function GET(request: Request) {
   try {
     const session = await requireSession();
@@ -16,7 +17,9 @@ export async function GET(request: Request) {
     const receipt = params.get("receipt") || undefined;
     if (!isValidObjectId(clientId) || (receipt && !isValidObjectId(receipt))) return Response.json({ error: "ID inválido" }, { status: 400 });
     await connectDB();
-    return Response.json({ items: await pendingInvoices(clientId, receipt) });
+    // Con las facturas, lo que el cliente tiene a favor por notas de crédito sin aplicar.
+    const [items, credits] = await Promise.all([pendingInvoices(clientId, receipt), clientCredits(clientId)]);
+    return Response.json({ items, credits });
   } catch (error) { return apiError(error); }
 }
 

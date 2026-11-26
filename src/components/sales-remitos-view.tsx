@@ -72,6 +72,8 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
 
   const visible = useMemo(() => (rows || []).filter(row => only ? row.number === only : filter === "" ? true : filter === "devolucion" ? row.kind === "devolucion" : row.kind === "salida" && (filter === "pendiente" ? billable(row.status) : row.status === filter)), [rows, filter, only]);
   const chosen = (rows || []).filter(row => selected.includes(row._id));
+  // Los remitos con una factura A o B vigente: a su devolución le corresponde una nota de crédito.
+  const creditable = useMemo(() => new Set((rows || []).filter(row => row.invoices.some(invoice => ["factura_a", "factura_b"].includes(String(invoice.voucherType)) && !["anulada", "sustituida"].includes(String(invoice.status)))).map(row => row._id)), [rows]);
   const mixed = new Set(chosen.map(row => `${row.clientId}-${row.company}`)).size > 1;
 
   function toggle(row: Remito) {
@@ -123,6 +125,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
               <ThreadButton kind="sales_remito" id={row._id} />
               {(canEdit || canInvoice) && row.kind === "salida" && row.status !== "anulado" && !row.shipment && <button className="row-action-wide" title="Mandarlo por Correo Argentino, Mercado Libre o un expreso: hace el remito de envío con el valor declarado, sin volver a bajar el stock" onClick={() => setShipping(row)}><Truck size={15} /> Enviar por transporte</button>}
               {canEdit && row.kind === "salida" && row.status !== "anulado" && !row.work && <button className="row-action-wide" title="El cliente devuelve material: vuelve al Salón" onClick={() => setReturning(row)}><Undo2 size={15} /> Devolución</button>}
+              {canInvoice && row.kind === "devolucion" && row.status !== "anulado" && creditable.has(String(row.returnsId || "")) && <button className="row-action-wide" title="Abre la nota de crédito de la factura de ese remito, con lo devuelto ya cargado" onClick={() => router.push(`/app/invoices?devolucion=${row._id}`)}><FileCheck2 size={15} /> Hacer nota de crédito</button>}
               {canEdit && row.kind === "salida" && ["pendiente", "entregado"].includes(row.status) && <button title="Anular: el material vuelve al Salón" onClick={() => { void cancel(row); }}><Trash2 size={16} /></button>}
             </td>
           </tr>)}
@@ -130,7 +133,7 @@ export function SalesRemitosView({ canEdit, canInvoice }: { canEdit: boolean; ca
     </section>
     {creating && <NewRemitoModal onClose={() => setCreating(false)} onDone={remito => { setCreating(false); if (remito.work) setFilter("entregado"); setNotice(`Remito ${remito.number} emitido.`); void downloadRemitoPdf(pdfData(remito)).catch(() => {}); void load(); }} />}
     {shipping && <ShipSaleModal remito={shipping} onClose={() => setShipping(null)} onDone={shipment => { setShipping(null); setNotice(`Envío ${shipment.number} despachado con el remito ${shipping.number}. Cuando el transporte te dé la guía, cargala en Stock y logística › Envíos.`); void downloadShipmentPdf(shipment).catch(() => {}); void load(); }} />}
-    {returning && <ReturnModal remito={returning} onClose={() => setReturning(null)} onDone={number => { setReturning(null); setNotice(`Devolución ${number} registrada: el material volvió al Salón. Si corresponde, falta la nota de crédito.`); void load(); }} />}
+    {returning && <ReturnModal remito={returning} onClose={() => setReturning(null)} onDone={number => { setReturning(null); setFilter("devolucion"); setNotice(`Devolución ${number} registrada: el material volvió al Salón. Si el remito estaba facturado con A o B, falta la nota de crédito: está el botón "Hacer nota de crédito" en la devolución.`); void load(); }} />}
   </>;
 }
 

@@ -102,7 +102,7 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 | # | Pedido | Estado |
 |---|---|---|
 | V1 | Igual que en compras: **Factura** (servicios y mano de obra) y **Factura con remito** (productos del salón). El remito de venta es el que **descuenta el stock**, y se elige al cargar la factura con remito | ✅ 16/11 |
-| V2 | **Nota de crédito y nota de débito** con o sin referencia, como en compras | ◐ |
+| V2 | **Nota de crédito y nota de débito** con o sin referencia, como en compras | ✅ 26/11, con el saldo a favor del cliente (ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`) |
 | V3 | **Sacar "Estado"**: la factura está pendiente mientras no tenga recibo | ✅ 16/11 (al cargar; al editar queda para anular) |
 | V4 | **Recibo a cuenta** sin factura ni cotización, para anticipos (los arregla Seba). Después se le asocia la factura | ✅ 13/11 |
 | V5 | Indicadores de **cuánto se facturó de cada cotización** (parcial o total) y de **cuánto se cobró de cada factura** | ✅ 16/11 |

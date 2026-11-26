@@ -106,6 +106,15 @@ export function buildReceiptPdf(doc: jsPDF, data: ReceiptPdfData, meta: { author
   doc.text("TOTAL RECIBIDO", 120, y);
   doc.text(plain(money(data.totalCents)), WIDTH - MARGIN, y, { align: "right" });
   y += 12;
+  // Lo que estas facturas tienen compensado con notas de crédito: no entró plata, pero baja lo que se debía.
+  if (data.creditNotes?.length) {
+    ensureSpace(12 + data.creditNotes.length * 6.5);
+    setColor(INK); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+    doc.text("Compensado con notas de crédito (no es plata recibida)", MARGIN, y);
+    y += 7;
+    for (const note of data.creditNotes) mediumRow(`${note.label} · aplicada a ${note.invoiceLabel}`, note.amountCents);
+    y += 4;
+  }
   if (data.notes.trim()) {
     ensureSpace(22);
     setColor(MUTED); doc.setFontSize(7.8);

@@ -17,6 +17,7 @@ import { prepareNewWorker } from "@/lib/worker-files";
 import { withLastPrices } from "@/lib/stock-prices";
 import { cashAccountBalances, type CashAccountDoc } from "@/lib/cash-accounts";
 import { invoiceListSummary, pendingInvoiceFilter } from "@/lib/invoice-summary";
+import { creditNotesFilter, creditSummary } from "@/lib/credit-notes";
 import { workHolidays } from "@/lib/work-calendar";
 import { businessDaysBetween } from "@/lib/business-days";
 import { DEFAULT_WAREHOUSE, isWarehouse } from "@/lib/warehouses";
@@ -62,7 +63,9 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const legacy = warehouse === DEFAULT_WAREHOUSE ? [{ qty_central: { $exists: false }, qty_salon: { $exists: false }, $or: [{ quantity: { $gt: 0 } }, { minQuantity: { $gt: 0 } }] }] : [];
     const warehouseFilter = entity === "stock" && isWarehouse(warehouse) ? { $or: [{ [`qty_${warehouse}`]: { $gt: 0 } }, { [`min_${warehouse}`]: { $gt: 0 } }, ...legacy] } : null;
     const invoiceEntity = entity === "expenses" || entity === "invoices" ? entity : null;
-    const pending = invoiceEntity && url.searchParams.get("pending") === "1" ? pendingInvoiceFilter(invoiceEntity) : null;
+    // "A favor de clientes": las notas de crédito de venta con saldo sin aplicar.
+    const pending = invoiceEntity && url.searchParams.get("pending") === "1" ? pendingInvoiceFilter(invoiceEntity)
+      : entity === "invoices" && url.searchParams.get("credit") === "1" ? creditNotesFilter : null;
     const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] }
       : warehouseFilter || pending ? { $and: [searchFilter, warehouseFilter || pending!] } : searchFilter;
     const model = modelByEntity[entity];
@@ -72,7 +75,7 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const [items, total, summary] = await Promise.all([
       model.find(filter, projection).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
       model.countDocuments(filter),
-      invoiceEntity && url.searchParams.get("summary") === "1" ? invoiceListSummary(invoiceEntity) : undefined,
+      invoiceEntity && url.searchParams.get("summary") === "1" ? invoiceListSummary(invoiceEntity).then(async totals => entity === "invoices" ? { ...totals, ...await creditSummary() } : totals) : undefined,
     ]);
     if (entity === "works" && items.length) {
       const holidays = await workHolidays();

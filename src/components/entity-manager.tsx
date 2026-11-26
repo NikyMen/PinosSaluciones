@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Landmark, Paperclip, ArrowDownToLine, ArrowRightLeft, FileSymlink, Tag, Tags, Wrench, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HandCoins, HardHat, History, UserMinus, UserPlus, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
+import { Landmark, Paperclip, ArrowDownToLine, ArrowRightLeft, FileSymlink, Tag, Tags, Wrench, PackageCheck, PackagePlus, BriefcaseBusiness, Calculator, CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Edit3, Eye, FileCheck2, FileSpreadsheet, HandCoins, HardHat, History, Scale, UserMinus, UserPlus, ListTodo, Percent, Plus, Search, Timer, Trash2, TriangleAlert, Upload, UserRound, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ROLES, roleLabels, type Entity, type Role } from "@/lib/constants";
@@ -43,6 +43,7 @@ import type { CSSProperties } from "react";
 import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { WorkTypesModal } from "@/components/work-types-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
+import { CreditNoteModal } from "@/components/credit-note-modal";
 import { PaymentOrderModal } from "@/components/payment-order-modal";
 import { isCreditNote } from "@/lib/invoice-labels";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
@@ -178,7 +179,10 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
   // Compras: solicitudes, órdenes o todas.
   const [purchaseView, setPurchaseView] = useState<"" | "solicitud" | "orden">("");
   const [pendingInvoicesOnly, setPendingInvoicesOnly] = useState(false);
-  const [invoiceSummary, setInvoiceSummary] = useState<{ count: number; pendingCount: number; pendingCents: number } | null>(null);
+  const [invoiceSummary, setInvoiceSummary] = useState<{ count: number; pendingCount: number; pendingCents: number; creditCount?: number; creditCents?: number } | null>(null);
+  // Facturas de venta: sólo las notas de crédito con saldo a favor del cliente, y la ventana para aplicarlo.
+  const [creditOnly, setCreditOnly] = useState(false);
+  const [creditFor, setCreditFor] = useState<string | null>(null);
   const [convertFor, setConvertFor] = useState<Item | null>(null);
   const [invoiceFor, setInvoiceFor] = useState<Item | null>(null);
   const [salesReceiptPicker, setSalesReceiptPicker] = useState(false);
@@ -221,13 +225,13 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
     setLoading(true);
     // En Stock, la pestaña de un depósito trae solo lo que tiene existencia (o un mínimo) ahí.
     const warehouseQuery = entity === "stock" && warehouseView ? `&warehouse=${warehouseView}` : "";
-    const invoiceQuery = entity === "expenses" || entity === "invoices" ? `&summary=1${pendingInvoicesOnly ? "&pending=1" : ""}` : "";
+    const invoiceQuery = entity === "expenses" || entity === "invoices" ? `&summary=1${pendingInvoicesOnly ? "&pending=1" : creditOnly && entity === "invoices" ? "&credit=1" : ""}` : "";
     const response = await fetch(`/api/records/${entity}?limit=100&search=${encodeURIComponent(search)}${taskQuery ? `&${taskQuery}` : ""}${warehouseQuery}${invoiceQuery}`);
     const result = await response.json();
     if (response.ok) { setItems(result.items); setInvoiceSummary(result.summary || null); setError(""); }
     else setError(result.error || "No se pudieron cargar los registros");
     setLoading(false);
-  }, [entity, search, taskQuery, warehouseView, pendingInvoicesOnly]);
+  }, [entity, search, taskQuery, warehouseView, pendingInvoicesOnly, creditOnly]);
 
   // La espera es sólo mientras se tipea en el buscador: al entrar a la sección la lista se pide de una.
   useEffect(() => { const timer = setTimeout(load, search ? 250 : 0); return () => clearTimeout(timer); }, [load, search]);
@@ -267,6 +271,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
   }
 
   function display(key: string, value: unknown, item: Item) {
+    // Una nota de crédito con saldo sin aplicar: lo que el cliente tiene a favor.
+    if (key === "balanceCents" && entity === "invoices" && isCreditNote(item.voucherType)) return Number(item.creditCents || 0) > 0 && item.status !== "anulada" ? <span className="badge aprobada">A favor {money(Number(item.creditCents))}</span> : "—";
     if (key === "balanceCents" && (entity === "expenses" || entity === "invoices")) return money(Math.max(0, Number(item.amountCents || 0) - Number(item[entity === "expenses" ? "paidCents" : "collectedCents"] || 0)));
     if (entity === "works" && key === "progress") {
       const progress = displayedProgress(item);
@@ -356,9 +362,11 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
     if (entity !== "invoices" || !canEdit) return;
     const params = new URLSearchParams(window.location.search);
     const obra = params.get("obra"); const certificado = params.get("certificado"); const remitos = params.get("remitos");
-    if (!(obra && certificado) && !remitos) return;
+    // "Hacer nota de crédito" desde una devolución de Remitos de venta: ?devolucion=<id del remito de devolución>.
+    const devolucion = params.get("devolucion");
+    if (!(obra && certificado) && !remitos && !devolucion) return;
     router.replace("/app/invoices");
-    void fetch(`/api/invoices/draft?${new URLSearchParams(remitos ? { remitos } : { obra: obra!, certificado: certificado! }).toString()}`)
+    void fetch(`/api/invoices/draft?${new URLSearchParams(devolucion ? { devolucion } : remitos ? { remitos } : { obra: obra!, certificado: certificado! }).toString()}`)
       .then(response => response.ok ? response.json() as Promise<Record<string, unknown>> : {})
       .then(defaults => open(undefined, defaults), () => open());
     // Solo al entrar: después la dirección ya quedó limpia.
@@ -645,12 +653,15 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
     <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()} title="Excel (.xlsx) o CSV con los encabezados de la plantilla"><Upload size={17} /> Importar</button><a className="secondary-btn" href={`/api/import/${entity}`} title="Planilla con las columnas que entiende la importación: el cliente, la obra o el proveedor van por su nombre y las fechas en dd/mm/aaaa"><Download size={17} /> Plantilla</a></>}{hasTrash && <button className="secondary-btn" onClick={() => setTrashOpen(true)}><Trash2 size={17} /> Papelera</button>}{entity === "workers" && <button className="secondary-btn" onClick={() => setRatesOpen(true)}><Tags size={17} /> Tarifas</button>}{entity === "cash" && canEdit && <button className="secondary-btn" onClick={() => setTransferOpen(true)}><ArrowRightLeft size={17} /> Movimiento entre cuentas</button>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
     {entity === "works" && <div className="toolbar"><Link href="/app/works/mapa" className="secondary-btn">Mapa de obras</Link></div>}
     {invoiceSummary && (entity === "expenses" || entity === "invoices") && <div className="price-kpis tracking-kpis">
-      <button className="stock-kpi invoice-kpi" aria-pressed={!pendingInvoicesOnly} onClick={() => setPendingInvoicesOnly(false)}>
+      <button className="stock-kpi invoice-kpi" aria-pressed={!pendingInvoicesOnly && !creditOnly} onClick={() => { setPendingInvoicesOnly(false); setCreditOnly(false); }}>
         <span>Facturas {entity === "expenses" ? "recibidas" : "emitidas"}</span><strong>{invoiceSummary.count}</strong>
       </button>
-      <button className="stock-kpi invoice-kpi alert" aria-pressed={pendingInvoicesOnly} onClick={() => setPendingInvoicesOnly(current => !current)}>
+      <button className="stock-kpi invoice-kpi alert" aria-pressed={pendingInvoicesOnly} onClick={() => { setCreditOnly(false); setPendingInvoicesOnly(current => !current); }}>
         <span>Pendientes</span><strong>{invoiceSummary.pendingCount}</strong><small>{money(invoiceSummary.pendingCents)}</small>
       </button>
+      {entity === "invoices" && <button className="stock-kpi invoice-kpi" aria-pressed={creditOnly} title="Notas de crédito con saldo sin aplicar a ninguna factura" onClick={() => { setPendingInvoicesOnly(false); setCreditOnly(current => !current); }}>
+        <span>A favor de clientes</span><strong>{invoiceSummary.creditCount || 0}</strong><small>{money(invoiceSummary.creditCents || 0)}</small>
+      </button>}
     </div>}
     {entity === "tasks" && <TaskFilters viewer={viewer} people={people} scope={taskScope} role={taskRole} person={taskPerson}
       onScope={value => { setTaskScope(value); setTaskRole(""); setTaskPerson(""); }}
@@ -721,6 +732,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
           {entity === "invoices" && Boolean(item.quoteId) && <Link className="row-action-wide" href={`/app/quotes/${String(item.quoteId)}`} title="Ver la cotización y cuánto queda por facturar"><Calculator size={15} /> Cotización</Link>}
           {entity === "invoices" && Boolean(item.workId) && <Link className="row-action-wide" href={`/app/works/${String(item.workId)}`} title={item.certificateNumber ? `Ver la obra y el certificado ${String(item.certificateNumber)}` : "Ver la obra"}><HardHat size={15} /> Obra</Link>}
           {entity === "invoices" && Array.isArray(item.remitoIds) && item.remitoIds.length > 0 && <Link className="row-action-wide" href="/app/remitos" title={`Factura ${item.remitoIds.length} remito${item.remitoIds.length === 1 ? "" : "s"} de venta`}><FileSymlink size={15} /> Remitos</Link>}
+          {entity === "invoices" && isCreditNote(item.voucherType) && item.status !== "anulada" && (Number(item.creditCents || 0) > 0 || (Array.isArray(item.creditApplications) && item.creditApplications.length > 0)) && <button className={`row-action-wide${Number(item.creditCents || 0) > 0 ? " approve" : ""}`} title="Lo que la nota dejó a favor del cliente: aplicarlo a una factura pendiente o ver a cuáles se aplicó" onClick={() => setCreditFor(item._id)}><Scale size={15} /> {Number(item.creditCents || 0) > 0 ? "Aplicar a una factura" : "Saldo a favor"}</button>}
           {entity === "invoices" && <button className="row-action-wide" title={item.cae ? `Descargar la factura emitida en ARCA (CAE ${String(item.cae)})` : "Descargar la copia de gestión"} onClick={() => { void downloadInvoice(item); }}><Download size={15} /> {item.cae ? "PDF fiscal" : "PDF"}</button>}
           {entity === "invoices" && canEdit && (item.status === "pendiente" || item.status === "parcial") && <button className="row-action-wide approve" title="Registrar un cobro de esta factura y hacer el recibo" onClick={() => setReceiptFor({ receipt: null, clientId: String(item.clientId || ""), invoiceId: item._id })}><HandCoins size={15} /> Cobrar</button>}
           {entity === "checks" && canEdit && item.direction === "emitido" && item.status === "emitido" && <button className="row-action-wide approve" title="El banco lo debitó: registrar la transferencia de cheque diferido al banco" onClick={() => setCheckAction({ check: item, action: "debit" })}><Landmark size={15} /> Debitar</button>}
@@ -781,6 +793,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
     {workStatusFor && <WorkStatusModal work={workStatusFor} canEdit={canEdit} onClose={() => setWorkStatusFor(null)} onSaved={() => { setWorkStatusFor(null); void load(); }} />}
     {statusFor && <WorkerStatusModal worker={statusFor} onClose={() => setStatusFor(null)} onDone={message => { setStatusFor(null); setNotice(message); void load(); }} />}
 
+    {creditFor && <CreditNoteModal noteId={creditFor} canEdit={canEdit} onClose={() => setCreditFor(null)} onChanged={() => { void load(); }} />}
     {receiptFor && <ReceiptModal receipt={receiptFor.receipt} initialClientId={receiptFor.clientId} initialInvoiceId={receiptFor.invoiceId}
       clients={(relations.clients || []).map(partyOption)}
       onClose={() => setReceiptFor(null)} onSaved={() => { setReceiptFor(null); void load(); }} />}
