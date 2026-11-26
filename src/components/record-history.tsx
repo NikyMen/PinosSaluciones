@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { History, X } from "lucide-react";
 import type { Entity } from "@/lib/constants";
 import { entityConfig } from "@/lib/entity-config";
-import { date, dateTime, money, titleCase } from "@/lib/format";
+import { date, dateTime, money, qty, titleCase } from "@/lib/format";
+import { ownerLabels, type OwnerKey } from "@/lib/stock-owners";
+import { warehouseLabel } from "@/lib/warehouses";
 
 export type AuditEntry = { _id: string; action: string; userName?: string; userEmail?: string; before?: Record<string, unknown> | null; after?: Record<string, unknown> | null; createdAt?: string };
 
@@ -13,10 +15,49 @@ export type AuditEntry = { _id: string; action: string; userName?: string; userE
 // y estimatedCostCents, que sí se comparan abajo y ya cuentan la historia que importa.
 const ignored = new Set(["_id", "__v", "createdAt", "updatedAt", "history", "activity", "checklist", "advances", "certificates", "labor", "items", "overheads", "cascade"]);
 
+type Movement = { kind?: string; quantity?: number; warehouse?: string; toWarehouse?: string; remito?: string; destinationLabel?: string; reference?: string; note?: string };
+
+const movementLabels: Record<string, string> = { ingreso: "Entrada", egreso: "Salida", transferencia: "Transferencia", recepcion: "Recepción", ajuste: "Ajuste", venta: "Venta", devolucion: "Devolución", no_utilizable: "No utilizable", envio: "Envío por transporte", envio_anulado: "Envío anulado", ingreso_anulado: "Compra anulada" };
+const locationLabel = (key: string) => key === "transito" ? "En tránsito" : warehouseLabel(key);
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Un movimiento de stock en una línea: "Salida de 2 del Salón de Ventas a Obra X · remito R-12". */
+function movementText(movement: Movement) {
+  const kind = movementLabels[movement.kind || ""] || "Movimiento";
+  const from = movement.warehouse ? ` ${movement.kind === "ingreso" || movement.kind === "recepcion" ? "al" : "del"} ${warehouseLabel(movement.warehouse)}` : "";
+  const to = movement.toWarehouse ? ` al ${warehouseLabel(movement.toWarehouse)}` : movement.destinationLabel ? ` a ${movement.destinationLabel}` : "";
+  const extra = [movement.remito && `remito ${movement.remito}`, movement.reference, movement.note].filter(Boolean).join(" · ");
+  return `${kind} de ${qty(Number(movement.quantity || 0))}${from}${to}${extra ? ` · ${extra}` : ""}`;
+}
+
+/** De quién es lo que hay en cada depósito: "Salón de Ventas: Constructora Pino 13". */
+function ownersText(value: Record<string, unknown>) {
+  const parts = Object.entries(value).flatMap(([location, split]) => {
+    if (!isRecord(split)) return [];
+    const owners = Object.entries(split).filter(([, amount]) => Number(amount)).map(([owner, amount]) => `${ownerLabels[owner as OwnerKey] || owner} ${qty(Number(amount))}`);
+    return owners.length ? [`${locationLabel(location)}: ${owners.join(", ")}`] : [];
+  });
+  return parts.length ? parts.join(" · ") : "vacío";
+}
+
+/** Lo que no es un valor simple, en palabras: nunca "[object Object]". */
+function described(value: unknown): string {
+  if (Array.isArray(value)) return value.length ? value.map(described).join(", ") : "vacío";
+  if (isRecord(value)) {
+    const name = value.name || value.label || value.number || value.title;
+    if (name) return String(name);
+    const parts = Object.entries(value).filter(([key, entry]) => !key.startsWith("_") && entry !== null && entry !== undefined && entry !== "" && !isRecord(entry) && !Array.isArray(entry));
+    return parts.length ? parts.map(([key, entry]) => `${key}: ${String(entry)}`).join(" · ") : "…";
+  }
+  return String(value);
+}
+
 /** Muestra el valor de un campo como lo ve el usuario, no como lo guarda Mongo. */
 function readable(entity: Entity, key: string, value: unknown) {
   if (value === undefined || value === null || value === "") return "vacío";
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "vacío";
+  if (key === "owners" && isRecord(value)) return ownersText(value);
+  if (key === "movements" && Array.isArray(value)) return value.length ? `${value.length} movimiento${value.length === 1 ? "" : "s"}` : "vacío";
+  if (Array.isArray(value) || isRecord(value)) return described(value);
   if (key.endsWith("Cents")) return money(Number(value));
   if (key === "progress") return `${value}%`;
   if (key.toLowerCase().includes("date") || key === "validUntil") return date(String(value));
@@ -26,18 +67,35 @@ function readable(entity: Entity, key: string, value: unknown) {
   return String(value);
 }
 
+const extraLabels: Record<string, string> = { movements: "Movimientos", owners: "Empresa dueña" };
+
 function fieldLabel(entity: Entity, key: string) {
-  return entityConfig[entity].fields.find(field => field.key === key)?.label || key;
+  const label = entityConfig[entity].fields.find(field => field.key === key)?.label || extraLabels[key];
+  if (label) return label;
+  // Cantidad y mínimo por depósito (qty_salon, min_central…): src/lib/models.ts.
+  const perWarehouse = /^(qty|min)_(.+)$/.exec(key);
+  if (perWarehouse) return `${perWarehouse[1] === "qty" ? "Cantidad en" : "Mínimo en"} ${locationLabel(perWarehouse[2])}`;
+  return key;
 }
 
 /** Lista de cambios "campo: antes → después" de una entrada de auditoría. */
-function changes(entity: Entity, entry: AuditEntry) {
+export function changes(entity: Entity, entry: AuditEntry) {
   const { before, after } = entry;
   if (!after) return [];
   const keys = [...new Set([...Object.keys(before || {}), ...Object.keys(after)])].filter(key => !ignored.has(key));
   return keys
     .filter(key => JSON.stringify(before?.[key] ?? null) !== JSON.stringify(after[key] ?? null))
-    .map(key => ({ key, label: fieldLabel(entity, key), from: readable(entity, key, before?.[key]), to: readable(entity, key, after[key]) }));
+    .map(key => {
+      const change = { key, label: fieldLabel(entity, key), from: readable(entity, key, before?.[key]), to: readable(entity, key, after[key]) };
+      // De los movimientos importa el que se sumó: "Salida de 2 del Salón de Ventas · remito R-12".
+      if (key === "movements" && Array.isArray(after[key])) {
+        const previous = Array.isArray(before?.[key]) ? (before[key] as unknown[]) : [];
+        const seen = new Set(previous.map(movement => JSON.stringify(movement)));
+        const added = (after[key] as Movement[]).filter(movement => !seen.has(JSON.stringify(movement)));
+        if (added.length) return { ...change, label: added.length === 1 ? "Movimiento nuevo" : "Movimientos nuevos", from: change.from, to: added.map(movementText).join(" · ") };
+      }
+      return change;
+    });
 }
 
 function headline(entity: Entity, entry: AuditEntry) {
