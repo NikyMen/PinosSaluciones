@@ -41,7 +41,7 @@ Estado de cada pedido: ✅ ya está en el sistema · ◐ está a medias · 🆕 
 | F5 | En el listado: sacar "Notificar", achicar "Estado" y sumar la duración. Fede pidió **mantener el presupuesto**. Lo ve Gerencia o quien recibe el permiso individual | ✅ 16/11 |
 | F6 | **Foto** de la obra en la cotización | ✅ 16/11 |
 | F7 | **Ubicación**: un link que abra Google Maps y un **mapa propio** con todas las obras (Corrientes, Chaco, interior) con su % de avance y acceso desde Obras | ✅ 16/11 |
-| F8 | Cuando se aprueba la cotización, a Fede le llega la obra para asignarle **fechas y personal** | ◐ |
+| F8 | Cuando se aprueba la cotización, a Fede le llega la obra para asignarle **fechas y personal** | ✅ 26/11: el aviso abre Planificar obra (ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`) |
 | F9 | Más adelante: tomar como referencia su Excel "programa general" (un Gantt semanal, el avance general por obra y colores verde = en ejecución, amarillo, blanco = terminada) y sus planillas de personal y materiales por obra | idea a futuro |
 
 ## 4. Fer: tesorería, compras y ventas (la reunión principal)

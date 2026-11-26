@@ -38,3 +38,24 @@
 - Queda afuera: devolverle la plata al cliente (reintegro). El saldo a favor sólo se descuenta de otra factura.
 - Los comprobantes anteriores no cambian: una nota de crédito de antes no tiene `creditCents` y sigue aplicada entera a su factura.
 - Pruebas: `tests/invoices-receipts.test.ts` (notas sin referencia, saldo a favor, recibo), `tests/arca.test.ts` (`PeriodoAsoc`) y `tests/envio-venta.test.ts` (nota de crédito de una devolución).
+
+## 3. Planificar la obra al aprobar la cotización (F8)
+
+- Pedido de Fede (10/11): cuando se aprueba la cotización, que le llegue la obra para asignarle fechas y personal. El aviso ya le llegaba, pero lo llevaba a la cotización; la obra la creaba "Pasar a obra" (con permiso de Cotizaciones, sólo con código, nombre e inicio) y la duración y el personal se cargaban después, cada uno en otra pantalla.
+- **Planificar obra** es un solo panel (`src/components/plan-work-modal.tsx`, `src/lib/work-planning.ts`, `/api/works/plan`):
+  - Inicio previsto, duración en días hábiles y fin previsto. Con el inicio y la duración, el fin se calcula de lunes a viernes y sin feriados; si se elige el fin, se calcula la duración.
+  - Responsable de la obra: un usuario activo (`Work.managerId`).
+  - Personal: se eligen personas activas de los legajos. Entran con el jornal o valor hora de su legajo, que después se puede cambiar por obra como siempre.
+  - Nota opcional, que sale en el aviso a Compras y Administración.
+- **Guardar planificación**:
+  - Si la cotización aprobada todavía no tiene obra, la crea igual que Pasar a obra (presupuesto, rubro, ubicación y fotos de la cotización; la cotización queda "convertida"). El código se propone como `OB-<número de cotización>` y se puede cambiar.
+  - Guarda fechas, responsable y personal, deja una entrada en la actividad de la obra y queda en la bitácora (`plan_work`).
+  - Da por resuelto el aviso de Producción de esa cotización (si la obra quedó con personal).
+  - Avisa a Compras y Administración la fecha de inicio, la primera vez y cada vez que cambia.
+- **Permiso**: el de Obras. Producción no necesita el de Cotizaciones para crear la obra desde la planificación. Pasar a obra sigue igual, con el permiso de Cotizaciones.
+- **Dónde está el botón**: en la cotización aprobada (Planificar obra), en cada obra pendiente, en curso o pausada del listado (Planificar) y en la ficha de la obra. El aviso de Producción abre el panel directo (`/app/works?planificar=<cotización>`). Obras muestra arriba las cotizaciones aprobadas que todavía esperan su obra.
+- **Sin planificar**: una obra pendiente de inicio sin fecha de inicio o sin personal. El listado la marca y tiene el filtro "Sin planificar", con la cantidad.
+- **Otras obras en esas fechas**: si una persona ya está asignada a otra obra viva que se pisa con las fechas elegidas (o que no tiene fechas), el panel lo avisa en su renglón. No bloquea.
+- **Volver a planificar**: el mismo botón cambia fechas, responsable y gente. Quien ya tiene horas cargadas en la obra no se saca (el panel lo muestra y el aviso de guardado lo dice).
+- Se asigna el personal para toda la obra; las horas de cada día siguen en el parte diario. No se planifica una obra terminada, cerrada o cancelada.
+- Pruebas: `tests/planificar-obra.test.ts`.

@@ -242,6 +242,14 @@ Anexo de Tesorería v5.1, validado con Administración. Las decisiones están en
 
 En Obras, el listado muestra inicio y fin previstos y reales, duración en días hábiles y el avance real en una línea azul a lo ancho de la fila y, pegada abajo, la línea del avance esperado según el plan (días hábiles transcurridos desde el inicio previsto sobre la duración prevista), verde o naranja si se aparta 5 puntos o más. Gerencia y las personas con **Ver presupuesto de obras** ven el presupuesto en el listado y en su exportación. Los feriados se editan por año en Perfil › Configuración › Empresas y comprobantes. La cotización puede llevar fotos, dirección y un enlace de Google Maps que pasan a la obra. Desde la ficha se abre **Cómo llegar** y desde Obras se accede al mapa interno por estado y avance. Ver `docs/requerimientos/obras.md`, `docs/decisiones/2026-11-planificacion-y-mapa-de-obras.md` y `deploy/obras.md`.
 
+**Planificar la obra** (`src/lib/work-planning.ts`, `/api/works/plan`). Cuando se aprueba una cotización, el aviso de Producción abre **Planificar obra**: un solo panel con el inicio previsto, la duración en días hábiles (el fin se calcula sin fines de semana ni feriados, o se elige y se calcula la duración), el responsable y el personal de los legajos.
+- **Guardar planificación** crea la obra si la cotización todavía no la tiene (como Pasar a obra), le pone fechas, responsable (`Work.managerId`) y personal, da por resuelto el aviso de Producción y les avisa a Compras y Administración la fecha de inicio.
+- Alcanza con el permiso de Obras: no hace falta el de Cotizaciones. Pasar a obra sigue estando, con el permiso de Cotizaciones.
+- El botón está en la cotización aprobada (**Planificar obra**), en cada obra del listado (**Planificar**) y en la ficha de la obra. Obras muestra arriba las cotizaciones aprobadas que esperan su obra.
+- **Sin planificar**: marca y filtro del listado para las obras pendientes de inicio sin fecha de inicio o sin personal.
+- Si alguien ya está asignado a otra obra en esas fechas, avisa pero deja guardar. Al volver a planificar, quien ya tiene horas cargadas en la obra no se saca.
+- Ver `docs/decisiones/2026-11-pendientes-ronda-10-11.md`.
+
 Lo cotizado contra lo facturado se mide en **neto** (sin IVA): ver `docs/decisiones/2026-10-certificado-sobre-neto.md`.
 
 - La cotización guarda su neto (`netCents`: el subtotal 3 de la cascada, o importe / 1,21 si se cargó a mano) y la obra su presupuesto neto (`budgetNetCents`). El certificado es un porcentaje de ese neto: lo calcula el servidor, que no deja pasar del 100 %.

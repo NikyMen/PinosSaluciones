@@ -44,6 +44,7 @@ import { WorkerStatusModal } from "@/components/worker-status-modal";
 import { WorkTypesModal } from "@/components/work-types-modal";
 import { ReceiptModal } from "@/components/receipt-modal";
 import { CreditNoteModal } from "@/components/credit-note-modal";
+import { PlanWorkModal } from "@/components/plan-work-modal";
 import { PaymentOrderModal } from "@/components/payment-order-modal";
 import { isCreditNote } from "@/lib/invoice-labels";
 import { downloadReceiptPdf, methodLabels } from "@/lib/receipt-pdf";
@@ -125,7 +126,7 @@ export type Viewer = { userId: string; role: Role };
 /** Quién de la empresa puede aparecer como responsable de una tarea. */
 type Person = { _id: string; name: string; role: Role };
 
-export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSeeWorkBudget = false }: { entity: Entity; canEdit: boolean; canDeleteRecords: boolean; viewer: Viewer; canSeeWorkBudget?: boolean }) {
+export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSeeWorkBudget = false, canPlanWorks = false }: { entity: Entity; canEdit: boolean; canDeleteRecords: boolean; viewer: Viewer; canSeeWorkBudget?: boolean; canPlanWorks?: boolean }) {
   const baseConfig = entityConfig[entity];
   // El tipo de trabajo del personal se elige de la tabla de tarifas, que se carga aparte.
   const [workTypes, setWorkTypes] = useState<string[]>([]);
@@ -188,6 +189,26 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
   const [salesReceiptPicker, setSalesReceiptPicker] = useState(false);
   const [expenseLinksFor, setExpenseLinksFor] = useState<Item | null>(null);
   const [workStatusFor, setWorkStatusFor] = useState<Item | null>(null);
+  // Planificar la obra: desde una cotización aprobada o desde la obra. En Obras, lo que espera planificación.
+  const [planFor, setPlanFor] = useState<{ quoteId?: string; workId?: string } | null>(null);
+  const [unplannedOnly, setUnplannedOnly] = useState(false);
+  const [planning, setPlanning] = useState<{ quotes: Array<{ _id: string; number: string; title: string; clientName: string }>; unplannedWorks: number } | null>(null);
+  const loadPlanning = useCallback(() => {
+    if (entity !== "works") return;
+    void fetch("/api/works/plan").then(response => response.ok ? response.json() : null).then(body => { if (body) setPlanning(body); }).catch(() => {});
+  }, [entity]);
+  useEffect(() => { const timer = window.setTimeout(loadPlanning, 0); return () => window.clearTimeout(timer); }, [loadPlanning]);
+  // El aviso "Cotización aprobada: planificar la obra" llega con ?planificar=<cotización>.
+  useEffect(() => {
+    if (entity !== "works" || !canPlanWorks) return;
+    const quoteId = new URLSearchParams(window.location.search).get("planificar");
+    if (!quoteId) return;
+    router.replace("/app/works");
+    const timer = window.setTimeout(() => setPlanFor({ quoteId }), 0);
+    return () => window.clearTimeout(timer);
+    // Solo al entrar: después la dirección ya quedó limpia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity, canPlanWorks]);
   const [statusFor, setStatusFor] = useState<Item | null>(null);
   // El bien de uso cuyo mantenimiento está abierto.
   const [maintenanceFor, setMaintenanceFor] = useState<string | null>(null);
@@ -226,12 +247,13 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
     // En Stock, la pestaña de un depósito trae solo lo que tiene existencia (o un mínimo) ahí.
     const warehouseQuery = entity === "stock" && warehouseView ? `&warehouse=${warehouseView}` : "";
     const invoiceQuery = entity === "expenses" || entity === "invoices" ? `&summary=1${pendingInvoicesOnly ? "&pending=1" : creditOnly && entity === "invoices" ? "&credit=1" : ""}` : "";
-    const response = await fetch(`/api/records/${entity}?limit=100&search=${encodeURIComponent(search)}${taskQuery ? `&${taskQuery}` : ""}${warehouseQuery}${invoiceQuery}`);
+    const worksQuery = entity === "works" && unplannedOnly ? "&unplanned=1" : "";
+    const response = await fetch(`/api/records/${entity}?limit=100&search=${encodeURIComponent(search)}${taskQuery ? `&${taskQuery}` : ""}${warehouseQuery}${invoiceQuery}${worksQuery}`);
     const result = await response.json();
     if (response.ok) { setItems(result.items); setInvoiceSummary(result.summary || null); setError(""); }
     else setError(result.error || "No se pudieron cargar los registros");
     setLoading(false);
-  }, [entity, search, taskQuery, warehouseView, pendingInvoicesOnly, creditOnly]);
+  }, [entity, search, taskQuery, warehouseView, pendingInvoicesOnly, creditOnly, unplannedOnly]);
 
   // La espera es sólo mientras se tipea en el buscador: al entrar a la sección la lista se pide de una.
   useEffect(() => { const timer = setTimeout(load, search ? 250 : 0); return () => clearTimeout(timer); }, [load, search]);
@@ -651,7 +673,15 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
       </div>
       : <button className="primary-btn" onClick={() => { void openCreate(); }}><Plus size={18} /> {newLabel}</button>)}</div>
     <div className="toolbar"><div className="search"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Buscar en ${config.title.toLowerCase()}…`} /></div>{canEdit && <><input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void importFile(event.target.files?.[0]); }} /><button className="secondary-btn" onClick={() => fileRef.current?.click()} title="Excel (.xlsx) o CSV con los encabezados de la plantilla"><Upload size={17} /> Importar</button><a className="secondary-btn" href={`/api/import/${entity}`} title="Planilla con las columnas que entiende la importación: el cliente, la obra o el proveedor van por su nombre y las fechas en dd/mm/aaaa"><Download size={17} /> Plantilla</a></>}{hasTrash && <button className="secondary-btn" onClick={() => setTrashOpen(true)}><Trash2 size={17} /> Papelera</button>}{entity === "workers" && <button className="secondary-btn" onClick={() => setRatesOpen(true)}><Tags size={17} /> Tarifas</button>}{entity === "cash" && canEdit && <button className="secondary-btn" onClick={() => setTransferOpen(true)}><ArrowRightLeft size={17} /> Movimiento entre cuentas</button>}<a className="secondary-btn" href={`/api/reports/export?entity=${entity}${taskQuery ? `&${taskQuery}` : ""}`}><Download size={17} /> Exportar a Excel</a></div>
-    {entity === "works" && <div className="toolbar"><Link href="/app/works/mapa" className="secondary-btn">Mapa de obras</Link></div>}
+    {entity === "works" && <div className="toolbar"><Link href="/app/works/mapa" className="secondary-btn">Mapa de obras</Link>
+      <div className="tracking-filter" role="group" aria-label="Planificación">
+        <button type="button" className={!unplannedOnly ? "active" : ""} onClick={() => setUnplannedOnly(false)}>Todas</button>
+        <button type="button" className={unplannedOnly ? "active" : ""} title="Obras pendientes de inicio a las que les falta la fecha o el personal" onClick={() => setUnplannedOnly(true)}>Sin planificar{planning ? ` (${planning.unplannedWorks})` : ""}</button>
+      </div></div>}
+    {entity === "works" && canPlanWorks && Boolean(planning?.quotes.length) && <div className="notice warning">
+      {planning!.quotes.length === 1 ? "Una cotización aprobada espera" : `${planning!.quotes.length} cotizaciones aprobadas esperan`} su obra:
+      {planning!.quotes.slice(0, 6).map(quote => <span key={quote._id}> <button type="button" className="link-btn" title={`Planificar la obra de ${quote.clientName || "la cotización"}`} onClick={() => setPlanFor({ quoteId: quote._id })}>Planificar {quote.number}{quote.title ? ` — ${quote.title}` : ""}</button></span>)}
+    </div>}
     {invoiceSummary && (entity === "expenses" || entity === "invoices") && <div className="price-kpis tracking-kpis">
       <button className="stock-kpi invoice-kpi" aria-pressed={!pendingInvoicesOnly && !creditOnly} onClick={() => { setPendingInvoicesOnly(false); setCreditOnly(false); }}>
         <span>Facturas {entity === "expenses" ? "recibidas" : "emitidas"}</span><strong>{invoiceSummary.count}</strong>
@@ -701,6 +731,8 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
           </div>;
         })() : display(column, item[column], item)}</td>)}
         <td className="row-actions" onKeyDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
+          {entity === "works" && item.status === "planificada" && (!item.startDate || !(Array.isArray(item.assignedWorkers) && item.assignedWorkers.length)) && <span className="badge pendiente" title="Le falta la fecha de inicio o el personal">Sin planificar</span>}
+          {entity === "works" && canPlanWorks && ["planificada", "en_curso", "pausada"].includes(String(item.status)) && <button className="row-action-wide" title="Fechas, responsable y personal de la obra, en un solo paso" onClick={() => setPlanFor({ workId: item._id })}><CalendarDays size={15} /> Planificar</button>}
           {entity === "works" && <button title="Estado de obra" aria-label={`Estado de ${itemLabel(item)}`} onClick={() => setWorkStatusFor(item)}><Percent size={15} /></button>}
           {entity === "works" && canEdit && <Link title="Inspeccionar obra" aria-label={`Inspeccionar ${itemLabel(item)}`} href={`/app/works/${item._id}/inspections/new`}><ClipboardCheck size={16} /></Link>}
           {entity === "works" && <Link title="Abrir obra" href={`/app/works/${item._id}`}><Eye size={16} /></Link>}
@@ -715,6 +747,7 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
           {entity === "purchases" && <button className="row-action-wide" title={item.stage === "solicitud" ? "Descargar la solicitud en PDF" : "Descargar la orden de compra en PDF para mandársela al proveedor"}
             onClick={() => { void downloadPurchaseOrderPdf(purchaseOrderPdfData(item, relations.suppliers?.find(row => row._id === String(item.supplierId || "")), relations.works?.find(row => row._id === String(item.workId || "")), String(relations.quotes?.find(row => row._id === String(item.quoteId || ""))?.number || "") || undefined)).catch(() => setError("No se pudo generar el PDF de la orden")); }}>
             <Download size={15} /> PDF</button>}
+          {entity === "quotes" && canPlanWorks && item.status === "aprobada" && <button className="row-action-wide approve" title="Crear la obra con sus fechas, su responsable y su personal" onClick={() => setPlanFor({ quoteId: item._id })}><CalendarDays size={15} /> Planificar obra</button>}
           {entity === "quotes" && canEdit && item.status === "aprobada" && <button className="row-action-wide convert" title="Crear la obra a partir de esta cotización" onClick={() => setConvertFor(item)}><BriefcaseBusiness size={15} /> Pasar a obra</button>}
           {entity === "quotes" && canEdit && approvable.has(String(item.status)) && <button className="row-action-wide approve" title="Marcar la cotización como aprobada" disabled={statusBusy === item._id} onClick={() => { void approveQuote(item); }}><CheckCircle2 size={15} /> Aprobar</button>}
           {entity === "stock" && canEdit && <WorkCartRowControl item={item} />}
@@ -793,6 +826,11 @@ export function EntityManager({ entity, canEdit, canDeleteRecords, viewer, canSe
     {workStatusFor && <WorkStatusModal work={workStatusFor} canEdit={canEdit} onClose={() => setWorkStatusFor(null)} onSaved={() => { setWorkStatusFor(null); void load(); }} />}
     {statusFor && <WorkerStatusModal worker={statusFor} onClose={() => setStatusFor(null)} onDone={message => { setStatusFor(null); setNotice(message); void load(); }} />}
 
+    {planFor && <PlanWorkModal quoteId={planFor.quoteId} workId={planFor.workId} onClose={() => setPlanFor(null)} onDone={result => {
+      setPlanFor(null);
+      setNotice(`${result.created ? `Se creó la obra ${result.work.code} y quedó planificada` : `La obra ${result.work.code} quedó planificada`}.${result.kept.length ? ` ${result.kept.join(", ")} sigue${result.kept.length > 1 ? "n" : ""} en la obra porque ya tiene${result.kept.length > 1 ? "n" : ""} horas cargadas.` : ""}`);
+      void load(); loadPlanning();
+    }} />}
     {creditFor && <CreditNoteModal noteId={creditFor} canEdit={canEdit} onClose={() => setCreditFor(null)} onChanged={() => { void load(); }} />}
     {receiptFor && <ReceiptModal receipt={receiptFor.receipt} initialClientId={receiptFor.clientId} initialInvoiceId={receiptFor.invoiceId}
       clients={(relations.clients || []).map(partyOption)}

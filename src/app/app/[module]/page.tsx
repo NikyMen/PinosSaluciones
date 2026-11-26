@@ -11,5 +11,7 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
   if (!canRead(session, entity)) notFound();
   // Tareas filtra por area y por persona: el componente necesita saber quien mira.
   return <EntityManager entity={entity} canEdit={canWrite(session, entity)} canDeleteRecords={canDelete(session) && canWrite(session, entity)}
-    viewer={{ userId: session.userId, role: session.role }} canSeeWorkBudget={entity === "works" && canViewWorkBudget(session)}/>;
+    viewer={{ userId: session.userId, role: session.role }} canSeeWorkBudget={entity === "works" && canViewWorkBudget(session)}
+    // Planificar una obra (desde la cotización aprobada o desde la obra) pide el permiso de Obras, no el de Cotizaciones.
+    canPlanWorks={(entity === "works" || entity === "quotes") && canWrite(session, "works")}/>;
 }

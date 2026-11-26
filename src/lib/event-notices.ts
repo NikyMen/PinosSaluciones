@@ -21,7 +21,8 @@ export async function noticeQuoteApproved(quote: Doc, session: Session, shortage
     body: materials.length ? `Prepará la solicitud de los materiales que faltan: ${materials.join(" / ")}` : `La aprobó ${session.name}. El stock alcanza para los materiales de la cotización.`,
     roles: ["compras"], event: "cotizacion.aprobada.compras", dedupeKey: `quote-approved-${String(quote._id)}-compras`,
   });
-  await notify({ ...common, title: `Cotización aprobada ${label}: planificar la obra`, body: "Asigná las fechas y el personal de la obra.", roles: ["arquitecto"], event: "cotizacion.aprobada.produccion", dedupeKey: `quote-approved-${String(quote._id)}-produccion` });
+  // A Producción el aviso la lleva directo a planificar: fechas, responsable y personal en un paso (src/lib/work-planning.ts).
+  await notify({ ...common, href: `/app/works?planificar=${String(quote._id)}`, title: `Cotización aprobada ${label}: planificar la obra`, body: "Asigná las fechas y el personal de la obra.", roles: ["arquitecto"], event: "cotizacion.aprobada.produccion", dedupeKey: `quote-approved-${String(quote._id)}-produccion` });
   await notify({ ...common, title: `Cotización aprobada ${label}: anticipo y condiciones`, body: `Por ${money(Number(quote.amountCents || 0))}. Revisar el anticipo, el crédito y las condiciones financieras.`, roles: ["administracion"], event: "cotizacion.aprobada.administracion", dedupeKey: `quote-approved-${String(quote._id)}-administracion` });
   // Gerencia se entera de todo lo que sale, la apruebe quien la apruebe. Es sólo un aviso: sin evento, no tiene plazo ni escala.
   await notify({ ...common, title: `Cotización aprobada ${label}`, body: `Por ${money(Number(quote.amountCents || 0))}. La aprobó ${session.name}.`, roles: ["gerencia"], dedupeKey: `quote-approved-${String(quote._id)}-gerencia` });

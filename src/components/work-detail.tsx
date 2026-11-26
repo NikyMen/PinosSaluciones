@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ClipboardCheck, Download, FileCheck2, HardHat, ImagePlus, ListChecks, MessageSquareText, Paperclip, Plus, ReceiptText, Send, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, ClipboardCheck, Download, FileCheck2, HardHat, ImagePlus, ListChecks, MessageSquareText, Paperclip, Plus, ReceiptText, Send, Trash2, Users, X } from "lucide-react";
 import { date, dateTime, money, titleCase } from "@/lib/format";
 import { FileDrop, MoneyInput } from "@/components/fields";
 import { WorkLabor, type AssignedWorker, type LaborEntry } from "@/components/work-labor";
@@ -13,6 +13,7 @@ import { WorkInspections } from "@/components/work-inspections";
 import { QuoteBillingPanel } from "@/components/quote-billing";
 import { ProjectMediaPanel } from "@/components/project-media";
 import { ThreadButton } from "@/components/document-thread";
+import { PlanWorkModal } from "@/components/plan-work-modal";
 import type { ProjectLocation } from "@/lib/project-location";
 
 type Checklist = { _id: string; title: string; done: boolean; completedAt?: string; createdAt?: string; updatedAt?: string };
@@ -45,6 +46,7 @@ type Work = { _id: string; quoteId?: string; location?: ProjectLocation; photos?
 
 export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false, canSeeBilling = false }: { id: string; canEdit: boolean; canCreateWorker: boolean; canSeeStock?: boolean; canSeeBilling?: boolean }) {
   const [work, setWork] = useState<Work | null>(null);
+  const [planningOpen, setPlanningOpen] = useState(false);
   const [error, setError] = useState("");
   const [expenses, setExpenses] = useState<WorkExpense[]>([]);
   const [checklistBusy, setChecklistBusy] = useState("");
@@ -172,9 +174,10 @@ export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false, 
   return <>
     <Link href="/app/works" className="back-link"><ArrowLeft/> Volver a obras</Link>
     <div className="page-heading work-heading">
-      <div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>Previsto: {date(work.startDate)} ? {date(work.endDate)} ? Real: {date(work.actualStartDate)} ? {date(work.actualEndDate)}</p></div>
+      <div><p className="eyebrow">OBRA {work.code}</p><h1>{work.name}</h1><p>Previsto: {date(work.startDate)} → {date(work.endDate)} · Real: {date(work.actualStartDate)} → {date(work.actualEndDate)}</p></div>
       <div className="work-heading-actions">
         {canEdit && <Link className="primary-btn" href={`/app/works/${id}/inspections/new`}><ClipboardCheck size={17} /> Nueva inspección</Link>}
+        {canEdit && <button className="secondary-btn" title="Fechas, responsable y personal de la obra, en un solo paso" onClick={() => setPlanningOpen(true)}><CalendarDays size={17} /> Planificar obra</button>}
         <a className="secondary-btn" href="#personal" onClick={event => { event.preventDefault(); document.getElementById("personal")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Users size={17} /> Personal asignado</a>
         <a className="secondary-btn" href="#gastos" onClick={event => { event.preventDefault(); document.getElementById("gastos")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><ReceiptText size={17} /> Gastos de obra</a>
         {canSeeStock && <Link className="secondary-btn" href={`/app/salidas?obra=${id}`}><HardHat size={17} /> Material entregado</Link>}
@@ -183,6 +186,7 @@ export function WorkDetail({ id, canEdit, canCreateWorker, canSeeStock = false, 
       </div>
     </div>
     {error && <div className="notice error">{error}</div>}
+    {planningOpen && <PlanWorkModal workId={id} onClose={() => setPlanningOpen(false)} onDone={() => { setPlanningOpen(false); void load(); }} />}
 
     <ProjectMediaPanel location={work.location} photos={work.photos} />
     {canSeeBilling && work.quoteId && <QuoteBillingPanel quoteId={work.quoteId} canEdit={false} canRemove={false} summaryOnly />}

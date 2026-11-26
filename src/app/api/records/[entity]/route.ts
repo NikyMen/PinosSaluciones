@@ -18,6 +18,7 @@ import { withLastPrices } from "@/lib/stock-prices";
 import { cashAccountBalances, type CashAccountDoc } from "@/lib/cash-accounts";
 import { invoiceListSummary, pendingInvoiceFilter } from "@/lib/invoice-summary";
 import { creditNotesFilter, creditSummary } from "@/lib/credit-notes";
+import { unplannedWorkFilter } from "@/lib/work-planning";
 import { workHolidays } from "@/lib/work-calendar";
 import { businessDaysBetween } from "@/lib/business-days";
 import { DEFAULT_WAREHOUSE, isWarehouse } from "@/lib/warehouses";
@@ -65,7 +66,9 @@ export async function GET(request: Request, context: RouteContext<"/api/records/
     const invoiceEntity = entity === "expenses" || entity === "invoices" ? entity : null;
     // "A favor de clientes": las notas de crédito de venta con saldo sin aplicar.
     const pending = invoiceEntity && url.searchParams.get("pending") === "1" ? pendingInvoiceFilter(invoiceEntity)
-      : entity === "invoices" && url.searchParams.get("credit") === "1" ? creditNotesFilter : null;
+      : entity === "invoices" && url.searchParams.get("credit") === "1" ? creditNotesFilter
+        // Obras "sin planificar": esperan el inicio y les falta la fecha o la gente.
+        : entity === "works" && url.searchParams.get("unplanned") === "1" ? unplannedWorkFilter : null;
     const filter = entity === "tasks" ? { $and: [searchFilter, taskScope(session, url.searchParams)] }
       : warehouseFilter || pending ? { $and: [searchFilter, warehouseFilter || pending!] } : searchFilter;
     const model = modelByEntity[entity];
