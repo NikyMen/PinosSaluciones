@@ -53,9 +53,9 @@ const pending = async (supplier = supplierId, payment?: string) => {
   expect(result.status).toBe(200);
   return result.body.items as Array<{ _id: string; credit: boolean; balanceCents: number; committedCents: number; appliedCents: number; notice: string }>;
 };
-// La transferencia lleva su comprobante (Administración: obligatorio en transferencia y cheque).
+// La transferencia lleva su número y su comprobante (Administración, 12/11: todos los campos del medio son obligatorios).
 const receipt = "/api/uploads/comprobante-transferencia.pdf";
-const pay = async (body: Record<string, unknown>) => call(await ordersRoute.POST(json("POST", { supplierId, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, attachment: receipt, ...body })));
+const pay = async (body: Record<string, unknown>) => call(await ordersRoute.POST(json("POST", { supplierId, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, reference: "TRF-000123", attachment: receipt, ...body })));
 const expense = async (id: string) => (await Expense.findById(id).lean<{ paidCents: number; status: string; advanceCents?: number }>())!;
 
 beforeAll(async () => {
@@ -100,7 +100,8 @@ describe("orden de pago de varias facturas", () => {
     const allocations = [{ expenseId: f1._id, amountCents: 100_000_00 }, { expenseId: f2._id, amountCents: 50_000_00 }, { expenseId: nc._id, amountCents: 30_000_00 }];
     // La empresa no es agente de retención: la OP no lleva retenciones.
     expect((await pay({ allocations, retentionsCents: 2_000_00 })).body.error).toContain("no lleva retenciones");
-    // Sin el comprobante de la transferencia no se paga.
+    // Sin el número o sin el comprobante de la transferencia no se paga.
+    expect((await pay({ allocations, reference: "" })).body.error).toContain("N° de la transferencia");
     expect((await pay({ allocations, attachment: "" })).body.error).toContain("comprobante");
     const created = await pay({ allocations, workId });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
@@ -127,7 +128,7 @@ describe("orden de pago de varias facturas", () => {
     expect(balances.get(banco)).toBe(-120_000_00);
 
     // Editarla: deshace lo aplicado y aplica lo nuevo (ahora la factura 2 entera, sin la nota).
-    const edited = await call(await orderRoute.PUT(json("PUT", { supplierId, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, workId, attachment: receipt, allocations: [{ expenseId: f1._id, amountCents: 100_000_00 }, { expenseId: f2._id, amountCents: 80_000_00 }] }), params({ id: created.body.payment._id })));
+    const edited = await call(await orderRoute.PUT(json("PUT", { supplierId, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, workId, reference: "TRF-000123", attachment: receipt, allocations: [{ expenseId: f1._id, amountCents: 100_000_00 }, { expenseId: f2._id, amountCents: 80_000_00 }] }), params({ id: created.body.payment._id })));
     expect(edited.status, JSON.stringify(edited.body)).toBe(200);
     expect(edited.body.payment).toMatchObject({ amountCents: 180_000_00 });
     expect(await expense(f2._id)).toMatchObject({ paidCents: 80_000_00, status: "pagado" });
@@ -185,7 +186,8 @@ describe("orden de pago de varias facturas", () => {
 
     // Para pagarla con e-Cheq hacen falta sus datos. Se elige el banco y sale de su cuenta de cheques diferidos.
     const body = { supplierId: supplier, date: "2026-10-20", method: "echeq", accountId: materiales, cashAccountId: banco, execute: true, attachment: receipt, allocations: [{ expenseId: f._id, amountCents: 25_000_00 }] };
-    expect((await call(await orderRoute.PUT(json("PUT", body), params({ id: emitted.body.payment._id })))).body.error).toContain("fecha de cobro");
+    expect((await call(await orderRoute.PUT(json("PUT", body), params({ id: emitted.body.payment._id })))).body.error).toContain("N° del e-Cheq");
+    expect((await call(await orderRoute.PUT(json("PUT", { ...body, check: { number: "E-778", bank: "Banco de Corrientes" } }), params({ id: emitted.body.payment._id })))).body.error).toContain("fecha de cobro");
     const paid = await call(await orderRoute.PUT(json("PUT", { ...body, check: { number: "E-778", bank: "Banco de Corrientes", dueDate: "2026-11-20" } }), params({ id: emitted.body.payment._id })));
     expect(paid.status, JSON.stringify(paid.body)).toBe(200);
     expect(paid.body.payment).toMatchObject({ status: "pagada", paidByName: "Tesorería" });
@@ -338,7 +340,7 @@ describe("orden de pago a cuenta", () => {
 
     // Editando la OP se aplica a la factura: el total sigue igual y le queda el resto a cuenta.
     const applied = await call(await orderRoute.PUT(json("PUT", {
-      supplierId: supplier, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, attachment: receipt,
+      supplierId: supplier, date: "2026-10-15", method: "transferencia", accountId: materiales, cashAccountId: banco, execute: true, reference: "TRF-000123", attachment: receipt,
       allocations: [{ expenseId: invoice._id, amountCents: 150_000_00 }], onAccountCents: 50_000_00,
     }), params({ id: created.body.payment._id })));
     expect(applied.status, JSON.stringify(applied.body)).toBe(200);

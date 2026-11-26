@@ -31,15 +31,17 @@ export type MediumToCheck = {
  */
 export function paymentMediumProblem(medium: MediumToCheck, multiple: boolean) {
   const what = named[medium.method] || "el medio de pago";
+  // "de el cheque" es "del cheque".
+  const of = what.startsWith("el ") ? `del ${what.slice(3)}` : `de ${what}`;
   if (medium.method === "cheque_tercero") return medium.checkId ? "" : "Elegí el cheque de terceros de la cartera";
-  if (multiple && !(medium.amountCents > 0)) return `Poné el importe de ${what}`;
-  if (!medium.hasAccount) return OWN_CHECKS.has(medium.method) ? `Elegí la cuenta de cheques diferidos de ${what}` : `Elegí de qué caja o cuenta sale ${what}`;
+  if (multiple && !(medium.amountCents > 0)) return `Poné el importe ${of}`;
+  if (!medium.hasAccount) return OWN_CHECKS.has(medium.method) ? `Elegí la cuenta de cheques diferidos ${of}` : `Elegí de qué caja o cuenta sale ${what}`;
   if (OWN_CHECKS.has(medium.method)) {
-    if (!medium.check?.number?.trim()) return `Poné el N° de ${what}`;
-    if (!medium.check.bank?.trim()) return `Poné el banco de ${what}`;
-    if (!medium.check.dueDate) return `Poné la fecha de cobro de ${what}`;
+    if (!medium.check?.number?.trim()) return `Poné el N° ${of}`;
+    if (!medium.check.bank?.trim()) return `Poné el banco ${of}`;
+    if (!medium.check.dueDate) return `Poné la fecha de cobro ${of}`;
   }
-  if (MEDIA_NEEDING_NUMBER.has(medium.method) && !medium.reference?.trim()) return medium.method === "transferencia" ? "Poné el N° de la transferencia" : `Poné el número o la referencia de ${what}`;
-  if (MEDIA_NEEDING_RECEIPT.has(medium.method) && !medium.hasAttachment) return `Adjuntá el comprobante de ${what}`;
+  if (MEDIA_NEEDING_NUMBER.has(medium.method) && !medium.reference?.trim()) return medium.method === "transferencia" ? "Poné el N° de la transferencia" : `Poné el número o la referencia ${of}`;
+  if (MEDIA_NEEDING_RECEIPT.has(medium.method) && !medium.hasAttachment) return `Adjuntá el comprobante ${of}`;
   return "";
 }

@@ -99,7 +99,7 @@ describe("orden de pago con varios medios", () => {
     const f = await invoice(supplierId, "0002-00000001", 100_000_00);
     const created = await pay({ supplierId, allocations: [{ expenseId: f._id, amountCents: 60_000_00 }], lines: [
       { method: "efectivo", cashAccountId: accounts.efectivo, amountCents: 10_000_00 },
-      { method: "transferencia", cashAccountId: accounts.nacion, amountCents: 20_000_00, attachment: receipt },
+      { method: "transferencia", cashAccountId: accounts.nacion, amountCents: 20_000_00, reference: "TR-20", attachment: receipt },
       { method: "echeq", cashAccountId: accounts["chdif-macro"], amountCents: 30_000_00, attachment: receipt, check: { number: "E-9", bank: "Banco Macro", dueDate: "2026-11-20" } },
     ] });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
@@ -114,9 +114,11 @@ describe("orden de pago con varios medios", () => {
     const f = await invoice(supplierId, "0003-00000001", 10_000_00);
     const allocations = [{ expenseId: f._id, amountCents: 10_000_00 }];
     expect((await pay({ supplierId, allocations, lines: [{ method: "efectivo", cashAccountId: accounts.nacion, amountCents: 10_000_00 }] })).body.error).toContain("no sirve para pagar con efectivo");
-    expect((await pay({ supplierId, allocations, lines: [{ method: "transferencia", cashAccountId: accounts["corrientes-constructora"], amountCents: 10_000_00, attachment: receipt }] })).body.error).toContain("Constructora");
+    expect((await pay({ supplierId, allocations, lines: [{ method: "transferencia", cashAccountId: accounts["corrientes-constructora"], amountCents: 10_000_00, reference: "TR-21", attachment: receipt }] })).body.error).toContain("Constructora");
     expect((await pay({ supplierId, allocations, lines: [{ method: "cheque", cashAccountId: accounts.nacion, amountCents: 10_000_00, attachment: receipt, check: { number: "1", bank: "Nación", dueDate: "2026-11-01" } }] })).body.error).toContain("no tiene cuenta de cheques diferidos");
-    expect((await pay({ supplierId, allocations, lines: [{ method: "tarjeta", cashAccountId: accounts.tarjeta, amountCents: 10_000_00 }] })).status).toBe(201);
+    // La tarjeta pide su número (el cupón) y el comprobante, como la transferencia.
+    expect((await pay({ supplierId, allocations, lines: [{ method: "tarjeta", cashAccountId: accounts.tarjeta, amountCents: 10_000_00 }] })).body.error).toContain("referencia del pago con tarjeta");
+    expect((await pay({ supplierId, allocations, lines: [{ method: "tarjeta", cashAccountId: accounts.tarjeta, amountCents: 10_000_00, reference: "CUPÓN 4471", attachment: receipt }] })).status).toBe(201);
     expect(await balance("tarjeta")).toBe(-10_000_00);
   });
 
@@ -147,7 +149,7 @@ describe("orden de pago con varios medios", () => {
     const created = await pay({ supplierId, allocations, lines: [{ method: "cheque", cashAccountId: accounts["chdif-macro"], amountCents: 80_000_00, attachment: receipt, check: { number: "2002", bank: "Banco Macro", dueDate: "2026-11-30" } }] });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const checkId = created.body.payment.lines[0].checkId;
-    const transfer = { supplierId, date: "2026-10-15", accountId: materiales, execute: true, allocations, lines: [{ method: "transferencia", cashAccountId: accounts.nacion, amountCents: 80_000_00, attachment: receipt }] };
+    const transfer = { supplierId, date: "2026-10-15", accountId: materiales, execute: true, allocations, lines: [{ method: "transferencia", cashAccountId: accounts.nacion, amountCents: 80_000_00, reference: "TR-80", attachment: receipt }] };
 
     await Check.updateOne({ _id: checkId }, { $set: { status: "cobrado" } });
     expect((await call(await orderRoute.PUT(json("PUT", transfer), params({ id: created.body.payment._id })))).body.error).toContain("ya se debitó");
@@ -253,7 +255,7 @@ describe("período de la factura y extracto por caja", () => {
     const september = await invoice(supplierId, "0012-00000001", 100_000_00, { issueDate: "2026-09-20" });
     const october = await invoice(supplierId, "0012-00000002", 50_000_00, { issueDate: "2026-10-05" });
     // Antes del período: entra al saldo anterior.
-    expect((await pay({ supplierId, date: "2026-10-10", allocations: [{ expenseId: september._id, amountCents: 30_000_00 }], lines: [{ method: "transferencia", cashAccountId: accounts.galicia, amountCents: 30_000_00, attachment: receipt }] })).status).toBe(201);
+    expect((await pay({ supplierId, date: "2026-10-10", allocations: [{ expenseId: september._id, amountCents: 30_000_00 }], lines: [{ method: "transferencia", cashAccountId: accounts.galicia, amountCents: 30_000_00, reference: "TR-8", attachment: receipt }] })).status).toBe(201);
     expect((await pay({ supplierId, date: "2026-11-05", allocations: [{ expenseId: september._id, amountCents: 70_000_00 }, { expenseId: october._id, amountCents: 50_000_00 }], lines: [{ method: "transferencia", cashAccountId: accounts.galicia, amountCents: 120_000_00, reference: "TR-9", attachment: receipt }] })).status).toBe(201);
 
     const statementRoute = await import("../src/app/api/accounting/cash-statement/route");
@@ -296,9 +298,12 @@ describe("proveedores y clientes con código", () => {
     writeFileSync(file, "Código;Razón social;Nombre de fantasía;CUIT\n001;ACUSIEL;Acusiel Corrientes;33708748809\n002;PROKRETE ARGENTINA SA;Prokrete;30-69687437-5\n003;Sin CUIT;;\n");
     const run = (...args: string[]) => promisify(execFile)(process.execPath, ["--import", "tsx", "scripts/import-parties.ts", file, "--proveedores", ...args], { env: { ...process.env, MONGODB_URI: process.env.MONGODB_URI } });
     const dry = await run();
-    expect(dry.stdout).toContain("1 nuevos, 1 para completar");
+    // El renglón sin CUIT también se da de alta (listado de Administración): son dos nuevos.
+    expect(dry.stdout).toContain("2 nuevos, 1 para completar");
     expect(await Supplier.exists({ cuit: "30-69687437-5" })).toBeNull();
+    expect(await Supplier.exists({ name: "Sin CUIT" })).toBeNull();
     await run("--apply");
+    expect(await Supplier.findOne({ name: "Sin CUIT" }).lean()).toMatchObject({ code: expect.any(Number) });
     expect(await Supplier.findOne({ cuit: "33-70874880-9" }).lean()).toMatchObject({ name: "Acusiel", tradeName: "Acusiel Corrientes" });
     expect(await Supplier.findOne({ cuit: "30-69687437-5" }).lean()).toMatchObject({ name: "PROKRETE ARGENTINA SA", tradeName: "Prokrete", code: expect.any(Number) });
   }, 60_000);
