@@ -18,44 +18,63 @@ type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] 
 /*
  * La barra azul, con los módulos en el orden que pidió administración:
  * Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal,
- * Activos, Tesorería, Contabilidad y Gestión.
+ * Tesorería, Contabilidad y Gestión.
+ * Cada módulo muestra todo lo que hace falta para su trabajo, en el orden en
+ * que se usa (en Compras: proveedor, precios, orden, remito, factura, pago).
+ * Por eso una pantalla puede estar en más de un módulo: Clientes está en
+ * Maestros y en Ventas, las órdenes de pago en Compras y en Tesorería.
  * Un módulo sin nada que la persona pueda ver no aparece.
  */
 const dashboardItem: NavItem = { href: "/app", label: "Tablero gerencial", icon: LayoutDashboard, permission: "dashboard" };
+const clientsItem: NavItem = { href: "/app/clients", label: "Clientes", icon: Users, permission: "clients" };
+const suppliersItem: NavItem = { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" };
+const accountsItem: NavItem = { href: "/app/accounts", label: "Plan de cuentas", icon: BookOpen, permission: "accounts" };
+const quotesItem: NavItem = { href: "/app/quotes", label: "Cotizaciones", icon: FileText, permission: "quotes" };
+const trackingItem: NavItem = { href: "/app/seguimiento", label: "Seguimiento", icon: Route, permission: "invoices" };
+const collectionsItem: NavItem = { href: "/app/collections", label: "Cobranzas y recibos", icon: HandCoins, permission: "collections" };
+const paymentsItem: NavItem = { href: "/app/payments", label: "Órdenes de pago y pagos", icon: CreditCard, permission: "payments" };
+const workOutputsItem: NavItem = { href: "/app/salidas", label: "Salidas a obra", icon: HardHat, permission: "stock" };
 const groups: NavGroup[] = [
   { id: "masters", label: "Maestros", icon: Database, items: [
-    { href: "/app/clients", label: "Clientes", icon: Users, permission: "clients" },
-    { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
-    { href: "/app/accounts", label: "Plan de cuentas", icon: BookOpen, permission: "accounts" },
+    clientsItem,
+    suppliersItem,
+    accountsItem,
   ] },
   { id: "commercial", label: "Comercial", icon: CircleDollarSign, items: [
-    { href: "/app/quotes", label: "Cotizaciones", icon: FileText, permission: "quotes" },
-    { href: "/app/seguimiento", label: "Seguimiento", icon: Route, permission: "invoices" },
+    quotesItem,
+    trackingItem,
     { href: "/app/calendario", label: "Calendario", icon: CalendarDays, permission: "calendario" },
   ] },
   { id: "works", label: "Obras", icon: HardHat, items: [
     { href: "/app/works", label: "Obras", icon: HardHat, permission: "works" },
     { href: "/app/tasks", label: "Tareas y pendientes", icon: ListTodo, permission: "tasks" },
+    { ...workOutputsItem, icon: PackageOpen },
   ] },
+  // El circuito de la compra, de arriba hacia abajo. Tesorería busca las
+  // órdenes de pago junto a las facturas que pagan (reunión del 10/11/2026).
   { id: "purchases", label: "Compras", icon: ShoppingCart, items: [
+    suppliersItem,
+    { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
     { href: "/app/purchases", label: "Solicitudes y órdenes", icon: ClipboardList, permission: "purchases" },
     { href: "/app/remitos-compra", label: "Remitos de compra", icon: PackagePlus, permission: "purchases" },
-    { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
     { href: "/app/expenses", label: "Facturas de compra", icon: ReceiptText, permission: "expenses" },
-    // Tesorería las busca junto a las facturas que pagan (reunión del 10/11/2026).
-    { href: "/app/payments", label: "Órdenes de pago y pagos", icon: CreditCard, permission: "payments" },
+    paymentsItem,
     { href: "/app/ruta-compras", label: "Ruta de compras", icon: Route, permission: "purchases" },
   ] },
+  // El circuito de la venta: cliente, cotización o mostrador, remito, factura y cobro.
   { id: "sales", label: "Ventas", icon: Store, items: [
+    clientsItem,
+    quotesItem,
     { href: "/app/mostrador", label: "Mostrador (venta al público)", icon: Store, permission: "invoices" },
     { href: "/app/remitos", label: "Remitos de venta", icon: PackageOpen, permission: "stock" },
-    { href: "/app/invoices", label: "Facturas de venta", icon: FileText, permission: "invoices" },
-    { href: "/app/collections", label: "Cobranzas y recibos", icon: HandCoins, permission: "collections" },
+    { href: "/app/invoices", label: "Facturas de venta", icon: ReceiptText, permission: "invoices" },
+    collectionsItem,
+    trackingItem,
   ] },
   { id: "stock", label: "Stock y logística", icon: Boxes, items: [
     { href: "/app/stock", label: "Stock", icon: PackageSearch, permission: "stock" },
     { href: "/app/caja", label: "Caja (entradas y salidas)", icon: ScanBarcode, permission: "stock" },
-    { href: "/app/salidas", label: "Salidas a obra", icon: HardHat, permission: "stock" },
+    workOutputsItem,
     { href: "/app/transferencias", label: "Transferencias", icon: ArrowLeftRight, permission: "stock" },
     { href: "/app/envios", label: "Envíos por transporte", icon: Truck, permission: "stock" },
   ] },
@@ -63,16 +82,18 @@ const groups: NavGroup[] = [
     { href: "/app/workers", label: "Personal", icon: Users, permission: "workers" },
     { href: "/app/liquidacion", label: "Liquidación de quincena", icon: Calculator, permission: "workers" },
   ] },
-  { id: "assets", label: "Activos", icon: CarFront, items: [
-    { href: "/app/assets", label: "Bienes de uso", icon: CarFront, permission: "assets" },
-  ] },
+  // La plata: lo que entra, lo que sale, dónde está y los bienes de la empresa.
   { id: "treasury", label: "Tesorería", icon: Landmark, items: [
     { href: "/app/cash", label: "Caja y bancos", icon: WalletCards, permission: "cash" },
-    { href: "/app/cashAccounts", label: "Cajas y cuentas bancarias", icon: Landmark, permission: "cashAccounts" },
-    { href: "/app/extracto", label: "Extracto por caja", icon: ScrollText, permission: "cashAccounts" },
+    collectionsItem,
+    paymentsItem,
     { href: "/app/checks", label: "Cheques", icon: Banknote, permission: "checks" },
+    { href: "/app/extracto", label: "Extracto por caja", icon: ScrollText, permission: "cashAccounts" },
+    { href: "/app/cashAccounts", label: "Cajas y cuentas bancarias", icon: Landmark, permission: "cashAccounts" },
+    { href: "/app/assets", label: "Bienes de uso", icon: CarFront, permission: "assets" },
   ] },
   { id: "accounting", label: "Contabilidad", icon: Library, items: [
+    accountsItem,
     { href: "/app/libro-iva", label: "Libro IVA", icon: BookText, permission: "accounting" },
     { href: "/app/mayor", label: "Movimientos por cuenta", icon: ScrollText, permission: "accounting" },
   ] },
@@ -146,7 +167,7 @@ const allItems = groups.flatMap(group => group.items);
 const legacyItems = [dashboardItem, ...legacyGroups.flatMap(group => group.items), ...legacyAnalysis];
 
 function isActive(pathname: string, href: string) {
-  return href === "/app" ? pathname === href : pathname.startsWith(href);
+  return pathname === href || (href !== "/app" && pathname.startsWith(`${href}/`));
 }
 
 function groupForPath(pathname: string, version: NavVersion = "v2") {
