@@ -26,6 +26,8 @@ type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] 
  * Un módulo sin nada que la persona pueda ver no aparece.
  */
 const dashboardItem: NavItem = { href: "/app", label: "Tablero gerencial", icon: LayoutDashboard, permission: "dashboard" };
+const calendarItem: NavItem = { href: "/app/calendario", label: "Calendario", icon: CalendarDays, permission: "calendario" };
+const inboxItem: NavItem = { href: "/app/bandeja", label: "Bandeja de pendientes", icon: Inbox };
 const clientsItem: NavItem = { href: "/app/clients", label: "Clientes", icon: Users, permission: "clients" };
 const suppliersItem: NavItem = { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" };
 const accountsItem: NavItem = { href: "/app/accounts", label: "Plan de cuentas", icon: BookOpen, permission: "accounts" };
@@ -43,7 +45,7 @@ const groups: NavGroup[] = [
   { id: "commercial", label: "Comercial", icon: CircleDollarSign, items: [
     quotesItem,
     trackingItem,
-    { href: "/app/calendario", label: "Calendario", icon: CalendarDays, permission: "calendario" },
+    calendarItem,
   ] },
   { id: "works", label: "Obras", icon: HardHat, items: [
     { href: "/app/works", label: "Obras", icon: HardHat, permission: "works" },
@@ -99,60 +101,72 @@ const groups: NavGroup[] = [
   ] },
   { id: "management", label: "Gestión", icon: LayoutDashboard, items: [
     dashboardItem,
-    { href: "/app/bandeja", label: "Bandeja de pendientes", icon: Inbox },
+    inboxItem,
     { href: "/app/reports", label: "iA y Reportes", icon: BarChart3, permission: "reports" },
   ] },
 ];
 
 /*
- * El menú de antes (v1), para quien lo prefiera: el tablero arriba, cuatro
- * grupos y el análisis al pie. Las pantallas que se sumaron con los módulos
- * entran en el grupo que les queda más cerca.
+ * El menú de antes (v1), para quien lo prefiera: el tablero y la bandeja
+ * arriba, cuatro grupos y el análisis al pie. Tiene las mismas pantallas que
+ * el menú por módulos, con sus nombres de siempre: cada grupo muestra todo su
+ * circuito en el orden en que se usa, así que una pantalla puede repetirse.
  */
+const legacyTop: NavItem[] = [dashboardItem, inboxItem];
+const legacyInvoicesItem: NavItem = { href: "/app/invoices", label: "Facturación", icon: ReceiptText, permission: "invoices" };
+const legacyPaymentsItem: NavItem = { href: "/app/payments", label: "Pagos", icon: CreditCard, permission: "payments" };
 const legacyGroups: NavGroup[] = [
+  // El circuito de la venta: cliente, cotización o mostrador, remito, factura y cobro.
   { id: "commercial", label: "Comercial", icon: CircleDollarSign, items: [
-    { href: "/app/clients", label: "Clientes", icon: Users, permission: "clients" },
-    { href: "/app/quotes", label: "Ventas y cotizaciones", icon: FileText, permission: "quotes" },
+    clientsItem,
+    { ...quotesItem, label: "Ventas y cotizaciones" },
     { href: "/app/mostrador", label: "Mostrador (venta al público)", icon: Store, permission: "invoices" },
     { href: "/app/remitos", label: "Remitos de venta", icon: PackageOpen, permission: "stock" },
+    legacyInvoicesItem,
+    collectionsItem,
+    trackingItem,
+    calendarItem,
   ] },
   { id: "works", label: "Obras", icon: HardHat, items: [
     { href: "/app/works", label: "Obras", icon: HardHat, permission: "works" },
+    { href: "/app/tasks", label: "Tareas y pendientes", icon: ListTodo, permission: "tasks" },
+    { ...workOutputsItem, icon: PackageOpen },
     { href: "/app/workers", label: "Personal asignado", icon: Users, permission: "workers" },
     { href: "/app/liquidacion", label: "Liquidación de quincena", icon: Calculator, permission: "workers" },
-    { href: "/app/tasks", label: "Tareas y pendientes", icon: ListTodo, permission: "tasks" },
   ] },
+  // Primero el circuito de la compra (proveedor, precios, orden, remito, factura, pago) y después el depósito.
   { id: "purchases", label: "Compras y stock", icon: ShoppingCart, items: [
+    suppliersItem,
+    { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
+    { href: "/app/purchases", label: "Órdenes de compra", icon: ClipboardList, permission: "purchases" },
+    { href: "/app/remitos-compra", label: "Remitos de compra", icon: PackagePlus, permission: "purchases" },
+    { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText, permission: "expenses" },
+    legacyPaymentsItem,
+    { href: "/app/ruta-compras", label: "Ruta de compras", icon: Route, permission: "purchases" },
     { href: "/app/stock", label: "Stock", icon: PackageSearch, permission: "stock" },
     { href: "/app/caja", label: "Caja (entradas y salidas)", icon: ScanBarcode, permission: "stock" },
-    { href: "/app/salidas", label: "Salidas a obra", icon: HardHat, permission: "stock" },
+    workOutputsItem,
     { href: "/app/transferencias", label: "Transferencias", icon: ArrowLeftRight, permission: "stock" },
     { href: "/app/envios", label: "Envíos por transporte", icon: Truck, permission: "stock" },
-    { href: "/app/suppliers", label: "Proveedores", icon: Truck, permission: "suppliers" },
-    { href: "/app/precios", label: "Buscador de precios", icon: Tags, permission: "suppliers" },
-    { href: "/app/purchases", label: "Órdenes de compra", icon: ShoppingCart, permission: "purchases" },
-    { href: "/app/remitos-compra", label: "Remitos de compra", icon: PackagePlus, permission: "purchases" },
-    { href: "/app/ruta-compras", label: "Ruta de compras", icon: Route, permission: "purchases" },
-    { href: "/app/expenses", label: "Compras y gastos", icon: ReceiptText, permission: "expenses" },
-    { href: "/app/assets", label: "Bienes de uso", icon: CarFront, permission: "assets" },
   ] },
+  // La plata (lo que entra, lo que sale y dónde está), los bienes de la empresa y la contabilidad.
   { id: "finance", label: "Finanzas", icon: WalletCards, items: [
-    { href: "/app/seguimiento", label: "Seguimiento", icon: Route, permission: "invoices" },
-    { href: "/app/invoices", label: "Facturación", icon: FileText, permission: "invoices" },
-    { href: "/app/collections", label: "Cobranzas y recibos", icon: HandCoins, permission: "collections" },
-    { href: "/app/payments", label: "Pagos", icon: CreditCard, permission: "payments" },
     { href: "/app/cash", label: "Caja y bancos", icon: WalletCards, permission: "cash" },
-    { href: "/app/cashAccounts", label: "Cajas y cuentas bancarias", icon: Landmark, permission: "cashAccounts" },
-    { href: "/app/extracto", label: "Extracto por caja", icon: ScrollText, permission: "cashAccounts" },
+    legacyInvoicesItem,
+    collectionsItem,
+    legacyPaymentsItem,
+    trackingItem,
     { href: "/app/checks", label: "Cheques", icon: Banknote, permission: "checks" },
-    { href: "/app/accounts", label: "Plan de cuentas", icon: BookOpen, permission: "accounts" },
+    { href: "/app/extracto", label: "Extracto por caja", icon: ScrollText, permission: "cashAccounts" },
+    { href: "/app/cashAccounts", label: "Cajas y cuentas bancarias", icon: Landmark, permission: "cashAccounts" },
+    { href: "/app/assets", label: "Bienes de uso", icon: CarFront, permission: "assets" },
+    accountsItem,
     { href: "/app/libro-iva", label: "Libro IVA", icon: BookText, permission: "accounting" },
     { href: "/app/mayor", label: "Movimientos por cuenta", icon: ScrollText, permission: "accounting" },
   ] },
 ];
 const legacyAnalysis: NavItem[] = [{ href: "/app/reports", label: "iA y Reportes", icon: BarChart3, permission: "reports" }];
 
-const calendarItem: NavItem = { href: "/app/calendario", label: "Calendario", icon: CalendarDays, permission: "calendario" };
 const profileGroups: NavGroup[] = [
   { id: "config", label: "Configuración", icon: Settings, items: [
     { href: "/app/config", label: "Empresas y comprobantes", icon: Building2, managerOnly: true },
@@ -164,7 +178,7 @@ const profileGroups: NavGroup[] = [
 ];
 const profileItems = [calendarItem, ...profileGroups.flatMap(group => group.items)];
 const allItems = groups.flatMap(group => group.items);
-const legacyItems = [dashboardItem, ...legacyGroups.flatMap(group => group.items), ...legacyAnalysis];
+const legacyItems = [...legacyTop, ...legacyGroups.flatMap(group => group.items), ...legacyAnalysis];
 
 function isActive(pathname: string, href: string) {
   return pathname === href || (href !== "/app" && pathname.startsWith(`${href}/`));
@@ -236,9 +250,10 @@ export function AppShell({ session, navVersion, children }: { session: { name: s
         <nav aria-label="Navegación principal">
           {version === "v1" && <>
             <p className="nav-caption">GESTIÓN</p>
-            {canSee(dashboardItem) && <Link href={dashboardItem.href} className={pathname === "/app" ? "nav-link active" : "nav-link"} onClick={() => setMobileOpen(false)}>
-              <dashboardItem.icon size={19} /><span>{dashboardItem.label}</span>
-            </Link>}
+            {legacyTop.filter(canSee).map(item => {
+              const Icon = item.icon;
+              return <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? "nav-link active" : "nav-link"} onClick={() => setMobileOpen(false)}><Icon size={19} /><span>{item.label}</span></Link>;
+            })}
           </>}
           {visibleGroups.map(group => {
             const groupActive = group.items.some(item => isActive(pathname, item.href));

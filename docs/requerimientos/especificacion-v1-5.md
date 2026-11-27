@@ -16,7 +16,7 @@ Leyenda: ✅ hecho · 🟡 parcial · ⏳ pendiente (o esperando una decisión d
 
 | Pedido | Estado | Dónde |
 |---|---|---|
-| Barra azul con Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión | ✅ | Menú lateral con diez módulos: Activos quedó dentro de Tesorería (Bienes de uso), y cada módulo repite las pantallas de su circuito (Clientes y Cotizaciones en Ventas, Proveedores en Compras, Cobranzas y Órdenes de pago en Tesorería). Configuración y Seguridad se abren desde el botón de perfil de Gerencia en V1 y V2. |
+| Barra azul con Configuración, Seguridad, Maestros, Comercial, Obras, Compras, Ventas, Stock y logística, Personal, Activos, Tesorería, Contabilidad y Gestión | ✅ | Menú lateral con diez módulos: Activos quedó dentro de Tesorería (Bienes de uso), y cada módulo repite las pantallas de su circuito (Clientes y Cotizaciones en Ventas, Proveedores en Compras, Cobranzas y Órdenes de pago en Tesorería). El menú V1 tiene las mismas pantallas en sus cuatro grupos, con la Bandeja de pendientes arriba y el Calendario en Comercial. Configuración y Seguridad se abren desde el botón de perfil de Gerencia en V1 y V2. |
 | Factura X ("en negro") en venta y en compra | ✅ | Ver punto 9 |
 
 ## 1. Modelo multi-CUIT
