@@ -77,7 +77,7 @@ Cotización = Obra ──► Orden de compra ──► FACTURA ◄── Orden d
 | R6 | Número de comprobante: al elegir el tipo, la **letra se pone sola y no se puede editar** (A, C o X), y después van **12 dígitos obligatorios: 4 antes del guion y 8 después**. Si sobra o falta alguno, no deja guardar | ✅ 16/11 |
 | R7 | Tipos **Factura / Nota de crédito / Nota de débito**. "Factura que corrige" aparece **solo en las notas**, con dos opciones: **con referencia**, que obliga a elegir la factura (y descuenta total o parcial), o **sin referencia**, que queda como crédito a favor | ✅ 16/11 |
 | R8 | Poner la **fecha de emisión debajo del número** y la **fecha de vencimiento debajo del proveedor** | ✅ 16/11 |
-| R9 | **Período** distinto de la fecha: por ejemplo, emitida el 2/11 pero del período octubre | ❓ revisar |
+| R9 | **Período** distinto de la fecha: por ejemplo, emitida el 2/11 pero del período octubre | ✅ 27/11: **Período de IVA** (mes) debajo de las fechas; arranca con el mes de la factura, se puede cambiar y avisa si es anterior. El libro IVA va por ese mes |
 | R10 | Cargar el **neto** y que el **IVA (único dato en %) y el total se calculen solos**. Las percepciones y los otros impuestos van como **importe**, no como porcentaje, y todo se detalla abajo | ✅ 16/11 |
 | R11 | Cambiar "Descripción" por **"Leyenda"** | ✅ 16/11 |
 | R12 | **Sacar "Estado"** al cargar. Pagada o pendiente sale de la OP, y "anulada" no tiene sentido en una factura que recién se carga | ✅ 16/11 |

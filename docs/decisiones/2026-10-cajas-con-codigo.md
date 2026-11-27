@@ -101,7 +101,8 @@ pase al banco (`src/lib/check-service.ts`). Una OP de antes, con un solo medio, 
 
 - **Período de la factura**: el mes de la factura, también para el IVA. Por ejemplo, una factura del
   29/10 cargada el 02/11 va a octubre (encuesta). `period` toma el mes de la fecha salvo que se ponga
-  otro, y el libro IVA va por período.
+  otro, y el libro IVA va por período. 27/11: en la factura de compra se llama "Período de IVA",
+  quedó debajo de las fechas (estaba al final, Fer no lo veía) y avisa si es anterior al mes de la factura.
 - **Extracto por caja**: Administración lo descarga de una caja o de un rango de códigos, por semana,
   mes o varios meses. Muestra el saldo anterior, los movimientos con Cuenta, Período, Fecha, Detalle,
   Concepto, Débito (sale) y Crédito (entra), y el saldo final. Un pago o cobro de varias facturas sale

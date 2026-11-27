@@ -268,6 +268,10 @@ export function ExpenseFields({ fields, fieldProps, editing, draft, orders }: {
   // Al cargar no se elige el estado (sale de las órdenes de pago) y "Factura que corrige" es sólo de las notas.
   // En una factura tampoco van la obra ni la categoría: lo comprado entra al depósito y la obra la pone
   // el remito con que sale (Administración, 12/11/2026). Un gasto sin comprobante las sigue pidiendo.
+  // El período de IVA (Fer, 10/11/2026): arranca con el mes de la fecha. Uno anterior se guarda, pero avisa.
+  const issuePeriod = String(values.issueDate ?? (editing?.issueDate ? new Date(String(editing.issueDate)).toISOString() : "")).slice(0, 7);
+  const chosenPeriod = values.period ?? String(editing?.period || "");
+  const periodBefore = Boolean(chosenPeriod && issuePeriod && chosenPeriod < issuePeriod);
   const shown = fields.filter(field => field !== receiptsField && !(field.key === "status" && !editing) && !(field.key === "associatedExpenseId" && !isNote(voucherType))
     && !(voucherType && (field.key === "workId" || field.key === "category")));
 
@@ -290,6 +294,10 @@ export function ExpenseFields({ fields, fieldProps, editing, draft, orders }: {
         {rows.length ? <output>{money(grossCents)}</output> : <MoneyInput name="grossNetCents" defaultValue={(storedNet + storedDiscount) / 100} />}
         <input type="hidden" name="netCents" value={grossCents > 0 ? net / 100 : ""} />
         {grossCents > 0 && <small className={discountCents > grossCents ? "warning-line" : "muted-line"}>{discountCents > grossCents ? "El descuento pasa el subtotal" : `Neto después del descuento: ${money(net)}`}</small>}</label>
+      : field.key === "period"
+        ? <label key={field.key}><span>{field.label}<em className="field-hint">{field.hint}</em></span>
+          <input name="period" type="month" defaultValue={String(editing?.period || "")} />
+          {periodBefore && <small className="warning-line" role="status">Es anterior al mes de la factura ({issuePeriod.slice(5)}/{issuePeriod.slice(0, 4)}): revisá que corresponda computarla ahí.</small>}</label>
       : field.key === "number" && letter
         ? <label key={field.key}><span>Número *<em className="field-hint">4 números, guion y 8 números</em></span>
           <div className="voucher-number"><b aria-label={`Letra ${letter}`}>{letter}</b>

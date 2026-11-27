@@ -92,9 +92,15 @@
 
 - No hubo nada que programar: la lista de rubros de obra ya se edita desde Perfil › Configuración › Empresas y comprobantes. Sigue pendiente que Fer confirme los seis nombres.
 
+## 7. Período de IVA en la factura de compra (R9)
+
+- Fer pidió cargar un período distinto de la fecha ("emitida el 2/11 pero del período octubre"). El campo `period` ya existía desde el 06/11 y el libro IVA ya iba por él, pero estaba al final del formulario, debajo del Total.
+- Ahora se llama **Período de IVA**, va debajo de la fecha y el vencimiento, y arranca vacío (se guarda el mes de la fecha). Si se elige un mes anterior al de la factura, avisa debajo del campo pero deja guardar: puede ser el mes del gasto y no el del IVA, y eso lo confirma Fer.
+- Si Fer dice que lo quiere sólo para el mes del gasto, el libro IVA vuelve a ir por la fecha de emisión (`ivaBook` en `src/lib/accounting.ts`).
+
 ## Lo que sigue esperando a otros
 
 - **Cristian**: el Excel de productos del Salón.
-- **Fer**: la lista definitiva de rubros, y si el saldo a favor de un cliente también se devuelve en plata (hoy sólo se descuenta de otra factura).
+- **Fer**: si el Período de IVA es el mes del libro IVA o el del gasto, la lista definitiva de rubros, y si el saldo a favor de un cliente también se devuelve en plata (hoy sólo se descuenta de otra factura).
 - **Jorge**: las preguntas de `docs/plan-envios-y-traslados.md` (si lo que va a Rosario es para una obra, un cliente o un depósito propio; si el valor declarado es el costo o el precio de venta; si el remito muestra el precio unitario; qué otros transportes usan).
 - **Fede**: si el personal se asigna para toda la obra (como quedó) o cada persona con sus propias fechas.
